@@ -140,7 +140,7 @@ export const TagBoard = memo(function TagBoard() {
                 CLEAN TIME
               </span>
               <span style={{ fontSize: isMobile ? '13px' : '16px', fontWeight: 900, color: '#34D399' }}>
-                {timeClean}s
+                {Math.floor(timeClean)}s
               </span>
             </div>
 

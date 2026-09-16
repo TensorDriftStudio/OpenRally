@@ -7,4 +7,5 @@ export { useEngineSound } from '@/hooks/useEngineSound';
 export { useSurfaceSound } from '@/hooks/useSurfaceSound';
 export { useMultiplayerTelemetrySync } from '@/hooks/useMultiplayerTelemetrySync';
 export { useTagProximity } from '@/hooks/useTagProximity';
+export { useTagLogic } from '@/hooks/useTagLogic';
 

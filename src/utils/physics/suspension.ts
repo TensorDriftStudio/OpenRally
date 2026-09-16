@@ -29,6 +29,12 @@ export function applyAntiRollBars(
   _bodyPos.set(pos.x, pos.y, pos.z);
   _bodyQuat.set(quat.x, quat.y, quat.z, quat.w);
 
+  // Compute local angular velocity for roll and pitch damping
+  const angvel = typeof body.angvel === 'function' ? body.angvel() : { x: 0, y: 0, z: 0 };
+  _angvel.set(angvel.x, angvel.y, angvel.z);
+  _invQuat.copy(_bodyQuat).invert();
+  _localAngvel.copy(_angvel).applyQuaternion(_invQuat);
+
   // Front Axle (Wheels 0 and 1 are FL and FR)
   if (config.suspension.frontAntiRollBarStiffness > 0) {
     applyAxleARB(body, controller, config, 0, 1, config.suspension.frontAntiRollBarStiffness, dt, balance);
@@ -57,6 +63,11 @@ export function applyPitchStabilization(
   balance: SuspensionBalanceConfig = DRIVING_MODEL_BALANCE.suspension,
 ): void {
   if (config.wheels.length < 4) return;
+
+  const pos = body.translation();
+  const quat = body.rotation();
+  _bodyPos.set(pos.x, pos.y, pos.z);
+  _bodyQuat.set(quat.x, quat.y, quat.z, quat.w);
 
   // Front vs rear average suspension compression
   const flLength = controller.wheelSuspensionLength(0) ?? config.wheels[0].suspensionRestLength;
@@ -114,8 +125,15 @@ export function applyPitchStabilization(
   _localAngvel.copy(_angvel).applyQuaternion(_invQuat);
   const pitchDamping = -_localAngvel.x * mass * suspBalance.pitchDampingMassScale;
 
+  // Momentum-bound safety guard: ensure pitch damping impulse never reverses localAngvel.x
+  const sizeY = config.chassisSize[1];
+  const sizeZ = config.chassisSize[2];
+  const iXx = (1 / 12) * mass * (sizeY * sizeY + sizeZ * sizeZ);
+  const maxPitchDampImpulse = 0.85 * iXx * Math.abs(_localAngvel.x);
+  const clampedPitchDampImpulse = clamp(pitchDamping * dt, -maxPitchDampImpulse, maxPitchDampImpulse);
+
   // Apply restoring pitch torque in world space
-  const totalPitchTorque = (pitchRestoringTorque + pitchDamping) * dt;
+  const totalPitchTorque = pitchRestoringTorque * dt + clampedPitchDampImpulse;
   if (Number.isFinite(totalPitchTorque)) {
     _pitchTorque.set(totalPitchTorque, 0, 0).applyQuaternion(_bodyQuat);
     if (
@@ -138,6 +156,11 @@ function applyAxleARB(
   dt: number,
   balance: SuspensionBalanceConfig = DRIVING_MODEL_BALANCE.suspension,
 ) {
+  // Ground contact verification: skip ARB if both wheels on this axle are airborne
+  const leftGrounded = typeof controller.wheelIsInContact === 'function' ? controller.wheelIsInContact(leftIndex) : true;
+  const rightGrounded = typeof controller.wheelIsInContact === 'function' ? controller.wheelIsInContact(rightIndex) : true;
+  if (!leftGrounded && !rightGrounded) return;
+
   const leftLength = controller.wheelSuspensionLength(leftIndex);
   const rightLength = controller.wheelSuspensionLength(rightIndex);
   
@@ -148,12 +171,26 @@ function applyAxleARB(
   
   const leftCompression = leftWheel.suspensionRestLength - leftLength;
   const rightCompression = rightWheel.suspensionRestLength - rightLength;
+  const compressionDelta = leftCompression - rightCompression;
+
+  // If compression difference is negligible, avoid injecting micro-impulses
+  if (Math.abs(compressionDelta) < 1e-4) return;
   
   // Force proportional to difference in compression scaled by vehicle mass
   // If left is more compressed than right, antiRollForce > 0
   const mass = typeof body.mass === 'function' ? body.mass() : (config.chassisMass || 150);
-  const antiRollForce =
-    (leftCompression - rightCompression) * stiffness * mass * balance.antiRollBarMassScale;
+  const springAntiRollForce =
+    compressionDelta * stiffness * mass * balance.antiRollBarMassScale;
+
+  // Active roll velocity damping: damps roll oscillation rate around local Z axis
+  // Prevents explicit Euler harmonic resonance ("side-to-side bouncing/trampoline effect")
+  const rollDampingForce = -_localAngvel.z * mass * (stiffness * 0.10);
+
+  let antiRollForce = springAntiRollForce + rollDampingForce;
+
+  // Saturated clamp: limit peak ARB force to 1.5G equivalent wheel normal force
+  const maxArbForce = mass * 9.81 * 1.5;
+  antiRollForce = clamp(antiRollForce, -maxArbForce, maxArbForce);
   
   if (Number.isFinite(antiRollForce)) {
     // We want to push the left side UP (positive local Y impulse)

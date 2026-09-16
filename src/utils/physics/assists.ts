@@ -2,6 +2,7 @@ import type { RapierRigidBody } from '@react-three/rapier';
 import { Vector3, Quaternion } from 'three';
 import type { VehicleConfig } from '@/types/vehicle';
 import type { InputState } from '@/types/game';
+import { clamp } from '@/utils/math';
 import { DRIVING_MODEL_BALANCE, type DrivingModelBalance } from '@/config/physicsBalance';
 
 const _bodyQuat = new Quaternion();
@@ -120,6 +121,36 @@ export function applyAssists(
       ? hbBalance.rollDampingBoost 
       : assistsBalance.rollDampingNormal;
     localTorqueZ = -_localAngVel.z * rollDampingMultiplier * mass * dt;
+  }
+
+  // Momentum-bound safety guards: ensure damping impulses never exceed 85% of current
+  // angular momentum to unconditionally prevent sign reversals and side-to-side wobble
+  const sizeX = config.chassisSize[0];
+  const sizeY = config.chassisSize[1];
+  const sizeZ = config.chassisSize[2];
+  const iXx = (1 / 12) * mass * (sizeY * sizeY + sizeZ * sizeZ);
+  const iYy = (1 / 12) * mass * (sizeX * sizeX + sizeZ * sizeZ);
+  const iZz = (1 / 12) * mass * (sizeX * sizeX + sizeY * sizeY);
+
+  if (localTorqueX !== 0 && Math.abs(_localAngVel.x) > 0.01) {
+    if (Math.sign(localTorqueX) !== Math.sign(_localAngVel.x)) {
+      const maxImpulseX = 0.85 * iXx * Math.abs(_localAngVel.x);
+      localTorqueX = clamp(localTorqueX, -maxImpulseX, maxImpulseX);
+    }
+  }
+
+  if (localTorqueZ !== 0 && Math.abs(_localAngVel.z) > 0.01) {
+    if (Math.sign(localTorqueZ) !== Math.sign(_localAngVel.z)) {
+      const maxImpulseZ = 0.85 * iZz * Math.abs(_localAngVel.z);
+      localTorqueZ = clamp(localTorqueZ, -maxImpulseZ, maxImpulseZ);
+    }
+  }
+
+  if (localTorqueY !== 0 && Math.abs(_localAngVel.y) > 0.01) {
+    if (Math.sign(localTorqueY) !== Math.sign(_localAngVel.y)) {
+      const maxImpulseY = 0.90 * iYy * Math.abs(_localAngVel.y);
+      localTorqueY = clamp(localTorqueY, -maxImpulseY, maxImpulseY);
+    }
   }
 
   if (localTorqueX !== 0 || localTorqueY !== 0 || localTorqueZ !== 0) {

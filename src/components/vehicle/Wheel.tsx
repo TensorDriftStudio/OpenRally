@@ -35,7 +35,7 @@ export const Wheel = forwardRef<Object3D, WheelProps>(function Wheel(
     <group ref={ref} position={position}>
       {/* Inner group for spin rotation */}
       <group>
-        <Detailed distances={[0, 30, 80]}>
+        <Detailed distances={[0, 80, 200]}>
           {/* LOD 0: Full GLB model */}
           <Clone
             object={scene}

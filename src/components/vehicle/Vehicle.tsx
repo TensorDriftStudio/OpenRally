@@ -15,7 +15,7 @@ import { useSkidSound } from '@/hooks/useSkidSound';
 import { DustParticles } from '@/components/vehicle/DustParticles';
 import { TireTracks } from '@/components/vehicle/TireTracks';
 import { WaterSplashes } from '@/components/vehicle/WaterSplashes';
-import { useGLTF, Clone, Detailed } from '@react-three/drei';
+import { useGLTF, Clone } from '@react-three/drei';
 import { VEHICLE_MODEL_PATH, VEHICLE_WRC_MODEL_PATH } from '@/config/assets';
 import { useGameStore } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -85,44 +85,18 @@ function VehicleVisualModel({
   positionOffset,
   rotationOffset,
   scale,
-  chassisSize,
 }: VehicleVisualModelProps) {
   const { scene } = useGLTF(modelPath);
 
   return (
-    <Detailed distances={[0, 50, 150]}>
-      {/* LOD 0: Dedicated 3D GLB vehicle model */}
-      <Clone 
-        object={scene} 
-        position={positionOffset} 
-        scale={scale} 
-        rotation={rotationOffset ?? [0, 0, 0]} 
-        castShadow
-        receiveShadow
-      />
-      {/* LOD 1: Simplified box proxy (medium distance) */}
-      <mesh position={[0, 0.8, 0]}>
-        <boxGeometry
-          args={[
-            chassisSize[0],
-            chassisSize[1],
-            chassisSize[2],
-          ]}
-        />
-        <meshStandardMaterial color="#888" roughness={0.6} />
-      </mesh>
-      {/* LOD 2: Far distance box proxy */}
-      <mesh position={[0, 0.8, 0]}>
-        <boxGeometry
-          args={[
-            chassisSize[0],
-            chassisSize[1],
-            chassisSize[2],
-          ]}
-        />
-        <meshBasicMaterial color="#555" />
-      </mesh>
-    </Detailed>
+    <Clone 
+      object={scene} 
+      position={positionOffset} 
+      scale={scale} 
+      rotation={rotationOffset ?? [0, 0, 0]} 
+      castShadow
+      receiveShadow
+    />
   );
 }
 

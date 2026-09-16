@@ -1,6 +1,6 @@
 import { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useRapier } from '@react-three/rapier';
+import { useRapier, useBeforePhysicsStep } from '@react-three/rapier';
 import type { RapierRigidBody } from '@react-three/rapier';
 import { Vector3, Quaternion, Euler, Object3D } from 'three';
 import type { VehicleConfig, SurfaceType } from '@/types/vehicle';
@@ -91,6 +91,7 @@ export function useVehiclePhysics(
   const { world, rapier } = useRapier();
   const { heightmapData, levelData, levelPreset } = useTerrainData();
   const prevGearRef = useRef<number>(1);
+  const prevEmittedGearRef = useRef<number>(1);
   const prevSurfaceRef = useRef<SurfaceType>('tarmac');
   const prevSpeedKmhRef = useRef<number>(0);
   const currentRpmRef = useRef<number>(1000);
@@ -117,6 +118,20 @@ export function useVehiclePhysics(
   > | null>(null);
   const balanceRef = useRef<DrivingModelBalance>(resolveVehicleBalance(config));
   const getInput = useInputUpdater();
+
+  // Cached physical simulation telemetry updated synchronously inside useBeforePhysicsStep
+  const latestForwardSpeedRef = useRef<number>(0);
+  const latestLateralSpeedRef = useRef<number>(0);
+  const latestSpeedKmhRef = useRef<number>(0);
+  const latestSlipAngleRef = useRef<number>(0);
+  const latestSteerAngleRef = useRef<number>(0);
+  const latestGripsRef = useRef<number[]>([1, 1, 1, 1]);
+  const latestSurfaceRef = useRef<SurfaceType>('tarmac');
+  const latestAbsActiveRef = useRef<boolean>(false);
+  const latestTcsActiveRef = useRef<boolean>(false);
+  const latestEspActiveRef = useRef<boolean>(false);
+  const latestEffectiveInputRef = useRef<InputState>(_frozenInput);
+  const latestInputRef = useRef<InputState>(_frozenInput);
 
   // Safely dispose the active vehicle controller without throwing WASM errors
   const disposeController = () => {
@@ -183,6 +198,7 @@ export function useVehiclePhysics(
     isSettledRef.current = false;
     prevSpeedKmhRef.current = 0;
     prevGearRef.current = 1;
+    prevEmittedGearRef.current = 1;
     prevSurfaceRef.current = 'tarmac';
     currentRpmRef.current = 1000;
     isAirborneRef.current = false;
@@ -191,6 +207,20 @@ export function useVehiclePhysics(
     pausedStateRef.current = null;
     isPausedRef.current = false;
     balanceRef.current = resolveVehicleBalance(config);
+
+    latestForwardSpeedRef.current = 0;
+    latestLateralSpeedRef.current = 0;
+    latestSpeedKmhRef.current = 0;
+    latestSlipAngleRef.current = 0;
+    latestSteerAngleRef.current = 0;
+    latestGripsRef.current = [1, 1, 1, 1];
+    latestSurfaceRef.current = 'tarmac';
+    latestAbsActiveRef.current = false;
+    latestTcsActiveRef.current = false;
+    latestEspActiveRef.current = false;
+    latestEffectiveInputRef.current = _frozenInput;
+    latestInputRef.current = _frozenInput;
+
     useGameStore.setState({
       isRolledOver: false,
       absActive: false,
@@ -209,6 +239,247 @@ export function useVehiclePhysics(
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, levelPreset.id]);
+
+  // Fixed-timestep simulation progression: executes synchronously BEFORE every Rapier world.step()
+  // Eliminates substep starvation during frame drops / low framerates and guarantees 100% physically-consistent forces
+  useBeforePhysicsStep((world) => {
+    const gameState = useGameStore.getState().gameState;
+    if (gameState !== 'playing') return;
+
+    const body = chassisRef.current;
+    if (!body || (typeof body.isValid === 'function' && !body.isValid())) return;
+
+    if (!vehicleControllerRef.current) {
+      setupController(body);
+      if (!vehicleControllerRef.current) return;
+    }
+    const controller = vehicleControllerRef.current;
+
+    const isSpectating = useMultiplayerStore.getState().isSpectating;
+    if (isSpectating) {
+      body.setLinvel(_zeroVel, true);
+      body.setAngvel(_zeroVel, true);
+      return;
+    }
+
+    const currentBodyPos = body.translation();
+    const curLinvel = body.linvel();
+    const curAngvel = body.angvel();
+
+    // Numerical sanity guard: detect NaN or infinite values produced by extreme collisions or solver instability
+    const isCorrupted =
+      !Number.isFinite(currentBodyPos.x) ||
+      !Number.isFinite(currentBodyPos.y) ||
+      !Number.isFinite(currentBodyPos.z) ||
+      !Number.isFinite(curLinvel.x) ||
+      !Number.isFinite(curLinvel.y) ||
+      !Number.isFinite(curLinvel.z) ||
+      !Number.isFinite(curAngvel.x) ||
+      !Number.isFinite(curAngvel.y) ||
+      !Number.isFinite(curAngvel.z);
+
+    if (isCorrupted) return;
+
+    const rawStepDt = world.timestep;
+    const dt = Number.isFinite(rawStepDt) && rawStepDt > 0 ? rawStepDt : 1 / 60;
+    const input = getInput(dt);
+    latestInputRef.current = input;
+
+    // Calculate current speed (m/s → km/h)
+    _forward.set(0, 0, 1);
+    _right.set(1, 0, 0); // Local right vector (+X is right in Three.js right-handed coordinates)
+    const bodyQuat = body.rotation();
+    _quat.set(bodyQuat.x, bodyQuat.y, bodyQuat.z, bodyQuat.w);
+    _forward.applyQuaternion(_quat);
+    _right.applyQuaternion(_quat);
+
+    _velocity.set(curLinvel.x, curLinvel.y, curLinvel.z);
+    const forwardSpeed = _velocity.dot(_forward); // m/s along forward axis
+    const lateralSpeed = _velocity.dot(_right);   // m/s along lateral axis
+    // Use planar ground speed so cornering/drifting does not cause artificial RPM drop or gear downshift
+    const groundSpeed = Math.hypot(forwardSpeed, lateralSpeed);
+    const speedKmh = groundSpeed * MS_TO_KMH;
+
+    // Slip angle calculation
+    let slipAngle = 0;
+    if (Math.abs(forwardSpeed) > 1.0) {
+      slipAngle = Math.atan2(lateralSpeed, forwardSpeed);
+    }
+
+    const state = useGameStore.getState();
+    const tagState = useTagStore.getState();
+
+    const isCountingDown = 
+      (state.gameMode === 'timeattack' && useRacingStore.getState().raceStatus === 'countdown') ||
+      (state.gameMode === 'gymkhana_blitz' && useGymkhanaStore.getState().status === 'countdown') ||
+      (state.gameMode === 'tag' && tagState.phase === 'countdown');
+
+    const isTagFrozen = state.gameMode === 'tag' && tagState.isFrozen;
+
+    if (isCountingDown || isTagFrozen) {
+      body.setLinvel({ x: 0, y: Math.min(0, curLinvel.y), z: 0 }, true);
+      body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    }
+
+    const effectiveInput = (isCountingDown || isTagFrozen) ? _frozenInput : input;
+    latestEffectiveInputRef.current = effectiveInput;
+
+    const isGymkhanaFinished =
+      useGymkhanaStore.getState().showResultsModal ||
+      (state.gameMode === 'gymkhana_blitz' && useGymkhanaStore.getState().status === 'completed');
+
+    if (isGymkhanaFinished) {
+      body.setLinvel({ x: curLinvel.x * 0.88, y: Math.min(0, curLinvel.y), z: curLinvel.z * 0.88 }, true);
+      body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    }
+
+    const transmissionMode = useSettingsStore.getState().transmissionMode;
+    let currentGear: number;
+
+    if (transmissionMode === 'manual') {
+      currentGear = handleManualGearShift(prevGearRef.current, effectiveInput, isAirborneRef.current);
+    } else {
+      currentGear = updateGearbox(speedKmh, forwardSpeed, effectiveInput, prevGearRef.current, isAirborneRef.current, {
+        slipAngle,
+      });
+    }
+
+    const balance = balanceRef.current;
+    const { absEnabled, tcsEnabled, espEnabled } = useSettingsStore.getState();
+
+    // --- 1. APPLY DRIVETRAIN (Engine, Reverse, Rev Limiter) ---
+    const powerMultiplier = (state.gameMode === 'tag' && tagState.isTagger) ? 1.5 : 1.0;
+    const { tcsActive } = applyDrivetrain(
+      controller,
+      config,
+      effectiveInput,
+      forwardSpeed,
+      currentGear,
+      slipAngle,
+      speedKmh,
+      powerMultiplier,
+      balance.drivetrain,
+      { tcsEnabled },
+    );
+
+    // --- 2. APPLY TIRE FRICTION & BRAKES ---
+    const selectedTireType = useGameStore.getState().selectedTireType;
+    const { grips: tireGrips, surface, steerAngle, absActive } = applyTireFrictionAndBrakes(
+      controller,
+      config,
+      effectiveInput,
+      speedKmh,
+      forwardSpeed,
+      currentBodyPos.x,
+      currentBodyPos.y,
+      currentBodyPos.z,
+      slipAngle,
+      heightmapData,
+      levelData,
+      balance,
+      { absEnabled, tcsEnabled, espEnabled },
+      selectedTireType,
+    );
+
+    // --- 3. APPLY ARCADE ASSISTS ---
+    const { espActive } = applyAssists(body, config, effectiveInput, forwardSpeed, dt, balance, { espEnabled });
+
+    // --- 3.5. APPLY SUSPENSION ARB & PITCH STABILIZATION ---
+    applyAntiRollBars(body, controller, config, dt, balance.suspension);
+
+    // --- 4. UPDATE RAPIER VEHICLE ---
+    try {
+      controller.updateVehicle(dt);
+    } catch (simErr) {
+      console.warn('[useVehiclePhysics] Suppressed Rapier vehicle solver exception:', simErr);
+      const spawnPos = levelPreset.spawnPosition;
+      body.setTranslation({ x: spawnPos[0], y: spawnPos[1], z: spawnPos[2] }, true);
+      body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      emitGameEvent('vehicle_reset', { reason: 'stability_guard' });
+      return;
+    }
+
+    // --- 4.1. GROUND CONTACT & AIRBORNE TELEMETRY ---
+    const { groundedRatio, isAirborne } = calculateGroundContact(controller, config.wheels.length);
+    isAirborneRef.current = isAirborne;
+
+    // --- 4.2. ROLLOVER DETECTION (CAR INVERTED ON ROOF OR SIDE) ---
+    _up.set(0, 1, 0).applyQuaternion(_quat);
+    const rollover = updateRolloverDetection(
+      _up.y,
+      speedKmh,
+      rolloverTimerRef.current,
+      dt,
+      isRolledOverRef.current,
+    );
+    rolloverTimerRef.current = rollover.newTimer;
+    if (rollover.stateChanged) {
+      isRolledOverRef.current = rollover.isRolledOver;
+    }
+
+    // --- 5. APPLY AERODYNAMICS & SURFACE ROLLING DRAG ---
+    applyAerodynamics(body, config, forwardSpeed, _velocity, currentBodyPos.y, dt);
+
+    const surfaceDef = getSurfaceDefinition(surface);
+
+    // Physical rolling resistance (loose ground deceleration: sand, tall grass, mud)
+    const rollDragImpulse = calculateRollingResistanceImpulse(
+      surfaceDef,
+      typeof body.mass === 'function' ? body.mass() : (config.chassisMass || 150),
+      _forward,
+      forwardSpeed,
+      groundedRatio,
+      slipAngle,
+      effectiveInput.throttle,
+      dt,
+    );
+    if (rollDragImpulse) {
+      body.applyImpulse(rollDragImpulse, true);
+    }
+
+    // --- 5.1. APPLY AWD POWER-SLIDE PROPULSION ---
+    applyAwdDriftPropulsion(
+      body,
+      config,
+      effectiveInput,
+      _forward,
+      speedKmh,
+      slipAngle,
+      groundedRatio,
+      dt,
+      currentGear,
+      _right,
+      steerAngle,
+      balance,
+      { espEnabled },
+    );
+
+    // --- 6. UPDATE ENGINE RPM ---
+    const targetRpm = calculateRPM(speedKmh, currentGear, input, {
+      currentRpm: currentRpmRef.current,
+      dt,
+      groundedRatio,
+      isAirborne,
+      slipAngle,
+      steering: input.steering,
+      looseSurfaceTractionLoss: surfaceDef.looseSurfaceTractionLoss,
+    });
+    currentRpmRef.current = targetRpm;
+
+    // Cache physical telemetry for useFrame visual sync
+    latestForwardSpeedRef.current = forwardSpeed;
+    latestLateralSpeedRef.current = lateralSpeed;
+    latestSpeedKmhRef.current = speedKmh;
+    latestSlipAngleRef.current = slipAngle;
+    latestSteerAngleRef.current = steerAngle;
+    latestGripsRef.current = tireGrips;
+    latestSurfaceRef.current = surface;
+    latestAbsActiveRef.current = absActive;
+    latestTcsActiveRef.current = tcsActive;
+    latestEspActiveRef.current = espActive;
+    prevGearRef.current = currentGear;
+  });
 
   // Frame update: apply forces, read state
   useFrame((_, delta) => {
@@ -320,6 +591,10 @@ export function useVehiclePhysics(
 
       prevSpeedKmhRef.current = 0;
       prevGearRef.current = 1;
+      prevEmittedGearRef.current = 1;
+      latestForwardSpeedRef.current = 0;
+      latestLateralSpeedRef.current = 0;
+      latestSpeedKmhRef.current = 0;
       currentRpmRef.current = 1000;
       isAirborneRef.current = false;
       settleFramesRef.current = 0;
@@ -388,6 +663,7 @@ export function useVehiclePhysics(
         prevSpeedKmhRef.current = saved.speed;
         currentRpmRef.current = saved.rpm;
         prevGearRef.current = saved.gear;
+        prevEmittedGearRef.current = saved.gear;
         isAirborneRef.current = saved.isAirborne;
 
         useGameStore.setState({
@@ -470,63 +746,6 @@ export function useVehiclePhysics(
 
     const safeDelta = Number.isFinite(delta) && delta > 0 ? delta : 1 / 60;
     const dt = Math.max(0.001, Math.min(safeDelta, MAX_DELTA));
-    const input = getInput(dt);
-
-    // Calculate current speed (m/s → km/h)
-    const linvel = body.linvel();
-    const pos = body.translation();
-
-    _forward.set(0, 0, 1);
-    _right.set(1, 0, 0); // Local right vector (+X is right in Three.js right-handed coordinates)
-    const bodyQuat = body.rotation();
-    _quat.set(bodyQuat.x, bodyQuat.y, bodyQuat.z, bodyQuat.w);
-    _forward.applyQuaternion(_quat);
-    _right.applyQuaternion(_quat);
-
-    _velocity.set(linvel.x, linvel.y, linvel.z);
-    const forwardSpeed = _velocity.dot(_forward); // m/s along forward axis
-    const lateralSpeed = _velocity.dot(_right);   // m/s along lateral axis
-    // Use planar ground speed so cornering/drifting does not cause artificial RPM drop or gear downshift
-    const groundSpeed = Math.hypot(forwardSpeed, lateralSpeed);
-    const speedKmh = groundSpeed * MS_TO_KMH;
-    
-    // Slip angle calculation
-    let slipAngle = 0;
-    if (Math.abs(forwardSpeed) > 1.0) {
-      slipAngle = Math.atan2(lateralSpeed, forwardSpeed);
-    }
-
-    // Automatic Gearbox Logic
-    const state = useGameStore.getState();
-    const tagState = useTagStore.getState();
-
-    // Tick tag store freeze/immunity counters
-    if (state.gameMode === 'tag') {
-      tagState.tickDelta(dt);
-    }
-
-    const isCountingDown = 
-      (state.gameMode === 'timeattack' && useRacingStore.getState().raceStatus === 'countdown') ||
-      (state.gameMode === 'gymkhana_blitz' && useGymkhanaStore.getState().status === 'countdown') ||
-      (state.gameMode === 'tag' && tagState.phase === 'countdown');
-
-    const isTagFrozen = state.gameMode === 'tag' && tagState.isFrozen;
-
-    if (isCountingDown || isTagFrozen) {
-      body.setLinvel({ x: 0, y: Math.min(0, linvel.y), z: 0 }, true);
-      body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-    }
-
-    const effectiveInput = (isCountingDown || isTagFrozen) ? _frozenInput : input;
-
-    const isGymkhanaFinished =
-      useGymkhanaStore.getState().showResultsModal ||
-      (state.gameMode === 'gymkhana_blitz' && useGymkhanaStore.getState().status === 'completed');
-
-    if (isGymkhanaFinished) {
-      body.setLinvel({ x: linvel.x * 0.88, y: Math.min(0, linvel.y), z: linvel.z * 0.88 }, true);
-      body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-    }
 
     const isSpectating = useMultiplayerStore.getState().isSpectating;
     if (isSpectating) {
@@ -535,62 +754,35 @@ export function useVehiclePhysics(
       return;
     }
 
-    const transmissionMode = useSettingsStore.getState().transmissionMode;
-    let currentGear: number;
+    const forwardSpeed = latestForwardSpeedRef.current;
+    const lateralSpeed = latestLateralSpeedRef.current;
+    const speedKmh = latestSpeedKmhRef.current;
+    const slipAngle = latestSlipAngleRef.current;
+    const tireGrips = latestGripsRef.current;
+    const surface = latestSurfaceRef.current;
+    const absActive = latestAbsActiveRef.current;
+    const tcsActive = latestTcsActiveRef.current;
+    const espActive = latestEspActiveRef.current;
+    const currentGear = prevGearRef.current;
+    const effectiveInput = latestEffectiveInputRef.current;
+    const input = latestInputRef.current;
+    const isAirborne = isAirborneRef.current;
+    const targetRpm = currentRpmRef.current;
 
-    if (transmissionMode === 'manual') {
-      currentGear = handleManualGearShift(state.gear, effectiveInput, isAirborneRef.current);
-    } else {
-      currentGear = updateGearbox(speedKmh, forwardSpeed, effectiveInput, state.gear, isAirborneRef.current, {
-        slipAngle,
-      });
-    }
+    const pos = body.translation();
+    const bodyQuat = body.rotation();
+    _quat.set(bodyQuat.x, bodyQuat.y, bodyQuat.z, bodyQuat.w);
 
-    if (currentGear !== prevGearRef.current) {
+    // Sync gear shift event to event bus
+    if (currentGear !== prevEmittedGearRef.current) {
       emitGameEvent('gear_shifted', {
-        fromGear: prevGearRef.current,
+        fromGear: prevEmittedGearRef.current,
         toGear: currentGear,
       });
-      prevGearRef.current = currentGear;
+      prevEmittedGearRef.current = currentGear;
     }
 
-    const balance = balanceRef.current;
-    const { absEnabled, tcsEnabled, espEnabled } = useSettingsStore.getState();
-
-    // --- 1. APPLY DRIVETRAIN (Engine, Reverse, Rev Limiter) ---
-    const powerMultiplier = (state.gameMode === 'tag' && tagState.isTagger) ? 1.5 : 1.0;
-    const { tcsActive } = applyDrivetrain(
-      controller,
-      config,
-      effectiveInput,
-      forwardSpeed,
-      currentGear,
-      slipAngle,
-      speedKmh,
-      powerMultiplier,
-      balance.drivetrain,
-      { tcsEnabled },
-    );
-
-    // --- 2. APPLY TIRE FRICTION & BRAKES ---
-    const selectedTireType = useGameStore.getState().selectedTireType;
-    const { grips: tireGrips, surface, steerAngle, absActive } = applyTireFrictionAndBrakes(
-      controller,
-      config,
-      effectiveInput,
-      speedKmh,
-      forwardSpeed,
-      pos.x,
-      pos.y,
-      pos.z,
-      slipAngle,
-      heightmapData,
-      levelData,
-      balance,
-      { absEnabled, tcsEnabled, espEnabled },
-      selectedTireType,
-    );
-
+    // Sync surface change event to event bus
     if (surface !== prevSurfaceRef.current) {
       emitGameEvent('surface_changed', {
         from: prevSurfaceRef.current,
@@ -599,10 +791,8 @@ export function useVehiclePhysics(
       prevSurfaceRef.current = surface;
     }
 
-    // --- 3. APPLY ARCADE ASSISTS ---
-    const { espActive } = applyAssists(body, config, effectiveInput, forwardSpeed, dt, balance, { espEnabled });
-
     // Sync driving assist active indicators to store when status changes
+    const state = useGameStore.getState();
     if (absActive !== state.absActive || tcsActive !== state.tcsActive || espActive !== state.espActive) {
       useGameStore.getState().setDrivingAssistsActive({
         abs: absActive,
@@ -611,41 +801,12 @@ export function useVehiclePhysics(
       });
     }
 
-    // --- 3.5. APPLY SUSPENSION ARB & PITCH STABILIZATION ---
-    applyAntiRollBars(body, controller, config, dt, balance.suspension);
-
-    // --- 4. UPDATE RAPIER VEHICLE ---
-    try {
-      controller.updateVehicle(dt);
-    } catch (simErr) {
-      console.warn('[useVehiclePhysics] Suppressed Rapier vehicle solver exception:', simErr);
-      body.setTranslation({ x: spawnPos[0], y: spawnPos[1], z: spawnPos[2] }, true);
-      body.setLinvel({ x: 0, y: 0, z: 0 }, true);
-      body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-      emitGameEvent('vehicle_reset', { reason: 'stability_guard' });
-      return;
+    // Sync rollover state
+    if (state.isRolledOver !== isRolledOverRef.current) {
+      useGameStore.setState({ isRolledOver: isRolledOverRef.current });
     }
 
-    // --- 4.1. GROUND CONTACT & AIRBORNE TELEMETRY ---
-    const { groundedRatio, isAirborne } = calculateGroundContact(controller, config.wheels.length);
-    isAirborneRef.current = isAirborne;
-
-    // --- 4.2. ROLLOVER DETECTION (CAR INVERTED ON ROOF OR SIDE) ---
-    _up.set(0, 1, 0).applyQuaternion(_quat);
-    const rollover = updateRolloverDetection(
-      _up.y,
-      speedKmh,
-      rolloverTimerRef.current,
-      dt,
-      isRolledOverRef.current,
-    );
-    rolloverTimerRef.current = rollover.newTimer;
-    if (rollover.stateChanged) {
-      isRolledOverRef.current = rollover.isRolledOver;
-      useGameStore.setState({ isRolledOver: rollover.isRolledOver });
-    }
-
-    // --- 4.5. GAMEPAD HAPTIC RUMBLE FEEDBACK ---
+    // --- GAMEPAD HAPTIC RUMBLE FEEDBACK ---
     const speedDelta = prevSpeedKmhRef.current - speedKmh;
     if (speedDelta > 25 && prevSpeedKmhRef.current > 30) {
       // Sudden deceleration / heavy collision impact
@@ -660,56 +821,7 @@ export function useVehiclePhysics(
     }
     prevSpeedKmhRef.current = speedKmh;
 
-    // --- 5. APPLY AERODYNAMICS & SURFACE ROLLING DRAG ---
-    applyAerodynamics(body, config, forwardSpeed, _velocity, pos.y, dt);
-
-    const surfaceDef = getSurfaceDefinition(surface);
-
-    // Physical rolling resistance (loose ground deceleration: sand, tall grass, mud)
-    const rollDragImpulse = calculateRollingResistanceImpulse(
-      surfaceDef,
-      body.mass(),
-      _forward,
-      forwardSpeed,
-      groundedRatio,
-      slipAngle,
-      effectiveInput.throttle,
-      dt,
-    );
-    if (rollDragImpulse) {
-      body.applyImpulse(rollDragImpulse, true);
-    }
-
-    // --- 5.1. APPLY AWD POWER-SLIDE PROPULSION ---
-    applyAwdDriftPropulsion(
-      body,
-      config,
-      effectiveInput,
-      _forward,
-      speedKmh,
-      slipAngle,
-      groundedRatio,
-      dt,
-      currentGear,
-      _right,
-      steerAngle,
-      balance,
-      { espEnabled },
-    );
-
-    // --- 6. UPDATE TELEMETRY & ENGINE RPM ---
-    const targetRpm = calculateRPM(speedKmh, currentGear, input, {
-      currentRpm: currentRpmRef.current,
-      dt,
-      groundedRatio,
-      isAirborne,
-      slipAngle,
-      steering: input.steering,
-      looseSurfaceTractionLoss: surfaceDef.looseSurfaceTractionLoss,
-    });
-    currentRpmRef.current = targetRpm;
-
-    // --- 6.5. SYNC VISUALS ---
+    // --- SYNC VISUALS (WHEELS & SPRUNG CHASSIS DYNAMICS) ---
     syncWheelVisuals(controller, wheelRefs, config, forwardSpeed, dt, targetRpm, currentGear, effectiveInput);
     if (visualRef?.current) {
       updateChassisDynamics(
@@ -723,7 +835,7 @@ export function useVehiclePhysics(
       );
     }
 
-    // --- 7. UPDATE TELEMETRY & HUD ---
+    // --- UPDATE TELEMETRY & HUD ---
     _euler.setFromQuaternion(_quat, 'YXZ');
 
     // Batch all state updates into one call (strictly sanitizing values against NaN)
@@ -745,7 +857,7 @@ export function useVehiclePhysics(
 
     useGameStore.setState(_telemetryState);
 
-    // --- 8. CHECK MANUAL RESET (KEYBOARD 'R' OR GAMEPAD BUTTON) ---
+    // --- CHECK MANUAL RESET (KEYBOARD 'R' OR GAMEPAD BUTTON) ---
     if (input.reset) {
       const isRolledOver = isRolledOverRef.current || useGameStore.getState().isRolledOver;
 
@@ -766,6 +878,11 @@ export function useVehiclePhysics(
         settleFramesRef.current = 0;
         isRolledOverRef.current = false;
         rolloverTimerRef.current = 0;
+        prevEmittedGearRef.current = 1;
+        prevGearRef.current = 1;
+        latestForwardSpeedRef.current = 0;
+        latestLateralSpeedRef.current = 0;
+        latestSpeedKmhRef.current = 0;
         useGameStore.setState({ isRolledOver: false });
         resetChassisDynamics(visualRef?.current ?? null, chassisDynamicsStateRef.current);
 
@@ -789,6 +906,11 @@ export function useVehiclePhysics(
         isPausedRef.current = false;
         isRolledOverRef.current = false;
         rolloverTimerRef.current = 0;
+        prevEmittedGearRef.current = 1;
+        prevGearRef.current = 1;
+        latestForwardSpeedRef.current = 0;
+        latestLateralSpeedRef.current = 0;
+        latestSpeedKmhRef.current = 0;
         useGameStore.setState({ isRolledOver: false });
         resetChassisDynamics(visualRef?.current ?? null, chassisDynamicsStateRef.current);
 

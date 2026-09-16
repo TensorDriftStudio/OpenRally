@@ -444,6 +444,9 @@ export class NetworkClient {
             msg.targetNickname,
             msg.roundTimeRemaining
           );
+          if (typeof msg.roundTimeRemaining === 'number') {
+            useTagStore.setState({ roundRemaining: msg.roundTimeRemaining });
+          }
           break;
         }
 

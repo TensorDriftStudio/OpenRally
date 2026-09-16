@@ -106,19 +106,34 @@ export const useTagStore = create<TagStore>((set, get) => ({
   },
 
   tickSecond: () => {
-    const { phase, roundRemaining, isTagger, timeClean } = get();
-    if (phase === 'active') {
-      const nextRoundRemaining = Math.max(0, roundRemaining - 1);
-      const nextTimeClean = !isTagger ? timeClean + 1 : timeClean;
-      set({
-        roundRemaining: nextRoundRemaining,
-        timeClean: nextTimeClean,
-      });
-    }
+    get().tickDelta(1.0);
   },
 
   tickDelta: (dt: number) => {
-    const { freezeRemaining, immunityRemaining, isFrozen } = get();
+    const {
+      phase,
+      roundRemaining,
+      isTagger,
+      timeClean,
+      intermissionRemaining,
+      freezeRemaining,
+      immunityRemaining,
+      isFrozen,
+    } = get();
+
+    let nextRoundRemaining = roundRemaining;
+    let nextTimeClean = timeClean;
+    let nextIntermission = intermissionRemaining;
+
+    if (phase === 'active') {
+      nextRoundRemaining = Math.max(0, roundRemaining - dt);
+      if (!isTagger) {
+        nextTimeClean = timeClean + dt;
+      }
+    } else if (phase === 'intermission') {
+      nextIntermission = Math.max(0, intermissionRemaining - dt);
+    }
+
     let nextFreeze = Math.max(0, freezeRemaining - dt);
     let nextImmunity = Math.max(0, immunityRemaining - dt);
     let stillFrozen = isFrozen;
@@ -128,13 +143,14 @@ export const useTagStore = create<TagStore>((set, get) => ({
       nextFreeze = 0;
     }
 
-    if (nextFreeze !== freezeRemaining || nextImmunity !== immunityRemaining || stillFrozen !== isFrozen) {
-      set({
-        freezeRemaining: nextFreeze,
-        immunityRemaining: nextImmunity,
-        isFrozen: stillFrozen,
-      });
-    }
+    set({
+      roundRemaining: nextRoundRemaining,
+      timeClean: nextTimeClean,
+      intermissionRemaining: nextIntermission,
+      freezeRemaining: nextFreeze,
+      immunityRemaining: nextImmunity,
+      isFrozen: stillFrozen,
+    });
   },
 
   dismissResultsModal: () => {

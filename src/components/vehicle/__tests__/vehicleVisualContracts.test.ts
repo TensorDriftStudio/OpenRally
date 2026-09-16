@@ -37,7 +37,7 @@ describe('Vehicle Visual Contracts & Geometry Standards', () => {
   });
 
   it('verifies LOD distance arrays are strictly ascending', () => {
-    const wheelLODDistances = [0, 30, 80];
+    const wheelLODDistances = [0, 80, 200];
     const vehicleLODDistances = [0, 50, 150];
 
     for (let i = 0; i < wheelLODDistances.length - 1; i++) {

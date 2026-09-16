@@ -12,6 +12,7 @@ import { TerrainProvider } from '@/components/terrain/TerrainContext';
 import { Ocean } from '@/components/environment/Ocean';
 import { Checkpoints } from '@/components/environment/Checkpoints';
 import { GymkhanaController } from '@/components/environment/GymkhanaController';
+import { TagController } from '@/components/environment/TagController';
 import { Vehicle } from '@/components/vehicle/Vehicle';
 import { RemoteVehicleManager } from '@/components/vehicle/RemoteVehicleManager';
 import { Lights } from '@/components/canvas/Lights';
@@ -24,6 +25,7 @@ import { getLevelPreset } from '@/config/levelRegistry';
 import { SKY_CONFIG, FOG_CONFIG, POSTPROCESSING_CONFIG } from '@/config/environment';
 import { calculateDprConfig, isMobileDevice, isMobileOrAndroid } from '@/utils/device';
 import { suspendSharedAudioContext } from '@/utils/audio/audioContext';
+import { MAX_DELTA } from '@/config/vehicle';
 import type { DrawDistance } from '@/types';
 
 export interface MobileFramePacerProps {
@@ -179,6 +181,34 @@ export function CameraFarController({ far }: { far: number }) {
       camera.updateProjectionMatrix();
     }
   }, [camera, far]);
+
+  return null;
+}
+
+/**
+ * Guards the Rapier physics accumulator against frame delta spikes (> 50ms)
+ * during CPU stalls, shader compiles, or weak system frame drops.
+ * Caps Clock.getDelta to MAX_DELTA (0.05s) to guarantee no more than 3 physics substeps
+ * can ever be triggered in a single frame, preventing the physics "spiral of death".
+ */
+export function FramePacingGuard({ maxDelta = 0.05 }: { maxDelta?: number }) {
+  const clock = useThree((s) => s.clock);
+
+  useEffect(() => {
+    const originalGetDelta = clock.getDelta.bind(clock);
+    clock.getDelta = () => {
+      const rawDelta = originalGetDelta();
+      if (!Number.isFinite(rawDelta) || rawDelta <= 0) return 1 / 60;
+      const clamped = Math.min(rawDelta, maxDelta);
+      if (rawDelta > maxDelta) {
+        clock.elapsedTime -= (rawDelta - clamped);
+      }
+      return clamped;
+    };
+    return () => {
+      clock.getDelta = originalGetDelta;
+    };
+  }, [clock, maxDelta]);
 
   return null;
 }
@@ -380,6 +410,7 @@ export function GameCanvas() {
     >
       <MobileFramePacer targetFps={targetFps} enabled={isMobile && isGameplay} />
       <MenuCinematicPacer enabled={!isGameplay && !isGarageOpen} targetFps={isMobile ? 30 : 60} />
+      <FramePacingGuard maxDelta={MAX_DELTA} />
       <Suspense fallback={null}>
         <ShaderWarmUp />
         {dynamicResolution && <AdaptiveDpr />}
@@ -397,7 +428,7 @@ export function GameCanvas() {
         {/* Procedural Sky visible to player with realistic atmospheric scattering */}
         <Sky 
           distance={SKY_CONFIG.distance} 
-          sunPosition={sunPosition}
+          sunPosition={sunPosition} 
           inclination={inclination} 
           azimuth={azimuth} 
           turbidity={turbidity}
@@ -430,6 +461,7 @@ export function GameCanvas() {
             timeStep={1 / 60} 
             debug={debugPhysics} 
             paused={gameState === 'paused' || (!isGameplay && isSceneReady)}
+            updatePriority={-10}
           >
             <Terrain />
             <PropsInstancer />
@@ -439,6 +471,9 @@ export function GameCanvas() {
 
             {/* Gymkhana Blitz physics scoring controller */}
             <GymkhanaController />
+
+            {/* Rally Tag match and round timing controller */}
+            <TagController />
 
             {/* Player vehicle */}
             <Vehicle />

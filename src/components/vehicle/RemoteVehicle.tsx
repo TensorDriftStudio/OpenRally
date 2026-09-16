@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect, useMemo, Suspense } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useGLTF, Clone, Detailed } from '@react-three/drei';
-import { getVehiclePreset } from '@/config/vehicleRegistry';
+import { useGLTF, Clone } from '@react-three/drei';
+import { getVehiclePreset, VEHICLE_REGISTRY } from '@/config/vehicleRegistry';
 import { networkClient } from '@/network/networkClient';
 import { Wheel } from '@/components/vehicle/Wheel';
 import { VehicleModelErrorBoundary } from '@/components/vehicle/Vehicle';
@@ -31,40 +31,25 @@ function RemoteVehicleVisualModel({
   positionOffset,
   rotationOffset,
   scale,
-  chassisSize,
 }: {
   modelPath: string;
   positionOffset: [number, number, number];
   rotationOffset?: [number, number, number];
   scale: [number, number, number];
-  chassisSize: [number, number, number];
+  chassisSize?: [number, number, number];
 }) {
   const { scene } = useGLTF(modelPath);
   const isMobile = isMobileDevice();
-  const lodDistances = useMemo(() => (isMobile ? [0, 45, 120] : [0, 70, 200]), [isMobile]);
 
   return (
-    <Detailed distances={lodDistances}>
-      {/* LOD 0: GLB 3D Mesh */}
-      <Clone
-        object={scene}
-        position={positionOffset}
-        scale={scale}
-        rotation={rotationOffset ?? [0, 0, 0]}
-        castShadow={!isMobile}
-        receiveShadow={!isMobile}
-      />
-      {/* LOD 1: Simplified Proxy Box */}
-      <mesh position={[0, 0.8, 0]}>
-        <boxGeometry args={[chassisSize[0], chassisSize[1], chassisSize[2]]} />
-        <meshStandardMaterial color="#4A5568" roughness={0.6} />
-      </mesh>
-      {/* LOD 2: Minimal Box */}
-      <mesh position={[0, 0.8, 0]}>
-        <boxGeometry args={[chassisSize[0], chassisSize[1], chassisSize[2]]} />
-        <meshBasicMaterial color="#2D3748" />
-      </mesh>
-    </Detailed>
+    <Clone
+      object={scene}
+      position={positionOffset}
+      scale={scale}
+      rotation={rotationOffset ?? [0, 0, 0]}
+      castShadow={!isMobile}
+      receiveShadow={!isMobile}
+    />
   );
 }
 
@@ -320,4 +305,14 @@ export function RemoteVehicle({ player }: RemoteVehicleProps) {
       ))}
     </group>
   );
+}
+
+// Preload all vehicle models so remote peers display instantaneously with zero fallback delay
+for (const preset of Object.values(VEHICLE_REGISTRY)) {
+  if (preset.modelPath) {
+    useGLTF.preload(preset.modelPath);
+  }
+  if (preset.optimizedModelPath) {
+    useGLTF.preload(preset.optimizedModelPath);
+  }
 }

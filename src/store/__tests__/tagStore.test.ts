@@ -137,4 +137,49 @@ describe('tagStore', () => {
     useTagStore.getState().dismissResultsModal();
     expect(useTagStore.getState().showResultsModal).toBe(false);
   });
+
+  it('accurately counts down roundRemaining and accumulates cleanTime during active match', () => {
+    // Player is runner (not tagger)
+    useTagStore.getState().startMatch(180, 'player_remote1', 0);
+    expect(useTagStore.getState().roundRemaining).toBe(180);
+    expect(useTagStore.getState().timeClean).toBe(0);
+    expect(useTagStore.getState().isTagger).toBe(false);
+
+    // Tick 1.5s
+    useTagStore.getState().tickDelta(1.5);
+    expect(useTagStore.getState().roundRemaining).toBeCloseTo(178.5);
+    expect(useTagStore.getState().timeClean).toBeCloseTo(1.5);
+
+    // Tick another 0.5s via tickSecond
+    useTagStore.getState().tickSecond();
+    expect(useTagStore.getState().roundRemaining).toBeCloseTo(177.5);
+    expect(useTagStore.getState().timeClean).toBeCloseTo(2.5);
+  });
+
+  it('does not accumulate cleanTime when player is the tagger', () => {
+    // Player is the tagger
+    useTagStore.getState().startMatch(180, 'player_self', 0);
+    expect(useTagStore.getState().isTagger).toBe(true);
+    expect(useTagStore.getState().timeClean).toBe(0);
+
+    useTagStore.getState().tickDelta(3.0);
+    expect(useTagStore.getState().roundRemaining).toBeCloseTo(177);
+    expect(useTagStore.getState().timeClean).toBe(0);
+  });
+
+  it('decrements intermissionRemaining during intermission phase', () => {
+    useTagStore.getState().endMatch(20, []);
+    expect(useTagStore.getState().phase).toBe('intermission');
+    expect(useTagStore.getState().intermissionRemaining).toBe(20);
+
+    useTagStore.getState().tickDelta(2.5);
+    expect(useTagStore.getState().intermissionRemaining).toBeCloseTo(17.5);
+  });
+
+  it('clamps roundRemaining to 0 when time expires', () => {
+    useTagStore.getState().startMatch(1, 'player_remote1', 0);
+    useTagStore.getState().tickDelta(2.0);
+    expect(useTagStore.getState().roundRemaining).toBe(0);
+  });
 });
+
