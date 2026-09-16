@@ -730,7 +730,7 @@ export function MenuOverlay() {
               letterSpacing: '0.5px',
               whiteSpace: 'nowrap',
             }}>
-              <span>Game by <strong style={{ color: '#FFFFFF' }}>TensorDriftStudio (Dawid Warzocha)</strong></span>
+              <span>Game by <strong style={{ color: '#FFFFFF' }}>TensorDrift Studio</strong></span>
               <span>•</span>
               <span style={{ color: '#E31837', fontWeight: 700 }}>OpenRally v1.0.0</span>
             </span>

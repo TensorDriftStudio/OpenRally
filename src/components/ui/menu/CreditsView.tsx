@@ -64,10 +64,7 @@ export function CreditsView({
             color: '#F8FAFC',
           }}
         >
-          TensorDriftStudio{' '}
-          <span style={{ fontWeight: 600, fontSize: '18px', opacity: 0.85, color: '#CBD5E1' }}>
-            (Dawid Warzocha)
-          </span>
+          TensorDrift Studio
         </h3>
       </div>
 

@@ -3,7 +3,7 @@
 
   <h1>OpenRally</h1>
 
-  <p><strong>Next-generation open-source 3D arcade-sim rally experience running directly in modern web browsers and natively on Android at 60+ FPS.</strong></p>
+  <p><strong>Next-generation open-source 3D arcade-sim rally experience developed by TensorDrift Studio, running directly in modern web browsers and natively on Android at 60+ FPS.</strong></p>
 
   <p>
     <a href="https://github.com/TensorDriftStudio/OpenRally/releases"><img src="https://img.shields.io/badge/Release-v1.0.0-blue?logo=github&logoColor=white" alt="Release v1.0.0" /></a>
@@ -12,7 +12,7 @@
     <a href="https://threejs.org/"><img src="https://img.shields.io/badge/Three.js-R3F-black?logo=three.js" alt="Three.js & R3F" /></a>
     <a href="https://rapier.rs/"><img src="https://img.shields.io/badge/Physics-Rapier3D_WASM-E95420" alt="Rapier3D WASM" /></a>
     <a href="https://capacitorjs.com/"><img src="https://img.shields.io/badge/Platform-Web_%7C_Android_APK-3880FF?logo=android&logoColor=white" alt="Web & Android" /></a>
-    <a href="https://vitest.dev/"><img src="https://img.shields.io/badge/Tests-1279_Passing-22c55e?logo=vitest&logoColor=white" alt="Vitest Tests" /></a>
+    <a href="https://vitest.dev/"><img src="https://img.shields.io/badge/Tests-1482_Passing-22c55e?logo=vitest&logoColor=white" alt="Vitest Tests" /></a>
     <a href="https://oxc.rs/"><img src="https://img.shields.io/badge/Linter-Oxlint_Clean-10b981" alt="Oxlint" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License" /></a>
   </p>
@@ -335,7 +335,7 @@ npx vitest run tests/e2e/apk_validator.test.ts
   - [x] Virtual touch controls HUD with analog steering, pedal buttons, and haptic feedback
   - [x] Mobile GPU optimization, hardware `PCFShadowMap` shadows & crash-loop protection
   - [x] 100% trademark-safe original assets & textures
-  - [x] Comprehensive automated test suite exceeding **1,279 passing unit/integration tests across 102 files**
+  - [x] Comprehensive automated test suite exceeding **1,482 passing unit/integration tests across 118 files**
 - [ ] **Stage 4 — Future Visions:**
   - [ ] Dedicated persistent multiplayer server infrastructure with global leaderboards
   - [ ] Procedural track editor & terrain sculptor
@@ -351,5 +351,5 @@ This project is open-source and licensed under the **[MIT License](LICENSE)**.
 ---
 
 <div align="center">
-  <sub>Developed with ❤️ by AI for motorsport and open-source gaming enthusiasts.</sub>
+  <sub>Developed with ❤️ by <strong>TensorDrift Studio</strong> for motorsport and open-source gaming enthusiasts.</sub>
 </div>
