@@ -4,8 +4,6 @@ import {
   Color,
   MeshStandardMaterial,
   type Texture,
-  Sphere,
-  Vector3,
 } from 'three';
 import {
   createFenceGeometry,
@@ -121,19 +119,14 @@ export function TracksidePropsInstancer({
   // VRAM Upload per batch
   useLayoutEffect(() => {
     const uploadBatch = (mesh: InstancedMesh | null, items: PropItem[]) => {
-      if (!mesh) return;
+      if (!mesh || items.length === 0) return;
       for (let i = 0; i < items.length; i++) {
         mesh.setMatrixAt(i, items[i].matrix);
       }
       mesh.instanceMatrix.needsUpdate = true;
       mesh.count = items.length;
-      if (items.length > 0) {
-        mesh.visible = true;
-        mesh.computeBoundingSphere();
-      } else {
-        mesh.visible = false;
-        mesh.boundingSphere = new Sphere(new Vector3(0, 0, 0), -1);
-      }
+      mesh.visible = true;
+      mesh.computeBoundingSphere();
     };
 
     uploadBatch(fenceRef.current, fences);
@@ -169,40 +162,48 @@ export function TracksidePropsInstancer({
   return (
     <>
       {/* 1. Village Wooden Fences */}
-      <instancedMesh
-        ref={fenceRef}
-        args={[fenceGeo, fenceMaterial, Math.max(1, fences.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {fences.length > 0 && (
+        <instancedMesh
+          ref={fenceRef}
+          args={[fenceGeo, fenceMaterial, fences.length]}
+          castShadow={canShadow}
+          receiveShadow={canShadow}
+          frustumCulled
+        />
+      )}
 
       {/* 2. British Dry-Stone Dyke Walls */}
-      <instancedMesh
-        ref={stoneWallRef}
-        args={[stoneWallGeo, stoneWallMaterial, Math.max(1, stoneWalls.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {stoneWalls.length > 0 && (
+        <instancedMesh
+          ref={stoneWallRef}
+          args={[stoneWallGeo, stoneWallMaterial, stoneWalls.length]}
+          castShadow={canShadow}
+          receiveShadow={canShadow}
+          frustumCulled
+        />
+      )}
 
       {/* 3. Agricultural Straw Hay Bales */}
-      <instancedMesh
-        ref={hayBaleRef}
-        args={[hayBaleGeo, hayBaleMaterial, Math.max(1, hayBales.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {hayBales.length > 0 && (
+        <instancedMesh
+          ref={hayBaleRef}
+          args={[hayBaleGeo, hayBaleMaterial, hayBales.length]}
+          castShadow={canShadow}
+          receiveShadow={canShadow}
+          frustumCulled
+        />
+      )}
 
       {/* 4. Roadside Rally Warning Signs */}
-      <instancedMesh
-        ref={rallySignRef}
-        args={[rallySignGeo, rallySignMaterial, Math.max(1, rallySigns.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {rallySigns.length > 0 && (
+        <instancedMesh
+          ref={rallySignRef}
+          args={[rallySignGeo, rallySignMaterial, rallySigns.length]}
+          castShadow={canShadow}
+          receiveShadow={canShadow}
+          frustumCulled
+        />
+      )}
     </>
   );
 }

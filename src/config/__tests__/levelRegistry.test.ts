@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import type { LevelPreset } from '@/types/level';
 import {
   LEVEL_REGISTRY,
   DEFAULT_LEVEL_ID,
   getLevelPreset,
   getAvailableLevels,
+  getRecommendedTireForLevel,
 } from '@/config/levelRegistry';
+import { AVAILABLE_TIRE_TYPES } from '@/config/tireRegistry';
 import { validateLevelPreset } from '@/utils/validation/levelValidator';
 import { compileTerrain, getInterpolatedHeight } from '@/utils/terrainCompiler';
 
@@ -65,5 +68,46 @@ describe('Level Registry', () => {
       console.log(`[Spawn Test] Level ${level.id}: groundY = ${groundY.toFixed(2)}, spawnY = ${level.spawnPosition[1]}`);
       expect(level.spawnPosition[1]).toBeGreaterThanOrEqual(groundY + 0.5);
     }
+  });
+
+  it('ensures desert map and other stages feature active water environment', () => {
+    const desert = getLevelPreset('level2_desert');
+    expect(desert.environment?.hasWater).toBe(true);
+  });
+
+  it('correctly maps recommended tire compound for all registered levels', () => {
+    expect(getRecommendedTireForLevel('level1_island')).toBe('gravel');
+    expect(getRecommendedTireForLevel('level2_desert')).toBe('gravel');
+    expect(getRecommendedTireForLevel('level3_sweden')).toBe('snow');
+    expect(getRecommendedTireForLevel('level4_britain')).toBe('gravel');
+    expect(getRecommendedTireForLevel('level5_gymkhana')).toBe('asphalt');
+
+    // Every level must have a valid recommended tire from AVAILABLE_TIRE_TYPES
+    for (const lvl of getAvailableLevels()) {
+      const rec = getRecommendedTireForLevel(lvl);
+      expect(AVAILABLE_TIRE_TYPES).toContain(rec);
+    }
+  });
+
+  it('falls back to heuristics based on surface description when recommendedTire is omitted', () => {
+    const base = getLevelPreset('level1_island');
+    const snowLevel: LevelPreset = {
+      ...base,
+      recommendedTire: undefined,
+      surfaceDescription: 'Deep Snow & Frozen Ice',
+    };
+    const tarmacLevel: LevelPreset = {
+      ...base,
+      recommendedTire: undefined,
+      surfaceDescription: 'Pure Asphalt Tarmac',
+    };
+    const mudLevel: LevelPreset = {
+      ...base,
+      recommendedTire: undefined,
+      surfaceDescription: 'Muddy Forest Track',
+    };
+    expect(getRecommendedTireForLevel(snowLevel)).toBe('snow');
+    expect(getRecommendedTireForLevel(tarmacLevel)).toBe('asphalt');
+    expect(getRecommendedTireForLevel(mudLevel)).toBe('gravel');
   });
 });

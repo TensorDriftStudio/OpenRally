@@ -5,6 +5,15 @@ export const STEER_SPEED = 5;
 /** Deadzone threshold — steering values below this snap to 0 */
 export const STEER_DEADZONE = 0.001;
 
+/** Minimum steering sensitivity multiplier selectable by user (extended down to 0.1x for ultra-gentle control) */
+export const MIN_STEERING_SENSITIVITY = 0.1;
+
+/** Maximum steering sensitivity multiplier selectable by user (extended up to 2.5x for aggressive twitch response) */
+export const MAX_STEERING_SENSITIVITY = 2.5;
+
+/** Step increment for fine-grained steering sensitivity adjustment (0.05 increments) */
+export const STEERING_SENSITIVITY_STEP = 0.05;
+
 // ─── Gamepad / Xbox Controller ─────────────────────────────────────────
 /** Left stick deadzone threshold for Xbox controller (0.0 to 1.0) */
 export const GAMEPAD_STICK_DEADZONE = 0.08;

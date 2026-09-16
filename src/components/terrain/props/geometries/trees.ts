@@ -175,44 +175,100 @@ export function createPineFoliageGeometry(): BufferGeometry {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Creates an organic European Birch / Broadleaf trunk with natural tapering.
+ * Creates an organic European Birch / Silver Birch (Betula pendula) trunk geometry.
+ * Features a slender, gracefully curving central stem tapering from root flare to apex (Y = 4.4m),
+ * with 6 primary structural boughs arching outward and upward, plus secondary twig branchlets,
+ * creating an authentic botanical silhouette without blunt cuts or disconnected cylinders.
  */
 export function createBirchTrunkGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  const mainTrunk = new CylinderGeometry(0.12, 0.30, 3.0, 10, 6);
-  mainTrunk.translate(0, 0.9, 0);
+  // 1. Central tapered trunk from underground (Y = -0.7m) to crown apex (Y = 4.4m)
+  const trunk = new CylinderGeometry(0.035, 0.32, 5.1, 10, 12);
+  trunk.translate(0, 1.85, 0);
 
-  const pos = mainTrunk.attributes.position;
+  const pos = trunk.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const y = pos.getY(i);
     const x = pos.getX(i);
     const z = pos.getZ(i);
-    const flare = y < 0.2 ? Math.max(0, (0.2 - y) * 0.35) : 0;
-    const lean = Math.sin(y * 0.9) * 0.06;
-    pos.setXYZ(i, x * (1 + flare) + lean, y, z * (1 + flare));
+    // Root flare near base
+    const flare = y < 0.25 ? Math.max(0, (0.25 - y) * 0.45) : 0;
+    // Gentle natural S-curve / lean of silver birch
+    const swayX = Math.sin(y * 0.75) * 0.08 + Math.cos(y * 1.5) * 0.02;
+    const swayZ = Math.cos(y * 0.65) * 0.06;
+    pos.setXYZ(i, x * (1 + flare) + swayX, y, z * (1 + flare) + swayZ);
   }
-  mainTrunk.computeVertexNormals();
+  trunk.computeVertexNormals();
 
-  const uvs = mainTrunk.attributes.uv;
+  const uvs = trunk.attributes.uv;
   for (let i = 0; i < uvs.count; i++) {
     uvs.setY(i, uvs.getY(i) * 3.5);
   }
-  parts.push(mainTrunk);
+  parts.push(trunk);
 
-  const branchConfigs = [
-    { radiusTop: 0.04, radiusBottom: 0.09, length: 1.4, rotZ: 0.28, rotX: 0.12, posX: 0.22, posY: 2.5, posZ: 0.10 },
-    { radiusTop: 0.03, radiusBottom: 0.08, length: 1.3, rotZ: -0.30, rotX: -0.15, posX: -0.20, posY: 2.45, posZ: -0.12 },
-    { radiusTop: 0.03, radiusBottom: 0.08, length: 1.2, rotZ: -0.08, rotX: 0.30, posX: 0.04, posY: 2.55, posZ: 0.22 },
+  // 2. Primary arching structural boughs (smoothly anchored into the central trunk)
+  const up = new Vector3(0, 1, 0);
+
+  const boughConfigs = [
+    { start: new Vector3(0.04, 1.95, 0.03), end: new Vector3(0.85, 3.25, 0.45), rBottom: 0.08, rTop: 0.025, wobble: 0.025 },
+    { start: new Vector3(-0.04, 2.15, -0.03), end: new Vector3(-0.90, 3.35, -0.40), rBottom: 0.075, rTop: 0.022, wobble: 0.025 },
+    { start: new Vector3(0.02, 2.50, 0.05), end: new Vector3(0.40, 3.80, 0.80), rBottom: 0.065, rTop: 0.020, wobble: 0.020 },
+    { start: new Vector3(-0.03, 2.65, -0.04), end: new Vector3(-0.48, 3.85, -0.70), rBottom: 0.065, rTop: 0.020, wobble: 0.020 },
+    { start: new Vector3(0.04, 3.05, -0.02), end: new Vector3(0.65, 4.15, -0.45), rBottom: 0.050, rTop: 0.018, wobble: 0.018 },
+    { start: new Vector3(-0.03, 3.20, 0.03), end: new Vector3(-0.55, 4.25, 0.50), rBottom: 0.050, rTop: 0.018, wobble: 0.018 },
   ];
 
-  for (const cfg of branchConfigs) {
-    const branch = new CylinderGeometry(cfg.radiusTop, cfg.radiusBottom, cfg.length, 6, 3);
-    branch.rotateZ(cfg.rotZ);
-    branch.rotateX(cfg.rotX);
-    branch.translate(cfg.posX, cfg.posY, cfg.posZ);
-    branch.computeVertexNormals();
-    parts.push(branch);
+  for (const b of boughConfigs) {
+    const dir = new Vector3().subVectors(b.end, b.start);
+    const len = dir.length();
+    const branchGeo = new CylinderGeometry(b.rTop, b.rBottom, len, 8, 4);
+    branchGeo.translate(0, len / 2, 0);
+
+    const quat = new Quaternion().setFromUnitVectors(up, dir.clone().normalize());
+    branchGeo.applyQuaternion(quat);
+    branchGeo.translate(b.start.x, b.start.y, b.start.z);
+
+    const bPos = branchGeo.attributes.position;
+    for (let i = 0; i < bPos.count; i++) {
+      const y = bPos.getY(i);
+      const wobble = Math.sin(y * 2.8) * b.wobble;
+      bPos.setX(i, bPos.getX(i) + wobble);
+      bPos.setZ(i, bPos.getZ(i) + wobble * 0.7);
+    }
+    branchGeo.computeVertexNormals();
+
+    const bUvs = branchGeo.attributes.uv;
+    for (let i = 0; i < bUvs.count; i++) {
+      bUvs.setY(i, bUvs.getY(i) * 2.0);
+    }
+    parts.push(branchGeo);
+  }
+
+  // 3. Secondary twig branchlets extending outward into the canopy
+  const twigConfigs = [
+    { start: new Vector3(0.45, 2.65, 0.25), end: new Vector3(1.10, 3.45, 0.65), rBottom: 0.035, rTop: 0.012 },
+    { start: new Vector3(-0.50, 2.75, -0.22), end: new Vector3(-1.15, 3.55, -0.55), rBottom: 0.035, rTop: 0.012 },
+    { start: new Vector3(0.22, 3.20, 0.45), end: new Vector3(0.60, 3.95, 1.05), rBottom: 0.030, rTop: 0.010 },
+    { start: new Vector3(-0.25, 3.30, -0.40), end: new Vector3(-0.75, 4.05, -0.90), rBottom: 0.030, rTop: 0.010 },
+  ];
+
+  for (const t of twigConfigs) {
+    const dir = new Vector3().subVectors(t.end, t.start);
+    const len = dir.length();
+    const twigGeo = new CylinderGeometry(t.rTop, t.rBottom, len, 6, 2);
+    twigGeo.translate(0, len / 2, 0);
+
+    const quat = new Quaternion().setFromUnitVectors(up, dir.clone().normalize());
+    twigGeo.applyQuaternion(quat);
+    twigGeo.translate(t.start.x, t.start.y, t.start.z);
+    twigGeo.computeVertexNormals();
+
+    const tUvs = twigGeo.attributes.uv;
+    for (let i = 0; i < tUvs.count; i++) {
+      tUvs.setY(i, tUvs.getY(i) * 1.5);
+    }
+    parts.push(twigGeo);
   }
 
   const merged = BufferGeometryUtils.mergeGeometries(parts);
@@ -226,18 +282,18 @@ export function createBirchFoliageGeometry(): BufferGeometry {
   const cards: BufferGeometry[] = [];
 
   const clusterPositions = [
-    { x: 0.6, y: 2.1, z: 0.3, size: 2.2 },
-    { x: -0.6, y: 2.0, z: -0.3, size: 2.2 },
-    { x: 0.1, y: 2.2, z: 0.6, size: 2.0 },
-    { x: -0.2, y: 2.1, z: -0.6, size: 2.0 },
-    { x: 0.0, y: 3.0, z: 0.0, size: 2.8 },
-    { x: 0.8, y: 3.1, z: 0.4, size: 2.4 },
-    { x: -0.7, y: 2.9, z: -0.4, size: 2.4 },
-    { x: 0.3, y: 3.2, z: -0.7, size: 2.2 },
-    { x: -0.3, y: 3.0, z: 0.7, size: 2.2 },
-    { x: 0.0, y: 4.1, z: 0.0, size: 2.2 },
-    { x: 0.4, y: 3.8, z: -0.3, size: 1.9 },
-    { x: -0.4, y: 3.9, z: 0.3, size: 1.9 },
+    { x: 0.70, y: 2.30, z: 0.35, size: 2.3 },
+    { x: -0.70, y: 2.20, z: -0.35, size: 2.3 },
+    { x: 0.15, y: 2.40, z: 0.70, size: 2.1 },
+    { x: -0.20, y: 2.30, z: -0.70, size: 2.1 },
+    { x: 0.00, y: 3.10, z: 0.00, size: 2.9 },
+    { x: 0.90, y: 3.30, z: 0.45, size: 2.5 },
+    { x: -0.80, y: 3.10, z: -0.45, size: 2.5 },
+    { x: 0.35, y: 3.40, z: -0.75, size: 2.3 },
+    { x: -0.35, y: 3.20, z: 0.75, size: 2.3 },
+    { x: 0.00, y: 4.30, z: 0.00, size: 2.4 },
+    { x: 0.45, y: 4.00, z: -0.35, size: 2.0 },
+    { x: -0.45, y: 4.10, z: 0.35, size: 2.0 },
   ];
 
   for (const cl of clusterPositions) {

@@ -67,6 +67,11 @@ To make adding new content frictionless and modular for AI agents, the codebase 
    - Centralizes physical tire grip curves, particle colors/scaling/lifetimes, and audio loop characteristics for every terrain surface (`tarmac`, `mud`, `grass`, `sand`, `snow`, `gravel`).
    - Access via `getSurfaceDefinition(surface)` or `getAllSurfaces()`.
 
+4. **`GameModeRegistry` (`src/config/gameModeRegistry.ts`)**:
+   - Single source of truth for all playable modes (`timeattack`, `gymkhana_blitz`, `freeroam`, `tag`).
+   - Pairs titles, UI badge styling, multiplayer support flags, and track spline requirements.
+   - Eliminates nested UI ternaries via `getGameModeDefinition(mode)` and `getAvailableGameModes()`.
+
 ---
 
 ## 4. Runtime & Test-Time Validators & Diagnostics (`src/utils/validation/` & `src/utils/diagnostics/`)

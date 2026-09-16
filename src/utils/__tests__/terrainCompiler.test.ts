@@ -111,4 +111,35 @@ describe('terrainCompiler', () => {
     expect(cornerBottomLeft).toBeCloseTo(-65.0, 1);
     expect(cornerBottomRight).toBeCloseTo(-65.0, 1);
   });
+
+  it('smooths track roadbed and reduces cross-track roughness when roadGrading is enabled', () => {
+    const withoutGrading = compileTerrain(mockLevel);
+    const withGrading = compileTerrain({
+      ...mockLevel,
+      track: {
+        ...mockLevel.track,
+        roadGrading: 0.85,
+      },
+    });
+
+    // Heightmap dimensions and masks should be identical
+    expect(withGrading.cols).toBe(withoutGrading.cols);
+    expect(withGrading.rows).toBe(withoutGrading.rows);
+    expect(withGrading.trackMasks).toEqual(withoutGrading.trackMasks);
+
+    // Far corner off the track should be completely unchanged
+    expect(withGrading.heights[0]).toBeCloseTo(withoutGrading.heights[0], 5);
+
+    // At least one point within the track corridor should be refined by road grading
+    let trackPointsModified = 0;
+    for (let i = 0; i < withGrading.trackMasks.length; i++) {
+      if (withGrading.trackMasks[i] > 0.5) {
+        if (Math.abs(withGrading.heights[i] - withoutGrading.heights[i]) > 0.001) {
+          trackPointsModified++;
+        }
+      }
+    }
+    expect(trackPointsModified).toBeGreaterThan(0);
+  });
 });
+

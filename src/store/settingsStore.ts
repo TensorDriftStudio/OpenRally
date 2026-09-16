@@ -12,6 +12,7 @@ import type {
 } from '@/types';
 import { DEFAULT_SETTINGS, BALANCED_MOBILE_SETTINGS } from '@/types/settings';
 import { isAndroid, isMobileDevice } from '@/utils/device';
+import { MIN_STEERING_SENSITIVITY, MAX_STEERING_SENSITIVITY } from '@/config/input';
 
 /**
  * Checks if running on Android or any mobile / touch-first device.
@@ -96,6 +97,9 @@ export function loadSettingsFromStorage(isAndroidDevice: boolean = isMobileOrAnd
     if (typeof parsed.resolutionScale === 'number' && Number.isFinite(parsed.resolutionScale)) {
       validated.resolutionScale = parsed.resolutionScale;
     }
+    if (typeof parsed.dynamicResolution === 'boolean') {
+      validated.dynamicResolution = parsed.dynamicResolution;
+    }
     if (typeof parsed.shadowsEnabled === 'boolean') {
       validated.shadowsEnabled = isAndroidDevice ? false : parsed.shadowsEnabled;
     }
@@ -106,7 +110,7 @@ export function loadSettingsFromStorage(isAndroidDevice: boolean = isMobileOrAnd
       validated.transmissionMode = parsed.transmissionMode as TransmissionMode;
     }
     if (typeof parsed.sensitivity === 'number' && Number.isFinite(parsed.sensitivity)) {
-      validated.sensitivity = parsed.sensitivity;
+      validated.sensitivity = Math.max(MIN_STEERING_SENSITIVITY, Math.min(MAX_STEERING_SENSITIVITY, parsed.sensitivity));
     }
     if (typeof parsed.debugPhysics === 'boolean') {
       validated.debugPhysics = parsed.debugPhysics;
@@ -125,6 +129,15 @@ export function loadSettingsFromStorage(isAndroidDevice: boolean = isMobileOrAnd
     }
     if (typeof parsed.vibrationIntensity === 'number' && Number.isFinite(parsed.vibrationIntensity)) {
       validated.vibrationIntensity = parsed.vibrationIntensity;
+    }
+    if (typeof parsed.absEnabled === 'boolean') {
+      validated.absEnabled = parsed.absEnabled;
+    }
+    if (typeof parsed.tcsEnabled === 'boolean') {
+      validated.tcsEnabled = parsed.tcsEnabled;
+    }
+    if (typeof parsed.espEnabled === 'boolean') {
+      validated.espEnabled = parsed.espEnabled;
     }
 
     // Migration of legacy stale desktop defaults on Android / mobile:
@@ -180,6 +193,8 @@ export interface SettingsStore extends GameSettings {
   setDrawDistance: (drawDistance: DrawDistance) => void;
   setAntiAliasing: (antiAliasing: AntiAliasingMode) => void;
   setResolutionScale: (scale: number) => void;
+  toggleDynamicResolution: () => void;
+  setDynamicResolution: (enabled: boolean) => void;
   toggleShadows: () => void;
   togglePostProcessing: () => void;
   setSensitivity: (sensitivity: number) => void;
@@ -190,6 +205,12 @@ export interface SettingsStore extends GameSettings {
   setGameMusicVolume: (vol: number) => void;
   toggleVibration: () => void;
   setVibrationIntensity: (intensity: number) => void;
+  toggleAbs: () => void;
+  setAbsEnabled: (enabled: boolean) => void;
+  toggleTcs: () => void;
+  setTcsEnabled: (enabled: boolean) => void;
+  toggleEsp: () => void;
+  setEspEnabled: (enabled: boolean) => void;
 
   // Touch Actions
   setTouchControlMode: (mode: TouchControlMode) => void;
@@ -229,13 +250,13 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
         updates.shadowsEnabled = isMobile ? false : true;
         updates.postProcessingEnabled = isMobile ? false : true;
         updates.antiAliasing = isMobile ? 'off' : 'smaa';
-        updates.drawDistance = 'far';
+        updates.drawDistance = isMobile ? 'medium' : 'far';
       } else {
         // 'very_high' preset enables rich visual fidelity
         updates.shadowsEnabled = isMobile ? false : true;
         updates.postProcessingEnabled = isMobile ? false : true;
         updates.antiAliasing = isMobile ? 'off' : 'smaa';
-        updates.drawDistance = 'ultra';
+        updates.drawDistance = isMobile ? 'far' : 'ultra';
       }
       appliedUpdates = updates;
       return updates;
@@ -258,6 +279,16 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     set({ resolutionScale, graphicsConfiguredByUser: true });
     saveSettingsToStorage({ resolutionScale, graphicsConfiguredByUser: true });
   },
+  toggleDynamicResolution: () =>
+    set((s) => {
+      const next = !s.dynamicResolution;
+      saveSettingsToStorage({ dynamicResolution: next, graphicsConfiguredByUser: true });
+      return { dynamicResolution: next, graphicsConfiguredByUser: true };
+    }),
+  setDynamicResolution: (dynamicResolution) => {
+    set({ dynamicResolution, graphicsConfiguredByUser: true });
+    saveSettingsToStorage({ dynamicResolution, graphicsConfiguredByUser: true });
+  },
   toggleShadows: () =>
     set((s) => {
       if (isMobileOrAndroid()) {
@@ -274,8 +305,12 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       return { postProcessingEnabled: next, graphicsConfiguredByUser: true };
     }),
   setSensitivity: (sensitivity) => {
-    set({ sensitivity });
-    saveSettingsToStorage({ sensitivity });
+    const clamped = Math.max(
+      MIN_STEERING_SENSITIVITY,
+      Math.min(MAX_STEERING_SENSITIVITY, Math.round(sensitivity * 100) / 100),
+    );
+    set({ sensitivity: clamped });
+    saveSettingsToStorage({ sensitivity: clamped });
   },
   toggleDebugPhysics: () =>
     set((s) => {
@@ -308,6 +343,39 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   setTransmissionMode: (transmissionMode) => {
     set({ transmissionMode });
     saveSettingsToStorage({ transmissionMode });
+  },
+  toggleAbs: () =>
+    set((s) => {
+      const next = !s.absEnabled;
+      saveSettingsToStorage({ absEnabled: next });
+      return { absEnabled: next };
+    }),
+  setAbsEnabled: (absEnabled) => {
+    const next = Boolean(absEnabled);
+    set({ absEnabled: next });
+    saveSettingsToStorage({ absEnabled: next });
+  },
+  toggleTcs: () =>
+    set((s) => {
+      const next = !s.tcsEnabled;
+      saveSettingsToStorage({ tcsEnabled: next });
+      return { tcsEnabled: next };
+    }),
+  setTcsEnabled: (tcsEnabled) => {
+    const next = Boolean(tcsEnabled);
+    set({ tcsEnabled: next });
+    saveSettingsToStorage({ tcsEnabled: next });
+  },
+  toggleEsp: () =>
+    set((s) => {
+      const next = !s.espEnabled;
+      saveSettingsToStorage({ espEnabled: next });
+      return { espEnabled: next };
+    }),
+  setEspEnabled: (espEnabled) => {
+    const next = Boolean(espEnabled);
+    set({ espEnabled: next });
+    saveSettingsToStorage({ espEnabled: next });
   },
 
   // Touch Actions

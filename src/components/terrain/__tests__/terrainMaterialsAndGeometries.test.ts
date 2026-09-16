@@ -5,6 +5,8 @@ import {
   buildTerrainChunkGeometries,
   TERRAIN_CHUNKS_TOTAL,
 } from '@/components/terrain/Terrain';
+import { compileTerrain } from '@/utils/terrainCompiler';
+import { getAvailableLevels } from '@/config/levelRegistry';
 import { createGrassTuftGeometry } from '@/components/terrain/GrassField';
 import {
   createTrunkGeometry,
@@ -466,6 +468,31 @@ describe('Terrain Materials and Procedural Geometries', () => {
 
       // Clean up test geometries
       chunks.forEach((c) => c.dispose());
+    });
+
+    it('ensures HeightfieldCollider grid dimensions perfectly match compiled heightmap rows and cols with zero stride offset', () => {
+      const levels = getAvailableLevels();
+
+      for (const level of levels) {
+        const heightmapData = compileTerrain(level.data);
+        const { rows, cols, heights } = heightmapData;
+
+        // Heights array must match rows * cols
+        expect(heights.length).toBe(rows * cols);
+
+        // Transposed height array for Rapier HeightfieldCollider
+        const transposed = new Float32Array(heights.length);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            transposed[c * rows + r] = heights[r * cols + c];
+          }
+        }
+
+        expect(transposed.length).toBe(rows * cols);
+        // Ensure that rows and cols (vertices) are subdivisions + 1, not subdivisions
+        expect(rows).toBe(level.data.terrainBase.subdivisions + 1);
+        expect(cols).toBe(level.data.terrainBase.subdivisions + 1);
+      }
     });
   });
 });

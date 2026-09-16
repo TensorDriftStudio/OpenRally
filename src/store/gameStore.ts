@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import type { CameraMode, GameMode, GameState, GamepadType } from '@/types/game';
-import type { SurfaceType } from '@/types/vehicle';
+import type { SurfaceType, TireType } from '@/types/vehicle';
 import { DEFAULT_VEHICLE_ID } from '@/config/vehicleRegistry';
-import { DEFAULT_LEVEL_ID, getLevelPreset } from '@/config/levelRegistry';
+import { DEFAULT_LEVEL_ID, getLevelPreset, getRecommendedTireForLevel } from '@/config/levelRegistry';
 import { resetGamepadEdgeState } from '@/utils/input/gamepad';
 
 /**
@@ -18,6 +18,8 @@ interface GameStore {
   cameraMode: CameraMode;
   /** ID of the selected vehicle preset */
   selectedVehicleId: string;
+  /** Active tire compound type (asphalt, gravel, or snow) */
+  selectedTireType: TireType;
   /** ID of the active level preset */
   selectedLevelId: string;
   /** Vehicle speed in km/h */
@@ -56,16 +58,26 @@ interface GameStore {
   isGarageOpen: boolean;
   /** Whether the vehicle is airborne (all wheels off ground) */
   isAirborne: boolean;
+  /** Whether the vehicle is currently rolled over on its roof/side */
+  isRolledOver: boolean;
+  /** Whether ABS is actively modulating brake force */
+  absActive: boolean;
+  /** Whether TCS is actively modulating throttle torque */
+  tcsActive: boolean;
+  /** Whether ESP is actively damping yaw velocity */
+  espActive: boolean;
 
   // Actions
   setGameState: (state: GameState) => void;
   setLoadingTarget: (target: 'menu' | 'gameplay') => void;
   setGameMode: (mode: GameMode) => void;
   setSelectedVehicleId: (id: string) => void;
+  setSelectedTireType: (tireType: TireType) => void;
   setSelectedLevelId: (id: string) => void;
   setSceneReady: (ready: boolean) => void;
   setGarageOpen: (open: boolean) => void;
   setIsAirborne: (isAirborne: boolean) => void;
+  setIsRolledOver: (isRolledOver: boolean) => void;
   setSpeed: (speed: number) => void;
   setLateralSpeed: (lateralSpeed: number) => void;
   setSlipAngle: (slipAngle: number) => void;
@@ -80,6 +92,7 @@ interface GameStore {
   setTireGrips: (val: number[]) => void;
   setSurface: (val: SurfaceType) => void;
   setGamepadConnected: (connected: boolean, name?: string, type?: GamepadType) => void;
+  setDrivingAssistsActive: (assists: { abs?: boolean; tcs?: boolean; esp?: boolean }) => void;
 }
 
 const CAMERA_MODES: CameraMode[] = ['chase_close', 'chase', 'bumper', 'free'];
@@ -89,6 +102,7 @@ export const useGameStore = create<GameStore>((set) => ({
   gameMode: 'timeattack',
   cameraMode: 'chase_close',
   selectedVehicleId: DEFAULT_VEHICLE_ID,
+  selectedTireType: getRecommendedTireForLevel(DEFAULT_LEVEL_ID),
   selectedLevelId: DEFAULT_LEVEL_ID,
   speed: 0,
   lateralSpeed: 0,
@@ -108,6 +122,10 @@ export const useGameStore = create<GameStore>((set) => ({
   isSceneReady: false,
   isGarageOpen: false,
   isAirborne: false,
+  isRolledOver: false,
+  absActive: false,
+  tcsActive: false,
+  espActive: false,
 
   setGameState: (gameState) => {
     resetGamepadEdgeState();
@@ -135,16 +153,36 @@ export const useGameStore = create<GameStore>((set) => ({
         gear: isEnteringMenu ? 1 : state.gear,
         heading: isEnteringMenu && levelPreset ? levelPreset.spawnRotationY : state.heading,
         position: isEnteringMenu && spawnPos ? [spawnPos[0], spawnPos[1], spawnPos[2]] : state.position,
+        isRolledOver: isEnteringMenu ? false : state.isRolledOver,
       };
     });
   },
   setLoadingTarget: (loadingTarget) => set({ loadingTarget }),
   setGameMode: (gameMode) => set({ gameMode }),
   setSelectedVehicleId: (selectedVehicleId) => set({ selectedVehicleId, isSceneReady: false }),
-  setSelectedLevelId: (selectedLevelId) => set({ selectedLevelId, isSceneReady: false }),
+  setSelectedTireType: (selectedTireType) => set({ selectedTireType }),
+  setSelectedLevelId: (selectedLevelId) => {
+    const levelPreset = getLevelPreset(selectedLevelId);
+    const spawnPos = levelPreset.spawnPosition;
+    set({
+      selectedLevelId,
+      selectedTireType: getRecommendedTireForLevel(levelPreset),
+      isSceneReady: false,
+      speed: 0,
+      lateralSpeed: 0,
+      slipAngle: 0,
+      rpm: 1000,
+      gear: 1,
+      heading: levelPreset.spawnRotationY,
+      position: [spawnPos[0], spawnPos[1], spawnPos[2]],
+      pendingReset: true,
+      isRolledOver: false,
+    });
+  },
   setSceneReady: (isSceneReady) => set({ isSceneReady }),
   setGarageOpen: (isGarageOpen) => set({ isGarageOpen }),
   setIsAirborne: (isAirborne) => set({ isAirborne }),
+  setIsRolledOver: (isRolledOver) => set({ isRolledOver }),
   setSpeed: (speed) => set({ speed }),
   setLateralSpeed: (lateralSpeed) => set({ lateralSpeed }),
   setSlipAngle: (slipAngle) => set({ slipAngle }),
@@ -172,6 +210,12 @@ export const useGameStore = create<GameStore>((set) => ({
   setSurface: (val) => set({ surface: val }),
   setGamepadConnected: (connected, name = '', type = null) =>
     set({ gamepadConnected: connected, gamepadName: name, gamepadType: type }),
+  setDrivingAssistsActive: (assists) =>
+    set((state) => ({
+      absActive: assists.abs !== undefined ? assists.abs : state.absActive,
+      tcsActive: assists.tcs !== undefined ? assists.tcs : state.tcsActive,
+      espActive: assists.esp !== undefined ? assists.esp : state.espActive,
+    })),
 }));
 
 

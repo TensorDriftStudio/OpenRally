@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { validateVehicleConfig } from '@/utils/validation/vehicleValidator';
 import { validateLevelData } from '@/utils/validation/levelValidator';
 import { validateSurfaceDefinition } from '@/utils/validation/surfaceValidator';
+import { validateDrivingModelBalance } from '@/utils/validation/physicsBalanceValidator';
 import { DEFAULT_VEHICLE_CONFIG } from '@/config/vehicle';
 import { LEVEL1_DATA } from '@/config/level1';
 import { SURFACE_REGISTRY } from '@/config/surfaceRegistry';
+import { DRIVING_MODEL_BALANCE, type DrivingModelBalance } from '@/config/physicsBalance';
 
 describe('Runtime Validators', () => {
   describe('validateVehicleConfig', () => {
@@ -121,6 +123,104 @@ describe('Runtime Validators', () => {
       expect(res.valid).toBe(false);
       expect(res.errors.some((e) => e.includes('rollingResistance must be >= 0'))).toBe(true);
       expect(res.errors.some((e) => e.includes('looseSurfaceTractionLoss must be between [0, 1]'))).toBe(true);
+    });
+  });
+
+  describe('validateDrivingModelBalance', () => {
+    it('passes on default DRIVING_MODEL_BALANCE', () => {
+      const res = validateDrivingModelBalance(DRIVING_MODEL_BALANCE);
+      expect(res.valid).toBe(true);
+      expect(res.errors).toHaveLength(0);
+    });
+
+    it('rejects null or non-object balance profile', () => {
+      const resNull = validateDrivingModelBalance(null as unknown as DrivingModelBalance);
+      expect(resNull.valid).toBe(false);
+      expect(resNull.errors.length).toBeGreaterThan(0);
+
+      const resString = validateDrivingModelBalance('invalid' as unknown as DrivingModelBalance);
+      expect(resString.valid).toBe(false);
+    });
+
+    it('catches invalid handbrake values and types', () => {
+      const badBalance = {
+        ...DRIVING_MODEL_BALANCE,
+        handbrake: {
+          ...DRIVING_MODEL_BALANCE.handbrake,
+          minLockupBrakeForce: -10,
+          rearLockupImpulseMultiplier: 0,
+          frontSteerYieldMultiplier: 2.5,
+          disableAwdPropulsion: 'yes',
+        },
+      };
+      const res = validateDrivingModelBalance(badBalance as unknown as DrivingModelBalance);
+      expect(res.valid).toBe(false);
+      expect(res.errors.some((e) => e.includes('minLockupBrakeForce'))).toBe(true);
+      expect(res.errors.some((e) => e.includes('rearLockupImpulseMultiplier'))).toBe(true);
+      expect(res.errors.some((e) => e.includes('frontSteerYieldMultiplier'))).toBe(true);
+      expect(res.errors.some((e) => e.includes('disableAwdPropulsion'))).toBe(true);
+    });
+
+    it('catches invalid suspension mass scales and NaNs', () => {
+      const badBalance = {
+        ...DRIVING_MODEL_BALANCE,
+        suspension: {
+          ...DRIVING_MODEL_BALANCE.suspension,
+          antiRollBarMassScale: -0.1,
+          pitchDampingMassScale: NaN,
+          maxRestoringPitchTorqueG: 0,
+        },
+      };
+      const res = validateDrivingModelBalance(badBalance);
+      expect(res.valid).toBe(false);
+      expect(res.errors.some((e) => e.includes('antiRollBarMassScale'))).toBe(true);
+      expect(res.errors.some((e) => e.includes('pitchDampingMassScale'))).toBe(true);
+      expect(res.errors.some((e) => e.includes('maxRestoringPitchTorqueG'))).toBe(true);
+    });
+
+    it('catches invalid drivetrain launch parameters', () => {
+      const badBalance = {
+        ...DRIVING_MODEL_BALANCE,
+        drivetrain: {
+          ...DRIVING_MODEL_BALANCE.drivetrain,
+          launchRampBaseFraction: 1.5,
+          launchRampEndSpeedMps: -2,
+        },
+      };
+      const res = validateDrivingModelBalance(badBalance);
+      expect(res.valid).toBe(false);
+      expect(res.errors.some((e) => e.includes('launchRampBaseFraction'))).toBe(true);
+      expect(res.errors.some((e) => e.includes('launchRampEndSpeedMps'))).toBe(true);
+    });
+
+    it('catches invalid assists deadzone and pitch damping', () => {
+      const badBalance = {
+        ...DRIVING_MODEL_BALANCE,
+        assists: {
+          ...DRIVING_MODEL_BALANCE.assists,
+          steerAssistDeadzone: 0.5,
+          pitchDampingThrottleUp: -1,
+        },
+      };
+      const res = validateDrivingModelBalance(badBalance);
+      expect(res.valid).toBe(false);
+      expect(res.errors.some((e) => e.includes('steerAssistDeadzone'))).toBe(true);
+      expect(res.errors.some((e) => e.includes('pitchDampingThrottleUp'))).toBe(true);
+    });
+
+    it('catches invalid tire friction drops and slip angles', () => {
+      const badBalance = {
+        ...DRIVING_MODEL_BALANCE,
+        tires: {
+          ...DRIVING_MODEL_BALANCE.tires,
+          minPowerSlideSlipAngle: -0.1,
+          wheelspinFrictionDropRear: 1.2,
+        },
+      };
+      const res = validateDrivingModelBalance(badBalance);
+      expect(res.valid).toBe(false);
+      expect(res.errors.some((e) => e.includes('minPowerSlideSlipAngle'))).toBe(true);
+      expect(res.errors.some((e) => e.includes('wheelspinFrictionDropRear'))).toBe(true);
     });
   });
 });

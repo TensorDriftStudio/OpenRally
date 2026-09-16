@@ -6,8 +6,6 @@ import {
   MeshStandardMaterial,
   type Texture,
   type IUniform,
-  Sphere,
-  Vector3,
 } from 'three';
 import {
   createTrunkGeometry,
@@ -119,7 +117,7 @@ export function VegetationInstancer({
         map: birchBarkTexture,
         roughness: 0.94,
         metalness: 0.01,
-        color: new Color('#4c443c'),
+        color: new Color('#ffffff'),
       }),
     [birchBarkTexture],
   );
@@ -150,13 +148,13 @@ export function VegetationInstancer({
   const birchFoliageMaterial = useMemo(
     () =>
       createFoliageWindMaterial(
-        leafyBranchTexture,
-        '#2d541a',
+        isSnow ? pineBranchSnowTexture : leafyBranchTexture,
+        isSnow ? '#ffffff' : '#2d541a',
         true,
         (u) => foliageShaderUniformsRef.current.push(u),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [leafyBranchTexture],
+    [leafyBranchTexture, pineBranchSnowTexture, isSnow],
   );
 
   const desertFoliageMaterial = useMemo(
@@ -174,19 +172,14 @@ export function VegetationInstancer({
   // VRAM Upload per batch
   useLayoutEffect(() => {
     const uploadBatch = (mesh: InstancedMesh | null, items: PropItem[]) => {
-      if (!mesh) return;
+      if (!mesh || items.length === 0) return;
       for (let i = 0; i < items.length; i++) {
         mesh.setMatrixAt(i, items[i].matrix);
       }
       mesh.instanceMatrix.needsUpdate = true;
       mesh.count = items.length;
-      if (items.length > 0) {
-        mesh.visible = true;
-        mesh.computeBoundingSphere();
-      } else {
-        mesh.visible = false;
-        mesh.boundingSphere = new Sphere(new Vector3(0, 0, 0), -1);
-      }
+      mesh.visible = true;
+      mesh.computeBoundingSphere();
     };
 
     uploadBatch(pineTrunkRef.current, pineTrees);
@@ -240,52 +233,70 @@ export function VegetationInstancer({
   return (
     <>
       {/* 1. Nordic Pines */}
-      <instancedMesh
-        ref={pineTrunkRef}
-        args={[pineTrunkGeo, pineTrunkMaterial, Math.max(1, pineTrees.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
-      <instancedMesh
-        ref={pineFoliageRef}
-        args={[pineFoliageGeo, pineFoliageMaterial, Math.max(1, pineTrees.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {pineTrees.length > 0 && (
+        <>
+          <instancedMesh
+            ref={pineTrunkRef}
+            args={[pineTrunkGeo, pineTrunkMaterial, pineTrees.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            renderOrder={1}
+            frustumCulled
+          />
+          <instancedMesh
+            ref={pineFoliageRef}
+            args={[pineFoliageGeo, pineFoliageMaterial, pineTrees.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            renderOrder={2}
+            frustumCulled
+          />
+        </>
+      )}
 
       {/* 2. European Birch */}
-      <instancedMesh
-        ref={birchTrunkRef}
-        args={[birchTrunkGeo, birchTrunkMaterial, Math.max(1, birchTrees.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
-      <instancedMesh
-        ref={birchFoliageRef}
-        args={[birchFoliageGeo, birchFoliageMaterial, Math.max(1, birchTrees.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {birchTrees.length > 0 && (
+        <>
+          <instancedMesh
+            ref={birchTrunkRef}
+            args={[birchTrunkGeo, birchTrunkMaterial, birchTrees.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            renderOrder={1}
+            frustumCulled
+          />
+          <instancedMesh
+            ref={birchFoliageRef}
+            args={[birchFoliageGeo, birchFoliageMaterial, birchTrees.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            renderOrder={2}
+            frustumCulled
+          />
+        </>
+      )}
 
       {/* 3. Desert Acacia */}
-      <instancedMesh
-        ref={desertTrunkRef}
-        args={[desertTrunkGeo, desertTrunkMaterial, Math.max(1, desertTrees.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
-      <instancedMesh
-        ref={desertFoliageRef}
-        args={[desertFoliageGeo, desertFoliageMaterial, Math.max(1, desertTrees.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {desertTrees.length > 0 && (
+        <>
+          <instancedMesh
+            ref={desertTrunkRef}
+            args={[desertTrunkGeo, desertTrunkMaterial, desertTrees.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            renderOrder={1}
+            frustumCulled
+          />
+          <instancedMesh
+            ref={desertFoliageRef}
+            args={[desertFoliageGeo, desertFoliageMaterial, desertTrees.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            renderOrder={2}
+            frustumCulled
+          />
+        </>
+      )}
     </>
   );
 }

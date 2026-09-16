@@ -76,4 +76,20 @@ describe('Minimap Coordinate & Heading Alignment', () => {
       expect(dot).toBeCloseTo(1.0, 4);
     }
   });
+
+  it('guarantees zero duplicate requestAnimationFrame calls in Minimap render loop', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const minimapPath = path.resolve(__dirname, '../Minimap.tsx');
+    const content = fs.readFileSync(minimapPath, 'utf-8');
+
+    // Count occurrences of requestAnimationFrame
+    const matches = content.match(/requestAnimationFrame\(renderMinimap\)/g);
+    expect(matches).not.toBeNull();
+    // Must be exactly 2: 1 recursive call inside renderMinimap and 1 initialization call outside
+    expect(matches?.length).toBe(2);
+
+    // Ensure cancelAnimationFrame cleans up animationFrameId on unmount
+    expect(content).toContain('cancelAnimationFrame(animationFrameId)');
+  });
 });

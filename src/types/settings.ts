@@ -30,6 +30,7 @@ export interface GameSettings extends TouchSettings {
   drawDistance: DrawDistance;
   antiAliasing: AntiAliasingMode;
   resolutionScale: number;
+  dynamicResolution: boolean;
   shadowsEnabled: boolean;
   postProcessingEnabled: boolean;
   transmissionMode: TransmissionMode;
@@ -40,6 +41,12 @@ export interface GameSettings extends TouchSettings {
   gameMusicVolume: number;
   vibrationEnabled: boolean;
   vibrationIntensity: number;
+  /** Anti-lock Braking System (prevents wheel lockup under hard braking) */
+  absEnabled: boolean;
+  /** Traction Control System (modulates engine throttle under excessive wheelspin) */
+  tcsEnabled: boolean;
+  /** Electronic Stability Program (yaw stability & countersteer damping assist) */
+  espEnabled: boolean;
   /** Flag tracking whether the user has explicitly manually configured graphics preferences */
   graphicsConfiguredByUser?: boolean;
 }
@@ -50,6 +57,7 @@ export const BALANCED_MOBILE_SETTINGS: Partial<GameSettings> = {
   drawDistance: 'medium',
   antiAliasing: 'off',
   resolutionScale: 1.0,
+  dynamicResolution: false,
   shadowsEnabled: false,
   postProcessingEnabled: false,
 };
@@ -60,6 +68,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   drawDistance: 'far',
   antiAliasing: 'smaa',
   resolutionScale: 1.0,
+  dynamicResolution: false,
   shadowsEnabled: true,
   postProcessingEnabled: true,
   transmissionMode: 'automatic',
@@ -70,6 +79,9 @@ export const DEFAULT_SETTINGS: GameSettings = {
   gameMusicVolume: 0.5,
   vibrationEnabled: true,
   vibrationIntensity: 1.0,
+  absEnabled: true,
+  tcsEnabled: true,
+  espEnabled: true,
   graphicsConfiguredByUser: false,
   ...DEFAULT_TOUCH_SETTINGS,
 };

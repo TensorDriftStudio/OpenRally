@@ -4,6 +4,8 @@ import type { RapierRigidBody } from '@react-three/rapier';
 import { Group, Object3D } from 'three';
 import { Wheel } from '@/components/vehicle/Wheel';
 import { useVehiclePhysics } from '@/hooks/useVehiclePhysics';
+import { useMultiplayerTelemetrySync } from '@/hooks/useMultiplayerTelemetrySync';
+import { useTagProximity } from '@/hooks/useTagProximity';
 import { useChaseCamera } from '@/hooks/useChaseCamera';
 import { useBumperCamera } from '@/hooks/useBumperCamera';
 import { FreeCamera } from '@/components/vehicle/FreeCamera';
@@ -22,6 +24,7 @@ import { useTagStore } from '@/store/tagStore';
 import { getVehiclePreset } from '@/config/vehicleRegistry';
 import { useTerrainData } from '@/components/terrain/TerrainContext';
 import { isMobileDevice } from '@/utils/device';
+import { calculateGroundedVehicleTransform } from '@/utils/physics/groundSettler';
 
 interface VehicleVisualModelProps {
   modelPath: string;
@@ -131,7 +134,7 @@ function VehicleVisualModel({
 export function Vehicle() {
   const selectedVehicleId = useGameStore((s) => s.selectedVehicleId);
   const vehiclePreset = getVehiclePreset(selectedVehicleId);
-  const { levelPreset } = useTerrainData();
+  const { heightmapData, levelData, levelPreset } = useTerrainData();
 
   const isMobile = isMobileDevice();
   const graphicsQuality = useSettingsStore((s) => s.graphicsQuality);
@@ -146,8 +149,14 @@ export function Vehicle() {
 
   const config = vehiclePreset.config;
 
-  // Attach vehicle physics
-  useVehiclePhysics(chassisRef, wheelObjectsRef, config);
+  // Attach vehicle physics with dynamic chassis sprung mass dynamics
+  useVehiclePhysics(chassisRef, wheelObjectsRef, config, visualRef);
+
+  // Broadcast local vehicle telemetry to multiplayer room
+  useMultiplayerTelemetrySync(chassisRef, wheelObjectsRef);
+
+  // Proximity tagger interaction in Rally Tag mode
+  useTagProximity(chassisRef);
 
   // Attach cameras to the INTERPOLATED visual mesh, not the physics body
   useChaseCamera(visualRef);
@@ -194,6 +203,24 @@ export function Vehicle() {
     ];
   }
 
+  const gameState = useGameStore((s) => s.gameState);
+  const loadingTarget = useGameStore((s) => s.loadingTarget);
+  const isMenuOrTitle = gameState === 'menu' || gameState === 'title' || (gameState === 'loading' && loadingTarget === 'menu');
+
+  let effectiveSpawnRotation: [number, number, number] = [0, effectiveSpawnRotY, 0];
+
+  if (isMenuOrTitle && heightmapData?.heights) {
+    const grounded = calculateGroundedVehicleTransform(
+      effectiveSpawnPos,
+      effectiveSpawnRotY,
+      config,
+      heightmapData,
+      levelData,
+    );
+    effectiveSpawnPos = grounded.position;
+    effectiveSpawnRotation = grounded.euler;
+  }
+
   return (
     <group visible={!isSpectating}>
       <RigidBody
@@ -202,27 +229,42 @@ export function Vehicle() {
         colliders={false}
         mass={config.chassisMass}
         position={effectiveSpawnPos}
-        rotation={[0, effectiveSpawnRotY, 0]}
-        linearDamping={0.15}
-        angularDamping={2.2}
+        rotation={effectiveSpawnRotation}
+        linearDamping={0.08}
+        angularDamping={0.6}
         canSleep={false}
         ccd={true}
       >
-        {/* Chassis collider: Balanced front engine weight distribution (~53% front bias, CoM Z = +0.08m) */}
-        {/* Eliminates nose-heavy sluggishness while completely preventing wheelies under full throttle */}
+        {/* Lower Chassis Collider: floorpan, engine block, and lower running gear (92% mass for low CoM) */}
         <CuboidCollider
-          key={selectedVehicleId}
+          key={`${selectedVehicleId}-chassis`}
           position={[
             0,
-            config.weightDistribution?.engineOffsetY ?? -0.16,
-            config.weightDistribution?.centerOfMassZ ?? 0.08,
+            config.weightDistribution?.centerOfMassY ?? -0.32,
+            config.weightDistribution?.centerOfMassZ ?? 0.06,
           ]}
           args={[
             config.chassisSize[0] / 2,
-            config.chassisSize[1] / 2,
+            (config.chassisSize[1] * 0.65) / 2,
             config.chassisSize[2] / 2,
           ]}
-          mass={config.chassisMass}
+          mass={config.chassisMass * 0.92}
+        />
+
+        {/* Upper Cabin & Roof Collider: cockpit, pillars, and roof panel for realistic rollovers (8% mass) */}
+        <CuboidCollider
+          key={`${selectedVehicleId}-cabin`}
+          position={[
+            0,
+            (config.weightDistribution?.centerOfMassY ?? -0.32) + config.chassisSize[1] * 0.72,
+            config.weightDistribution?.centerOfMassZ ?? 0.06,
+          ]}
+          args={[
+            (config.chassisSize[0] * 0.78) / 2,
+            (config.chassisSize[1] * 0.60) / 2,
+            (config.chassisSize[2] * 0.52) / 2,
+          ]}
+          mass={config.chassisMass * 0.08}
         />
 
         {/* Visual Mesh (Interpolated Position) */}
@@ -264,51 +306,54 @@ export function Vehicle() {
               />
             </Suspense>
           </VehicleModelErrorBoundary>
-
-          {/* Soft contact ambient occlusion shadow directly beneath the chassis */}
-          <mesh position={[0, -0.42, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <planeGeometry args={[config.chassisSize[0] * 1.3, config.chassisSize[2] * 1.15]} />
-            <meshBasicMaterial
-              transparent
-              opacity={0.42}
-              depthWrite={false}
-              color="#000000"
-              onBeforeCompile={(shader) => {
-                shader.vertexShader = shader.vertexShader.replace(
-                  '#include <common>',
-                  /* glsl */ `
-                  #include <common>
-                  varying vec2 vShadowUv;
-                  `,
-                );
-                shader.vertexShader = shader.vertexShader.replace(
-                  '#include <uv_vertex>',
-                  /* glsl */ `
-                  #include <uv_vertex>
-                  vShadowUv = uv;
-                  `,
-                );
-                shader.fragmentShader = shader.fragmentShader.replace(
-                  '#include <common>',
-                  /* glsl */ `
-                  #include <common>
-                  varying vec2 vShadowUv;
-                  `,
-                );
-                shader.fragmentShader = shader.fragmentShader.replace(
-                  '#include <color_fragment>',
-                  /* glsl */ `
-                  #include <color_fragment>
-                  vec2 uvC = vShadowUv * 2.0 - 1.0;
-                  float d = length(uvC * vec2(1.15, 0.85));
-                  float alpha = smoothstep(1.0, 0.15, d) * 0.45;
-                  diffuseColor.a *= alpha;
-                  `,
-                );
-              }}
-            />
-          </mesh>
         </group>
+
+        {/* Soft contact ambient occlusion shadow directly beneath the chassis floor */}
+        <mesh position={[0, -0.42, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[config.chassisSize[0] * 1.35, config.chassisSize[2] * 1.2]} />
+          <meshBasicMaterial
+            transparent
+            opacity={0.55}
+            depthWrite={false}
+            color="#000000"
+            onBeforeCompile={(shader) => {
+              shader.vertexShader = shader.vertexShader.replace(
+                '#include <common>',
+                /* glsl */ `
+                #include <common>
+                varying vec2 vShadowUv;
+                `,
+              );
+              shader.vertexShader = shader.vertexShader.replace(
+                '#include <uv_vertex>',
+                /* glsl */ `
+                #include <uv_vertex>
+                vShadowUv = uv;
+                `,
+              );
+              shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <common>',
+                /* glsl */ `
+                #include <common>
+                varying vec2 vShadowUv;
+                `,
+              );
+              shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <color_fragment>',
+                /* glsl */ `
+                #include <color_fragment>
+                vec2 uvC = vShadowUv * 2.0 - 1.0;
+                float d = length(uvC * vec2(1.15, 0.85));
+                // Dual-zone occlusion: tight dark contact core directly under floor pan + soft feathered penumbra
+                float softPenumbra = smoothstep(1.0, 0.20, d) * 0.42;
+                float innerCore = smoothstep(0.48, 0.05, d) * 0.38;
+                float alpha = clamp(softPenumbra + innerCore, 0.0, 0.80);
+                diffuseColor.a *= alpha;
+                `,
+              );
+            }}
+          />
+        </mesh>
 
         {/* Wheels — inside RigidBody so their local transform is relative to the chassis */}
         {config.wheels.map((wheel, index) => (

@@ -1,4 +1,6 @@
 import type { VehicleConfig, VehiclePreset } from '@/types/vehicle';
+import { resolveVehicleBalance } from '@/config/physicsBalance';
+import { validateDrivingModelBalance } from './physicsBalanceValidator';
 
 export interface ValidationResult {
   readonly valid: boolean;
@@ -116,7 +118,24 @@ export function validateVehicleConfig(config: VehicleConfig): ValidationResult {
       if (typeof wheel.suspensionDamping !== 'number' || wheel.suspensionDamping <= 0) {
         errors.push(`${name}: suspensionDamping must be > 0.`);
       }
+      if (
+        wheel.minSuspensionLength != null &&
+        (typeof wheel.minSuspensionLength !== 'number' ||
+          wheel.minSuspensionLength <= 0 ||
+          wheel.minSuspensionLength >= wheel.suspensionRestLength)
+      ) {
+        errors.push(`${name}: minSuspensionLength must be > 0 and < suspensionRestLength.`);
+      }
     });
+  }
+
+  // Balance overrides checks (optional)
+  if (config.balanceOverrides) {
+    const resolved = resolveVehicleBalance(config);
+    const balanceVal = validateDrivingModelBalance(resolved);
+    if (!balanceVal.valid) {
+      errors.push(...balanceVal.errors.map((e) => `balanceOverrides: ${e}`));
+    }
   }
 
   return {

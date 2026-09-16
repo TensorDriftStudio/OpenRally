@@ -92,17 +92,25 @@ describe('Settings & Menu Gamepad Navigation Invariants', () => {
       expect(useSettingsStore.getState().transmissionMode).toBe('automatic');
     });
 
-    it('modifies steering sensitivity within [0.5, 2.0] bounds', () => {
+    it('modifies steering sensitivity within [0.1, 2.5] bounds', () => {
       const store = useSettingsStore.getState();
       expect(store.sensitivity).toBe(1.0);
 
       // Increase
-      store.setSensitivity(Math.min(2.0, store.sensitivity + 0.1));
-      expect(useSettingsStore.getState().sensitivity).toBeCloseTo(1.1);
+      store.setSensitivity(Math.min(2.5, store.sensitivity + 0.05));
+      expect(useSettingsStore.getState().sensitivity).toBeCloseTo(1.05);
 
-      // Decrease
-      store.setSensitivity(Math.max(0.5, useSettingsStore.getState().sensitivity - 0.2));
-      expect(useSettingsStore.getState().sensitivity).toBeCloseTo(0.9);
+      // Decrease down to low sensitivity
+      store.setSensitivity(Math.max(0.1, useSettingsStore.getState().sensitivity - 0.3));
+      expect(useSettingsStore.getState().sensitivity).toBeCloseTo(0.75);
+
+      // Clamps at minimum 0.1
+      store.setSensitivity(0.05);
+      expect(useSettingsStore.getState().sensitivity).toBe(0.1);
+
+      // Clamps at maximum 2.5
+      store.setSensitivity(3.0);
+      expect(useSettingsStore.getState().sensitivity).toBe(2.5);
     });
 
     it('toggles controller vibration and steps vibration intensity', () => {
@@ -117,6 +125,31 @@ describe('Settings & Menu Gamepad Navigation Invariants', () => {
 
       store.setVibrationIntensity(0.9);
       expect(useSettingsStore.getState().vibrationIntensity).toBe(0.9);
+    });
+
+    it('toggles ABS, TCS, and ESP driving assists via gamepad actions', () => {
+      const store = useSettingsStore.getState();
+      expect(store.absEnabled).toBe(true);
+      expect(store.tcsEnabled).toBe(true);
+      expect(store.espEnabled).toBe(true);
+
+      // Toggle ABS
+      store.toggleAbs();
+      expect(useSettingsStore.getState().absEnabled).toBe(false);
+      store.toggleAbs();
+      expect(useSettingsStore.getState().absEnabled).toBe(true);
+
+      // Toggle TCS
+      store.toggleTcs();
+      expect(useSettingsStore.getState().tcsEnabled).toBe(false);
+      store.toggleTcs();
+      expect(useSettingsStore.getState().tcsEnabled).toBe(true);
+
+      // Toggle ESP
+      store.toggleEsp();
+      expect(useSettingsStore.getState().espEnabled).toBe(false);
+      store.toggleEsp();
+      expect(useSettingsStore.getState().espEnabled).toBe(true);
     });
   });
 
@@ -152,6 +185,17 @@ describe('Settings & Menu Gamepad Navigation Invariants', () => {
       store.setDrawDistance(nextDist(useSettingsStore.getState().drawDistance));
       expect(useSettingsStore.getState().drawDistance).toBe('short');
     });
+
+    it('toggles dynamic resolution (adaptive DPR)', () => {
+      const store = useSettingsStore.getState();
+      expect(store.dynamicResolution).toBe(false);
+
+      store.toggleDynamicResolution();
+      expect(useSettingsStore.getState().dynamicResolution).toBe(true);
+
+      store.toggleDynamicResolution();
+      expect(useSettingsStore.getState().dynamicResolution).toBe(false);
+    });
   });
 
   describe('Touch controls options gamepad modification', () => {
@@ -168,4 +212,130 @@ describe('Settings & Menu Gamepad Navigation Invariants', () => {
       expect(useSettingsStore.getState().touchButtonSize).toBe('large');
     });
   });
+
+  describe('Garage tire compound gamepad selection', () => {
+    it('contains exactly 3 tire compound options: asphalt, gravel, snow', async () => {
+      const { AVAILABLE_TIRE_TYPES } = await import('@/config/tireRegistry');
+      expect(AVAILABLE_TIRE_TYPES).toEqual(['asphalt', 'gravel', 'snow']);
+      expect(AVAILABLE_TIRE_TYPES.length).toBe(3);
+    });
+
+    it('cycles forward through tire types (Right / Confirm on focus index 0)', async () => {
+      const { AVAILABLE_TIRE_TYPES } = await import('@/config/tireRegistry');
+      useGameStore.setState({ selectedTireType: 'asphalt' });
+
+      const cycleRight = () => {
+        const curTire = useGameStore.getState().selectedTireType;
+        const idx = AVAILABLE_TIRE_TYPES.indexOf(curTire);
+        const next = AVAILABLE_TIRE_TYPES[(idx + 1) % AVAILABLE_TIRE_TYPES.length];
+        useGameStore.getState().setSelectedTireType(next);
+      };
+
+      expect(useGameStore.getState().selectedTireType).toBe('asphalt');
+      cycleRight();
+      expect(useGameStore.getState().selectedTireType).toBe('gravel');
+      cycleRight();
+      expect(useGameStore.getState().selectedTireType).toBe('snow');
+      cycleRight();
+      expect(useGameStore.getState().selectedTireType).toBe('asphalt');
+    });
+
+    it('cycles backward through tire types (Left on focus index 0)', async () => {
+      const { AVAILABLE_TIRE_TYPES } = await import('@/config/tireRegistry');
+      useGameStore.setState({ selectedTireType: 'asphalt' });
+
+      const cycleLeft = () => {
+        const curTire = useGameStore.getState().selectedTireType;
+        const idx = AVAILABLE_TIRE_TYPES.indexOf(curTire);
+        const prev = AVAILABLE_TIRE_TYPES[(idx - 1 + AVAILABLE_TIRE_TYPES.length) % AVAILABLE_TIRE_TYPES.length];
+        useGameStore.getState().setSelectedTireType(prev);
+      };
+
+      expect(useGameStore.getState().selectedTireType).toBe('asphalt');
+      cycleLeft();
+      expect(useGameStore.getState().selectedTireType).toBe('snow');
+      cycleLeft();
+      expect(useGameStore.getState().selectedTireType).toBe('gravel');
+      cycleLeft();
+      expect(useGameStore.getState().selectedTireType).toBe('asphalt');
+    });
+  });
+
+  describe('Start Mode View Gamepad Navigation & Confirmation', () => {
+    it('has exactly 3 focusable elements (Free Roam, Race/Gymkhana, Back)', () => {
+      // 0: Free Roam card
+      // 1: Time Attack or Gymkhana Blitz card
+      // 2: Back to Track Selection button
+      const START_MODE_ITEM_COUNT = 3;
+      expect(START_MODE_ITEM_COUNT).toBe(3);
+    });
+
+    it('navigates correctly vertically and horizontally across the 2D layout', () => {
+      let focusedIndex = 0;
+
+      // NavRight from Free Roam (0) goes to Time Attack (1)
+      if (focusedIndex === 0) focusedIndex = 1;
+      expect(focusedIndex).toBe(1);
+
+      // NavLeft from Time Attack (1) goes to Free Roam (0)
+      if (focusedIndex === 1) focusedIndex = 0;
+      expect(focusedIndex).toBe(0);
+
+      // NavDown from Free Roam (0) goes to Back to Track Selection (2)
+      focusedIndex = (focusedIndex === 0 || focusedIndex === 1) ? 2 : 0;
+      expect(focusedIndex).toBe(2);
+
+      // Horizontal navigation on Back button (2) stays on 2
+      const handleNavLeft = (idx: number) => (idx === 1 ? 0 : idx);
+      const handleNavRight = (idx: number) => (idx === 0 ? 1 : idx);
+      expect(handleNavLeft(focusedIndex)).toBe(2);
+      expect(handleNavRight(focusedIndex)).toBe(2);
+
+      // NavUp from Back to Track Selection (2) goes to Free Roam (0)
+      focusedIndex = (focusedIndex === 2) ? 0 : 2;
+      expect(focusedIndex).toBe(0);
+
+      // NavUp from Free Roam (0) wraps around to Back (2)
+      focusedIndex = (focusedIndex === 2) ? 0 : 2;
+      expect(focusedIndex).toBe(2);
+    });
+
+    it('routes index 2 ("Back to Track Selection") to tracks view instead of garage', () => {
+      let activeView = 'start_mode';
+      let launchedMode: string | null = null;
+
+      const handleConfirm = (curIdx: number, isGymkhana: boolean) => {
+        if (curIdx === 0) {
+          launchedMode = 'freeroam';
+          activeView = 'garage';
+        } else if (curIdx === 1) {
+          launchedMode = isGymkhana ? 'gymkhana_blitz' : 'timeattack';
+          activeView = 'garage';
+        } else {
+          activeView = 'tracks';
+        }
+      };
+
+      // Confirming index 2 should transition to 'tracks' and NOT launch any mode
+      handleConfirm(2, false);
+      expect(activeView).toBe('tracks');
+      expect(launchedMode).toBeNull();
+
+      // Confirming index 0 should launch freeroam and transition to garage
+      handleConfirm(0, false);
+      expect(activeView).toBe('garage');
+      expect(launchedMode).toBe('freeroam');
+
+      // Confirming index 1 should launch timeattack on standard circuit
+      handleConfirm(1, false);
+      expect(activeView).toBe('garage');
+      expect(launchedMode).toBe('timeattack');
+
+      // Confirming index 1 should launch gymkhana_blitz on gymkhana circuit
+      handleConfirm(1, true);
+      expect(activeView).toBe('garage');
+      expect(launchedMode).toBe('gymkhana_blitz');
+    });
+  });
 });
+

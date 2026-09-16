@@ -120,6 +120,26 @@ describe('gamepad input utilities', () => {
       expect(sampleRight.steering).toBeLessThan(0); // Right is negative in OpenRally
     });
 
+    it('applies progressive steering sensitivity scaling for gentle control at low sensitivity', () => {
+      // Gentle stick deflection (axis = -0.3)
+      const mockGentle = createMockGamepad({}, [-0.3, 0, 0, 0]);
+      const sampleDefault = sampleGamepad(1.0, mockGentle);
+      const sampleLow = sampleGamepad(0.2, mockGentle);
+
+      // Low sensitivity provides significantly gentler response at small stick angles
+      expect(sampleLow.steering).toBeLessThan(sampleDefault.steering);
+      expect(sampleLow.steering).toBeGreaterThan(0);
+
+      // Full stick deflection (axis = -1.0)
+      const mockFull = createMockGamepad({}, [-1.0, 0, 0, 0]);
+      const sampleFullDefault = sampleGamepad(1.0, mockFull);
+      const sampleFullLow = sampleGamepad(0.1, mockFull);
+
+      // Even at ultra-low sensitivity, full stick deflection reaches full lock authority (1.0)
+      expect(sampleFullDefault.steering).toBeCloseTo(1.0, 2);
+      expect(sampleFullLow.steering).toBeCloseTo(1.0, 2);
+    });
+
     it('samples RT analog throttle and LT analog brake', () => {
       const mock = createMockGamepad({
         [XBOX_BUTTONS.RT]: { pressed: true, value: 0.75 },
@@ -132,9 +152,9 @@ describe('gamepad input utilities', () => {
     });
 
     it('handles rising edge triggers for Camera toggle and Pause', () => {
-      // Frame 1: Camera button pressed
+      // Frame 1: Camera button pressed (LB / L1)
       const mockPressed = createMockGamepad({
-        [XBOX_BUTTONS.Y]: { pressed: true, value: 1.0 },
+        [XBOX_BUTTONS.LB]: { pressed: true, value: 1.0 },
       });
 
       const sample1 = sampleGamepad(1.0, mockPressed);
@@ -146,7 +166,7 @@ describe('gamepad input utilities', () => {
 
       // Frame 3: Camera button released
       const mockReleased = createMockGamepad({
-        [XBOX_BUTTONS.Y]: { pressed: false, value: 0 },
+        [XBOX_BUTTONS.LB]: { pressed: false, value: 0 },
       });
       const sample3 = sampleGamepad(1.0, mockReleased);
       expect(sample3.cameraToggle).toBe(false);
@@ -154,6 +174,56 @@ describe('gamepad input utilities', () => {
       // Frame 4: Camera button pressed again -> re-triggers!
       const sample4 = sampleGamepad(1.0, mockPressed);
       expect(sample4.cameraToggle).toBe(true);
+    });
+
+    it('handles vehicle reset on PS5 Triangle (△) and Xbox Y button', () => {
+      // Frame 1: PS5 Triangle pressed
+      const ps5TriangleMock = createMockGamepad({
+        [DUALSENSE_BUTTONS.TRIANGLE]: { pressed: true, value: 1.0 },
+      });
+      const sample1 = sampleGamepad(1.0, ps5TriangleMock);
+      expect(sample1.resetToggle).toBe(true);
+      expect(sample1.resetHeld).toBe(true);
+      expect(sample1.cameraToggle).toBe(false);
+
+      // Frame 2: Triangle still held
+      const sample2 = sampleGamepad(1.0, ps5TriangleMock);
+      expect(sample2.resetToggle).toBe(false); // Edge triggered
+      expect(sample2.resetHeld).toBe(true); // Still held
+
+      // Frame 3: Released
+      const releasedMock = createMockGamepad({
+        [DUALSENSE_BUTTONS.TRIANGLE]: { pressed: false, value: 0 },
+      });
+      const sample3 = sampleGamepad(1.0, releasedMock);
+      expect(sample3.resetToggle).toBe(false);
+      expect(sample3.resetHeld).toBe(false);
+
+      // Frame 4: Xbox Y button also triggers reset
+      const xboxYMock = createMockGamepad({
+        [XBOX_BUTTONS.Y]: { pressed: true, value: 1.0 },
+      });
+      const sample4 = sampleGamepad(1.0, xboxYMock);
+      expect(sample4.resetToggle).toBe(true);
+      expect(sample4.resetHeld).toBe(true);
+      expect(sample4.cameraToggle).toBe(false);
+    });
+
+    it('samples menu special action buttons (Square / X for SpecialX, Triangle / Y for SpecialY)', () => {
+      // PS5 Square -> menuSpecialX
+      const squareMock = createMockGamepad({
+        [DUALSENSE_BUTTONS.SQUARE]: { pressed: true, value: 1.0 },
+      });
+      const sampleSquare = sampleGamepad(1.0, squareMock);
+      expect(sampleSquare.menuSpecialX).toBe(true);
+      expect(sampleSquare.menuSpecialY).toBe(false);
+
+      // PS5 Triangle -> menuSpecialY
+      const triangleMock = createMockGamepad({
+        [DUALSENSE_BUTTONS.TRIANGLE]: { pressed: true, value: 1.0 },
+      });
+      const sampleTriangle = sampleGamepad(1.0, triangleMock);
+      expect(sampleTriangle.menuSpecialY).toBe(true);
     });
 
     it('samples gear shifts (gearUp / gearDown) and Square/X Handbrake', () => {

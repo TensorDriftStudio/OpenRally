@@ -5,6 +5,7 @@ import {
   validateVehicleRegistryIntegrity,
   validateLevelRegistryIntegrity,
   validateSurfaceRegistryIntegrity,
+  validatePhysicsBalanceIntegrity,
 } from '@/utils/diagnostics';
 
 describe('Game Diagnostics & Integrity Suite', () => {
@@ -20,6 +21,11 @@ describe('Game Diagnostics & Integrity Suite', () => {
 
   it('validates surface registry without errors', () => {
     const report = validateSurfaceRegistryIntegrity();
+    expect(report.errors).toHaveLength(0);
+  });
+
+  it('validates physics balance without errors', () => {
+    const report = validatePhysicsBalanceIntegrity();
     expect(report.errors).toHaveLength(0);
   });
 

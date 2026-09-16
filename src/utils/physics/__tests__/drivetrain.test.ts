@@ -242,6 +242,41 @@ describe('drivetrain physics', () => {
       expect(mockBody.applyImpulse).not.toHaveBeenCalled();
     });
 
+    it('applies steered vector pull along front wheels when rightVector and steerAngle are provided', () => {
+      const appliedImpulses: { x: number; y: number; z: number }[] = [];
+      const mockBody = {
+        mass: () => 150,
+        applyImpulse: vi.fn((impulse: { x: number; y: number; z: number }) => {
+          appliedImpulses.push({ ...impulse });
+        }),
+      } as unknown as RapierRigidBody;
+
+      const forwardVec = new Vector3(0, 0, 1);
+      const rightVec = new Vector3(1, 0, 0);
+      // Countersteering right: steerAngle < 0 (points along +X)
+      const steerAngle = -Math.PI / 6; // -30 deg
+      applyAwdDriftPropulsion(
+        mockBody,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, steering: -1.0 },
+        forwardVec,
+        50,
+        Math.PI / 6,
+        1.0,
+        0.016,
+        2,
+        rightVec,
+        steerAngle
+      );
+
+      expect(mockBody.applyImpulse).toHaveBeenCalled();
+      expect(appliedImpulses.length).toBe(1);
+      // Forward thrust present
+      expect(appliedImpulses[0].z).toBeGreaterThan(0);
+      // Steered front axle pull present along +X (countersteer direction)
+      expect(appliedImpulses[0].x).toBeGreaterThan(0);
+    });
+
     it('cuts engine force when hitting mechanical gear speed limits (rev limiter)', () => {
       const controllerUnderLimit = createMockController();
       applyDrivetrain(
@@ -265,9 +300,162 @@ describe('drivetrain physics', () => {
         0,
         54
       );
-      // Rev limiter cuts engine force to 0
+      // Rev limiter cuts engine force to 0 in straight-line driving without slip
       expect(controllerOverLimit.forces[0]).toBe(0);
       expect(controllerOverLimit.forces[2]).toBe(0);
+    });
+
+    it('preserves an 85% engine force floor during active drift slides even when exceeding nominal gear speed', () => {
+      const driftingOverLimitController = createMockController();
+      applyDrivetrain(
+        driftingOverLimitController,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, brake: 0 },
+        16, // ~58 km/h in 1st gear (exceeds 52 km/h limit)
+        1,
+        Math.PI / 6, // 30 degrees slip angle (active drift)
+        58
+      );
+
+      // In a slide under full throttle, engine maintains robust torque to keep wheels spinning
+      expect(driftingOverLimitController.forces[0]).toBeGreaterThan(0);
+      expect(driftingOverLimitController.forces[2]).toBeGreaterThan(0);
+    });
+
+    it('maintains continuous AWD drift propulsion across mid-to-high speeds without premature cut-off', () => {
+      const appliedImpulses: { x: number; y: number; z: number }[] = [];
+      const mockBody = {
+        mass: () => 150,
+        applyImpulse: vi.fn((impulse: { x: number; y: number; z: number }) => {
+          appliedImpulses.push({ ...impulse });
+        }),
+      } as unknown as RapierRigidBody;
+
+      const forwardVec = new Vector3(0, 0, 1);
+      // Drifting at 90 km/h in 2nd gear (near 95 km/h redline)
+      applyAwdDriftPropulsion(
+        mockBody,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, steering: 0.5 },
+        forwardVec,
+        90,
+        Math.PI / 6,
+        1.0,
+        0.016,
+        2
+      );
+
+      expect(mockBody.applyImpulse).toHaveBeenCalled();
+      expect(appliedImpulses[0].z).toBeGreaterThan(0);
+    });
+
+    it('suppresses AWD body drift propulsion when handbrake is engaged', () => {
+      const mockBody = {
+        mass: () => 150,
+        applyImpulse: vi.fn(),
+      } as unknown as RapierRigidBody;
+
+      const forwardVec = new Vector3(0, 0, 1);
+      applyAwdDriftPropulsion(
+        mockBody,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, steering: 0.5, handbrake: true },
+        forwardVec,
+        60,
+        Math.PI / 6,
+        1.0,
+        0.016,
+        2
+      );
+
+      expect(mockBody.applyImpulse).not.toHaveBeenCalled();
+    });
+
+    it('cuts engine force to 0 on rear wheels while powering front wheels when handbrake is engaged with throttle', () => {
+      const controller = createMockController();
+      applyDrivetrain(
+        controller,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, brake: 0, handbrake: true },
+        10,
+        1
+      );
+
+      // Front wheels (0, 1) receive full front pull
+      expect(controller.forces[0]).toBeGreaterThan(0);
+      expect(controller.forces[1]).toBeGreaterThan(0);
+      // Rear wheels (2, 3) receive EXACTLY 0 engine force so handbrake is not overpowered
+      expect(controller.forces[2]).toBe(0);
+      expect(controller.forces[3]).toBe(0);
+    });
+
+    it('modulates and cuts throttle power when TCS is enabled under heavy slip', () => {
+      const controllerTcsOn = createMockController();
+      const resultTcsOn = applyDrivetrain(
+        controllerTcsOn,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, brake: 0 },
+        20,
+        2,
+        Math.PI / 3, // ~60 degrees slip angle (high wheel slip)
+        70,
+        1.0,
+        undefined,
+        { tcsEnabled: true }
+      );
+
+      expect(resultTcsOn.tcsActive).toBe(true);
+
+      const controllerTcsOff = createMockController();
+      const resultTcsOff = applyDrivetrain(
+        controllerTcsOff,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, brake: 0 },
+        20,
+        2,
+        Math.PI / 3,
+        70,
+        1.0,
+        undefined,
+        { tcsEnabled: false }
+      );
+
+      expect(resultTcsOff.tcsActive).toBe(false);
+      // Engine force with TCS active must be lower than with TCS disabled (power cut to regain traction)
+      expect(controllerTcsOn.forces[0]).toBeLessThan(controllerTcsOff.forces[0]);
+    });
+
+    it('unleashes 100% full launch torque when TCS is disabled from standing start', () => {
+      const controllerTcsOn = createMockController();
+      applyDrivetrain(
+        controllerTcsOn,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, brake: 0 },
+        0, // 0 km/h dead stop
+        1,
+        0,
+        0,
+        1.0,
+        undefined,
+        { tcsEnabled: true }
+      );
+
+      const controllerTcsOff = createMockController();
+      applyDrivetrain(
+        controllerTcsOff,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, brake: 0 },
+        0,
+        1,
+        0,
+        0,
+        1.0,
+        undefined,
+        { tcsEnabled: false }
+      );
+
+      // With TCS OFF, full unattenuated 100% torque is delivered at launch (burnout)
+      expect(controllerTcsOff.forces[0]).toBeGreaterThan(controllerTcsOn.forces[0]);
     });
   });
 });

@@ -78,8 +78,6 @@ export function TireTracks({ wheelsRef, chassisRef }: TireTracksProps) {
           float patternAlpha = clamp(treadAlpha + baseStrip, 0.0, 1.0);
           
           float finalAlpha = patternAlpha * vAlpha * edgeFeather;
-          if (finalAlpha < 0.005) discard;
-          
           gl_FragColor = vec4(vColor, finalAlpha);
         }
       `,
@@ -88,8 +86,8 @@ export function TireTracks({ wheelsRef, chassisRef }: TireTracksProps) {
       depthTest: true,
       side: DoubleSide,
       polygonOffset: true,
-      polygonOffsetFactor: -0.5,
-      polygonOffsetUnits: -1,
+      polygonOffsetFactor: -1.5,
+      polygonOffsetUnits: -3,
     });
   }, [trackTexture]);
 

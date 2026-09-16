@@ -17,15 +17,19 @@ export function createFoliageWindMaterial(
   isBroadleaf: boolean,
   registerUniforms: (uniforms: Record<string, IUniform>) => void,
 ): MeshLambertMaterial {
-  const isMobile = isMobileDevice();
+    const isMobile = isMobileDevice();
   const mat = new MeshLambertMaterial({
     map: tex,
     side: isMobile ? FrontSide : DoubleSide,
-    alphaTest: 0.12,
+    alphaTest: isMobile ? 0 : 0.12,
     transparent: false,
     depthWrite: true,
     color: new Color(baseColor),
   });
+
+  mat.customProgramCacheKey = () => {
+    return `foliage-wind-${isBroadleaf ? 'broadleaf' : 'conifer'}-${isMobile ? 'mobile' : 'desktop'}`;
+  };
 
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.u_time = { value: 0 };
@@ -40,7 +44,6 @@ export function createFoliageWindMaterial(
       '#include <common>',
       `#include <common>
       varying vec2 vFoliageUv;
-      varying vec3 vFoliageWorldPos;
       `,
     );
 
@@ -62,7 +65,6 @@ export function createFoliageWindMaterial(
       #ifdef USE_INSTANCING
         mvPosition = instanceMatrix * mvPosition;
       #endif
-      vFoliageWorldPos = (modelMatrix * mvPosition).xyz;
       mvPosition = modelViewMatrix * mvPosition;
       gl_Position = projectionMatrix * mvPosition;
       `,
@@ -70,7 +72,6 @@ export function createFoliageWindMaterial(
 
     shader.fragmentShader = `
       varying vec2 vFoliageUv;
-      varying vec3 vFoliageWorldPos;
       uniform sampler2D u_tex;
     ` + shader.fragmentShader;
 
@@ -80,9 +81,10 @@ export function createFoliageWindMaterial(
       #include <color_fragment>
       vec4 fTex = texture2D(u_tex, vFoliageUv);
 
-      // Alpha discard for black background cutout
+      // Photographic foliage cutout: discard dark background pixels from JPEG texture
       float lum = max(fTex.r, max(fTex.g, fTex.b));
-      if (lum < 0.075) {
+      diffuseColor.a = lum;
+      if (lum < 0.08) {
         discard;
       }
 

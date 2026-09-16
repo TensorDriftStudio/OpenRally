@@ -342,12 +342,12 @@ function GymkhanaCompleteModalContent() {
           {gamepadConnected ? (
             <>
               <span style={styles.helperBadge}>
-                {gamepadType === 'dualsense' ? '✕ Wybierz' : 'A Select'}
+                {gamepadType === 'dualsense' ? '✕ Select' : 'A Select'}
               </span>
               <span style={styles.helperBadge}>
                 {gamepadType === 'dualsense' ? '◯ Menu' : 'B Menu'}
               </span>
-              <span style={styles.helperBadge}>▲▼ Nawigacja</span>
+              <span style={styles.helperBadge}>▲▼ Navigate</span>
             </>
           ) : (
             <>

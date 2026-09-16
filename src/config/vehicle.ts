@@ -11,12 +11,12 @@ export const BRAKE_SPEED_THRESHOLD = 0.5;
 export const REVERSE_FORCE_MULTIPLIER = 0.8;
 
 // ─── Gearbox (5-speed automatic / manual) ───────────────────────────
-export const GEAR_RATIOS = [0, 2.5, 1.8, 1.3, 1.0, 0.8]; // Index is gear (0=N/R, 1..5)
+export const GEAR_RATIOS = [0, 2.7, 2.3, 1.75, 1.3, 0.95]; // Index is gear (0=N/R, 1..5)
 export const SHIFT_UP_SPEEDS = [0, 40, 80, 130, 180, 999]; // Shift to next gear when exceeding these speeds (km/h)
 export const SHIFT_DOWN_SPEEDS = [0, 0, 30, 70, 120, 170]; // Shift to previous gear when falling below these speeds (km/h)
 
 /** Maximum speeds (km/h) for each gear before hitting mechanical redline / rev limiter */
-export const GEAR_MAX_SPEEDS: readonly number[] = [0, 52, 95, 145, 195, 245];
+export const GEAR_MAX_SPEEDS: readonly number[] = [0, 52, 105, 150, 198, 250];
 
 /** Maximum speed (km/h) in reverse gear */
 export const REVERSE_MAX_SPEED = 45;
@@ -28,6 +28,19 @@ export const SAND_ELEVATION_THRESHOLD = -5.0;
 /** Maximum frame delta (seconds) to prevent physics explosion after tab switch */
 export const MAX_DELTA = 0.05;
 
+// ─── Chassis Dynamics ────────────────────────────────────────────────
+/** Default sprung mass dynamics configuration (body roll, pitch dive/squat, heave) */
+export const DEFAULT_CHASSIS_DYNAMICS = {
+  maxRollAngle: 0.085, // ~4.9 degrees
+  rollStiffness: 1.0,
+  maxPitchDive: 0.055, // ~3.1 degrees
+  maxPitchSquat: 0.045, // ~2.6 degrees
+  pitchStiffness: 1.0,
+  naturalFrequency: 10.5, // rad/s (~1.67 Hz)
+  dampingRatio: 0.90, // Plush, critically-damped rally suspension
+  heaveMultiplier: 0.32, // Smooth heave absorption over rough terrain
+} as const;
+
 // ─── Default Vehicle Config ──────────────────────────────────────────
 /** Default vehicle configuration — physics parameters for the Stage 1 car */
 export const DEFAULT_VEHICLE_CONFIG: VehicleConfig = {
@@ -38,9 +51,10 @@ export const DEFAULT_VEHICLE_CONFIG: VehicleConfig = {
     engineOffsetZ: 0.80,
     engineOffsetY: -0.18,
     centerOfMassZ: 0.08,
+    centerOfMassY: -0.36,
   },
   engine: {
-    maxForce: 400, // AWD powered
+    maxForce: 420, // AWD powered
     maxSpeed: 240,
   },
   drivetrain: {
@@ -48,30 +62,40 @@ export const DEFAULT_VEHICLE_CONFIG: VehicleConfig = {
   },
   brakes: {
     maxForce: 18, // Firm and responsive braking with balanced weight transfer
-    handbrakeForce: 65,
+    handbrakeForce: 40,
     frontBias: 0.50, // 50/50 even 4-wheel brake distribution
   },
   suspension: {
     frontAntiRollBarStiffness: 14.0, // Balanced ARB prevents understeer and keeps car level
     rearAntiRollBarStiffness: 15.0,
-    antiSquatStiffness: 32.0,
+    antiSquatStiffness: 42.0,
   },
   handling: {
     steeringCurve: [
-      [0, Math.PI / 4],      // 45 degrees at 0 km/h
-      [40, Math.PI / 4.8],   // ~37.5 degrees at 40 km/h (agile turn-in)
-      [90, Math.PI / 7.5],   // 24 degrees at 90 km/h (sharp medium-speed steering)
-      [150, Math.PI / 12],   // 15 degrees at 150 km/h
-      [220, Math.PI / 18],   // 10 degrees at 220 km/h
+      [0, Math.PI / 3.75],   // ~48 degrees at 0 km/h
+      [40, Math.PI / 4.2],    // ~42.8 degrees at 40 km/h (sharp, responsive rally cornering)
+      [90, Math.PI / 6.4],    // ~28 degrees at 90 km/h (agile medium-speed steering)
+      [150, Math.PI / 10.0],  // 18 degrees at 150 km/h
+      [220, Math.PI / 15.0],  // 12 degrees at 220 km/h
     ],
-    steeringSpeed: 7.5, // Crisp, responsive steering input
+    steeringSpeed: 8.5, // Crisp, responsive steering input
     assists: {
       yawDamping: 0.12, // Stable, progressive drift control preventing tank-slappers
-      driftGripMultiplier: 0.22,
+      driftGripMultiplier: 0.68,
     },
   },
   aerodynamics: {
     downforceFactor: 15, // Smooth high-speed stability without crushing suspension
+  },
+  chassisDynamics: {
+    maxRollAngle: 0.085, // ~4.9 degrees
+    rollStiffness: 1.0,
+    maxPitchDive: 0.055, // ~3.1 degrees
+    maxPitchSquat: 0.045, // ~2.6 degrees
+    pitchStiffness: 1.0,
+    naturalFrequency: 10.5,
+    dampingRatio: 0.90,
+    heaveMultiplier: 0.32,
   },
   wheels: [
     {
@@ -79,10 +103,11 @@ export const DEFAULT_VEHICLE_CONFIG: VehicleConfig = {
       position: [-0.76, -0.2, 1.45],
       radius: 0.35,
       suspensionRestLength: 0.32,
-      suspensionTravel: 0.28,
-      suspensionStiffness: 34,
-      suspensionDamping: 4.0,
-      maxSuspensionForce: 8000,
+      suspensionTravel: 0.26,
+      minSuspensionLength: 0.18,
+      suspensionStiffness: 30,
+      suspensionDamping: 6.8,
+      maxSuspensionForce: 15000,
       steerable: true,
       powered: true,
     },
@@ -91,10 +116,11 @@ export const DEFAULT_VEHICLE_CONFIG: VehicleConfig = {
       position: [0.76, -0.2, 1.45],
       radius: 0.35,
       suspensionRestLength: 0.32,
-      suspensionTravel: 0.28,
-      suspensionStiffness: 34,
-      suspensionDamping: 4.0,
-      maxSuspensionForce: 8000,
+      suspensionTravel: 0.26,
+      minSuspensionLength: 0.18,
+      suspensionStiffness: 30,
+      suspensionDamping: 6.8,
+      maxSuspensionForce: 15000,
       steerable: true,
       powered: true,
     },
@@ -103,10 +129,11 @@ export const DEFAULT_VEHICLE_CONFIG: VehicleConfig = {
       position: [-0.76, -0.2, -1.4],
       radius: 0.35,
       suspensionRestLength: 0.32,
-      suspensionTravel: 0.30,
-      suspensionStiffness: 32,
-      suspensionDamping: 3.5,
-      maxSuspensionForce: 8000,
+      suspensionTravel: 0.26,
+      minSuspensionLength: 0.18,
+      suspensionStiffness: 31,
+      suspensionDamping: 6.8,
+      maxSuspensionForce: 15000,
       steerable: false,
       powered: true,
     },
@@ -115,10 +142,11 @@ export const DEFAULT_VEHICLE_CONFIG: VehicleConfig = {
       position: [0.76, -0.2, -1.4],
       radius: 0.35,
       suspensionRestLength: 0.32,
-      suspensionTravel: 0.30,
-      suspensionStiffness: 32,
-      suspensionDamping: 3.5,
-      maxSuspensionForce: 8000,
+      suspensionTravel: 0.26,
+      minSuspensionLength: 0.18,
+      suspensionStiffness: 31,
+      suspensionDamping: 6.8,
+      maxSuspensionForce: 15000,
       steerable: false,
       powered: true,
     },

@@ -4,6 +4,7 @@ import { useGameStore } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { isTextEditingActive } from '@/utils/input/textInput';
 import { getLevelPreset } from '@/config/levelRegistry';
+import { getGameModeDefinition } from '@/config/gameModeRegistry';
 import { returnToMainMenu } from '@/utils/navigation';
 import { isMobileOrAndroid } from '@/utils/device';
 import { isTouchDevice, getLastInputType } from '@/utils/input/touch';
@@ -122,22 +123,9 @@ export function MultiplayerHUD() {
   const roomDisplayName = currentRoom ? currentRoom.name.toUpperCase() : 'ARENA';
   const levelPreset = getLevelPreset(currentRoom?.levelId ?? useGameStore.getState().selectedLevelId);
   const currentGameMode = currentRoom?.gameMode ?? useGameStore.getState().gameMode;
-  const modeBadgeText =
-    currentGameMode === 'timeattack'
-      ? 'TIME ATTACK'
-      : currentGameMode === 'gymkhana_blitz'
-        ? 'GYMKHANA'
-        : currentGameMode === 'tag'
-          ? 'RALLY TAG'
-          : 'FREE ROAM';
-  const modeBadgeColor =
-    currentGameMode === 'timeattack'
-      ? '#F87171'
-      : currentGameMode === 'gymkhana_blitz'
-        ? '#FBBF24'
-        : currentGameMode === 'tag'
-          ? '#F43F5E'
-          : '#34D399';
+  const modeDef = getGameModeDefinition(currentGameMode);
+  const modeBadgeText = modeDef.badgeLabel;
+  const modeBadgeColor = modeDef.badgeColor;
 
   // Desktop: Top-right corner above minimap
   // Mobile: Bottom horizontal center, subtle low-profile pill between touch pedals and steering

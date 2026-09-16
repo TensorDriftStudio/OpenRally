@@ -36,11 +36,12 @@ export function createSymmetricWheels(
   const defaultFront: WheelInfo = {
     position: [-halfWidth, heightOffset, halfBase],
     radius: 0.35,
-    suspensionRestLength: 0.35,
-    suspensionTravel: 0.28,
-    suspensionStiffness: 35,
-    suspensionDamping: 4.0,
-    maxSuspensionForce: 12000,
+    suspensionRestLength: 0.32,
+    suspensionTravel: 0.26,
+    minSuspensionLength: 0.18,
+    suspensionStiffness: 30,
+    suspensionDamping: 6.8,
+    maxSuspensionForce: 15000,
     steerable: true,
     powered: true,
     ...frontOptions,
@@ -49,11 +50,12 @@ export function createSymmetricWheels(
   const defaultRear: WheelInfo = {
     position: [-halfWidth, heightOffset, -halfBase],
     radius: 0.35,
-    suspensionRestLength: 0.35,
-    suspensionTravel: 0.28,
-    suspensionStiffness: 38,
-    suspensionDamping: 4.2,
-    maxSuspensionForce: 12000,
+    suspensionRestLength: 0.32,
+    suspensionTravel: 0.26,
+    minSuspensionLength: 0.18,
+    suspensionStiffness: 31,
+    suspensionDamping: 6.8,
+    maxSuspensionForce: 15000,
     steerable: false,
     powered: true,
     ...rearOptions,
@@ -77,7 +79,7 @@ export const ARCHETYPE_CONFIGS: Record<VehicleArchetype, VehicleConfig> = {
     weightDistribution: { frontBias: 0.53, engineOffsetZ: 0.80, engineOffsetY: -0.18, centerOfMassZ: 0.08 },
     engine: { maxForce: 450, maxSpeed: 250 },
     drivetrain: { frontBias: 0.5 }, // 50/50 AWD
-    brakes: { maxForce: 25, handbrakeForce: 70, frontBias: 0.6 },
+    brakes: { maxForce: 25, handbrakeForce: 42, frontBias: 0.6 },
     suspension: { frontAntiRollBarStiffness: 15.0, rearAntiRollBarStiffness: 10.0, antiSquatStiffness: 32.0 },
     handling: {
       steeringCurve: [
@@ -87,12 +89,13 @@ export const ARCHETYPE_CONFIGS: Record<VehicleArchetype, VehicleConfig> = {
         [240, Math.PI / 18],
       ],
       steeringSpeed: 8.0,
-      assists: { yawDamping: 0.1, driftGripMultiplier: 0.2 },
+      assists: { yawDamping: 0.1, driftGripMultiplier: 0.68 },
     },
     aerodynamics: { downforceFactor: 15 },
     wheels: createSymmetricWheels(2.8, 1.6, -0.2, {
-      suspensionStiffness: 35,
-      suspensionTravel: 0.28,
+      suspensionStiffness: 30,
+      suspensionTravel: 0.26,
+      minSuspensionLength: 0.18,
     }),
   },
   supercar: {
@@ -101,7 +104,7 @@ export const ARCHETYPE_CONFIGS: Record<VehicleArchetype, VehicleConfig> = {
     weightDistribution: { frontBias: 0.44, engineOffsetZ: -0.20, engineOffsetY: -0.18, centerOfMassZ: -0.02 },
     engine: { maxForce: 540, maxSpeed: 300 },
     drivetrain: { frontBias: 0.2 }, // 20/80 rear-biased AWD
-    brakes: { maxForce: 30, handbrakeForce: 85, frontBias: 0.65 },
+    brakes: { maxForce: 30, handbrakeForce: 45, frontBias: 0.65 },
     suspension: { frontAntiRollBarStiffness: 22.0, rearAntiRollBarStiffness: 18.0, antiSquatStiffness: 35.0 },
     handling: {
       steeringCurve: [
@@ -111,17 +114,19 @@ export const ARCHETYPE_CONFIGS: Record<VehicleArchetype, VehicleConfig> = {
         [300, Math.PI / 24],
       ],
       steeringSpeed: 7.5,
-      assists: { yawDamping: 0.08, driftGripMultiplier: 0.25 },
+      assists: { yawDamping: 0.08, driftGripMultiplier: 0.70 },
     },
     aerodynamics: { downforceFactor: 24 },
     wheels: createSymmetricWheels(2.9, 1.7, -0.15, {
-      suspensionStiffness: 45,
+      suspensionStiffness: 42,
       suspensionTravel: 0.18,
       suspensionRestLength: 0.25,
+      minSuspensionLength: 0.16,
     }, {
-      suspensionStiffness: 48,
+      suspensionStiffness: 44,
       suspensionTravel: 0.18,
       suspensionRestLength: 0.25,
+      minSuspensionLength: 0.16,
     }),
   },
   offroad: {
@@ -130,7 +135,7 @@ export const ARCHETYPE_CONFIGS: Record<VehicleArchetype, VehicleConfig> = {
     weightDistribution: { frontBias: 0.53, engineOffsetZ: 0.75, engineOffsetY: -0.18, centerOfMassZ: 0.08 },
     engine: { maxForce: 520, maxSpeed: 210 },
     drivetrain: { frontBias: 0.5 },
-    brakes: { maxForce: 25, handbrakeForce: 70, frontBias: 0.55 },
+    brakes: { maxForce: 25, handbrakeForce: 40, frontBias: 0.55 },
     suspension: { frontAntiRollBarStiffness: 12.0, rearAntiRollBarStiffness: 9.0, antiSquatStiffness: 30.0 },
     handling: {
       steeringCurve: [
@@ -140,23 +145,25 @@ export const ARCHETYPE_CONFIGS: Record<VehicleArchetype, VehicleConfig> = {
         [200, Math.PI / 14],
       ],
       steeringSpeed: 5.5,
-      assists: { yawDamping: 0.15, driftGripMultiplier: 0.16 },
+      assists: { yawDamping: 0.15, driftGripMultiplier: 0.68 },
     },
     aerodynamics: { downforceFactor: 10 },
     wheels: createSymmetricWheels(2.9, 1.75, -0.22, {
       radius: 0.38,
-      suspensionRestLength: 0.40,
-      suspensionTravel: 0.38,
-      suspensionStiffness: 28,
-      suspensionDamping: 4.0,
-      maxSuspensionForce: 10000,
+      suspensionRestLength: 0.38,
+      suspensionTravel: 0.32,
+      minSuspensionLength: 0.22,
+      suspensionStiffness: 26,
+      suspensionDamping: 7.8,
+      maxSuspensionForce: 16000,
     }, {
       radius: 0.38,
-      suspensionRestLength: 0.40,
-      suspensionTravel: 0.38,
-      suspensionStiffness: 28,
-      suspensionDamping: 4.0,
-      maxSuspensionForce: 10000,
+      suspensionRestLength: 0.38,
+      suspensionTravel: 0.32,
+      minSuspensionLength: 0.22,
+      suspensionStiffness: 27,
+      suspensionDamping: 7.8,
+      maxSuspensionForce: 16000,
     }),
   },
   drift: {
@@ -165,7 +172,7 @@ export const ARCHETYPE_CONFIGS: Record<VehicleArchetype, VehicleConfig> = {
     weightDistribution: { frontBias: 0.52, engineOffsetZ: 0.70, engineOffsetY: -0.18, centerOfMassZ: 0.06 },
     engine: { maxForce: 490, maxSpeed: 260 },
     drivetrain: { frontBias: 0.0 }, // 100% RWD
-    brakes: { maxForce: 22, handbrakeForce: 90, frontBias: 0.7 },
+    brakes: { maxForce: 22, handbrakeForce: 48, frontBias: 0.7 },
     suspension: { frontAntiRollBarStiffness: 20.0, rearAntiRollBarStiffness: 12.0, antiSquatStiffness: 34.0 },
     handling: {
       steeringCurve: [
@@ -175,17 +182,21 @@ export const ARCHETYPE_CONFIGS: Record<VehicleArchetype, VehicleConfig> = {
         [250, Math.PI / 16],
       ],
       steeringSpeed: 9.0,
-      assists: { yawDamping: 0.04, driftGripMultiplier: 0.35 },
+      assists: { yawDamping: 0.04, driftGripMultiplier: 0.65 },
     },
     aerodynamics: { downforceFactor: 12 },
     wheels: createSymmetricWheels(2.7, 1.65, -0.18, {
       powered: false, // unpowered front
       steerable: true,
-      suspensionStiffness: 42,
+      suspensionStiffness: 38,
+      suspensionTravel: 0.22,
+      minSuspensionLength: 0.18,
     }, {
       powered: true,
       steerable: false,
-      suspensionStiffness: 38,
+      suspensionStiffness: 36,
+      suspensionTravel: 0.22,
+      minSuspensionLength: 0.18,
     }),
   },
   buggy: {
@@ -194,7 +205,7 @@ export const ARCHETYPE_CONFIGS: Record<VehicleArchetype, VehicleConfig> = {
     weightDistribution: { frontBias: 0.48, engineOffsetZ: 0.30, engineOffsetY: -0.18, centerOfMassZ: 0.02 },
     engine: { maxForce: 420, maxSpeed: 220 },
     drivetrain: { frontBias: 0.4 },
-    brakes: { maxForce: 20, handbrakeForce: 65, frontBias: 0.55 },
+    brakes: { maxForce: 20, handbrakeForce: 38, frontBias: 0.55 },
     suspension: { frontAntiRollBarStiffness: 10.0, rearAntiRollBarStiffness: 8.0, antiSquatStiffness: 28.0 },
     handling: {
       steeringCurve: [
@@ -204,19 +215,23 @@ export const ARCHETYPE_CONFIGS: Record<VehicleArchetype, VehicleConfig> = {
         [200, Math.PI / 14],
       ],
       steeringSpeed: 8.5,
-      assists: { yawDamping: 0.12, driftGripMultiplier: 0.22 },
+      assists: { yawDamping: 0.12, driftGripMultiplier: 0.68 },
     },
     aerodynamics: { downforceFactor: 8 },
     wheels: createSymmetricWheels(2.4, 1.65, -0.25, {
       radius: 0.36,
-      suspensionRestLength: 0.38,
-      suspensionTravel: 0.35,
-      suspensionStiffness: 30,
-    }, {
-      radius: 0.38,
-      suspensionRestLength: 0.38,
-      suspensionTravel: 0.35,
+      suspensionRestLength: 0.36,
+      suspensionTravel: 0.15,
+      minSuspensionLength: 0.21,
       suspensionStiffness: 32,
+      maxSuspensionForce: 18000,
+    }, {
+      radius: 0.36,
+      suspensionRestLength: 0.36,
+      suspensionTravel: 0.15,
+      minSuspensionLength: 0.21,
+      suspensionStiffness: 34,
+      maxSuspensionForce: 18000,
     }),
   },
 };
@@ -277,6 +292,7 @@ export function createVehiclePreset(options: CreateVehicleOptions): VehiclePrese
   const finalConfig: VehicleConfig = {
     chassisMass: options.config?.chassisMass ?? baseConfig.chassisMass,
     chassisSize: options.config?.chassisSize ?? baseConfig.chassisSize,
+    weightDistribution: options.config?.weightDistribution ?? (baseConfig.weightDistribution ? { ...baseConfig.weightDistribution } : undefined),
     engine: { ...baseConfig.engine, ...options.config?.engine },
     drivetrain: { ...baseConfig.drivetrain, ...options.config?.drivetrain },
     brakes: { ...baseConfig.brakes, ...options.config?.brakes },

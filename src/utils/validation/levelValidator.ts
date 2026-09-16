@@ -1,5 +1,6 @@
 import { Vector3, CatmullRomCurve3 } from 'three';
 import type { LevelData, LevelPreset } from '@/types/level';
+import { AVAILABLE_TIRE_TYPES } from '@/config/tireRegistry';
 import type { ValidationResult } from './vehicleValidator';
 
 /**
@@ -185,6 +186,12 @@ export function validateLevelPreset(preset: LevelPreset): ValidationResult {
           errors.push(`LevelPreset.tagSpawnPoints[${i}].rotationY must be a finite number.`);
         }
       }
+    }
+  }
+
+  if (preset.recommendedTire !== undefined) {
+    if (!AVAILABLE_TIRE_TYPES.includes(preset.recommendedTire)) {
+      errors.push(`LevelPreset.recommendedTire must be one of: ${AVAILABLE_TIRE_TYPES.join(', ')}.`);
     }
   }
 

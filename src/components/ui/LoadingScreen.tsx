@@ -12,11 +12,17 @@ import { getVehiclePreset } from '@/config/vehicleRegistry';
  */
 export function LoadingScreen() {
   const { active, progress } = useProgress();
-  const gameState = useGameStore((s) => s.gameState);
-  const isSceneReady = useGameStore((s) => s.isSceneReady);
-  const loadingTarget = useGameStore((s) => s.loadingTarget);
-  const selectedLevelId = useGameStore((s) => s.selectedLevelId);
-  const selectedVehicleId = useGameStore((s) => s.selectedVehicleId);
+  const storeGameState = useGameStore((s) => s.gameState);
+  const storeIsSceneReady = useGameStore((s) => s.isSceneReady);
+  const storeLoadingTarget = useGameStore((s) => s.loadingTarget);
+  const storeSelectedLevelId = useGameStore((s) => s.selectedLevelId);
+  const storeSelectedVehicleId = useGameStore((s) => s.selectedVehicleId);
+
+  const gameState = useGameStore.getState().gameState ?? storeGameState;
+  const isSceneReady = useGameStore.getState().isSceneReady ?? storeIsSceneReady;
+  const loadingTarget = useGameStore.getState().loadingTarget ?? storeLoadingTarget;
+  const selectedLevelId = useGameStore.getState().selectedLevelId ?? storeSelectedLevelId;
+  const selectedVehicleId = useGameStore.getState().selectedVehicleId ?? storeSelectedVehicleId;
 
   const level = getLevelPreset(selectedLevelId);
   const vehicle = getVehiclePreset(selectedVehicleId);
@@ -34,20 +40,30 @@ export function LoadingScreen() {
 
       const isDone = isSceneReady && (!active || progress >= 100);
       if (isDone) {
-        setFadeOut(true);
-        const timer = setTimeout(() => {
-          setVisible(false);
-          const target = useGameStore.getState().loadingTarget;
-          useGameStore.getState().setGameState(target === 'gameplay' ? 'playing' : 'menu');
-          if (target === 'gameplay') {
-            if (useGameStore.getState().gameMode === 'timeattack') {
-              useRacingStore.getState().startCountdown();
-            } else if (useGameStore.getState().gameMode === 'gymkhana_blitz') {
-              useGymkhanaStore.getState().startCountdown();
+        // When transitioning to menu, guarantee a minimum opaque screen hold (500ms)
+        // so that scene reset, vehicle grounding, and camera orbit snapping complete completely invisibly
+        const holdDelay = isMenuLoading ? 500 : 0;
+        let fadeTimer: ReturnType<typeof setTimeout> | null = null;
+        const holdTimer = setTimeout(() => {
+          setFadeOut(true);
+          fadeTimer = setTimeout(() => {
+            setVisible(false);
+            const target = useGameStore.getState().loadingTarget;
+            useGameStore.getState().setGameState(target === 'gameplay' ? 'playing' : 'menu');
+            if (target === 'gameplay') {
+              if (useGameStore.getState().gameMode === 'timeattack') {
+                useRacingStore.getState().startCountdown();
+              } else if (useGameStore.getState().gameMode === 'gymkhana_blitz') {
+                useGymkhanaStore.getState().startCountdown();
+              }
             }
-          }
-        }, 500);
-        return () => clearTimeout(timer);
+          }, 600);
+        }, holdDelay);
+
+        return () => {
+          clearTimeout(holdTimer);
+          if (fadeTimer) clearTimeout(fadeTimer);
+        };
       }
 
       // Safety timeout guard (max 3s)
@@ -153,7 +169,7 @@ export function LoadingScreen() {
           {isMenuLoading
             ? displayProgress < 100
               ? `INITIALIZING OPENRALLY • ${displayProgress}%`
-              : 'READY • ENTERING MAIN MENU'
+              : 'RETURNING TO MAIN MENU'
             : displayProgress < 100
               ? `INITIALIZING SIMULATION • ${displayProgress}%`
               : 'ENGINE READY • ENTERING STAGE'}
@@ -162,7 +178,7 @@ export function LoadingScreen() {
         {/* Author Credit Badge */}
         <div style={styles.authorBadge}>
           <span style={styles.authorLabel}>CREATED BY</span>
-          <span style={styles.authorName}>dawid10353 (Dawid Warzocha)</span>
+          <span style={styles.authorName}>TensorDriftStudio (Dawid Warzocha)</span>
           <span style={styles.versionTag}>• v1.0.0</span>
         </div>
       </div>

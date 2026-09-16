@@ -37,7 +37,7 @@ interface GearSpeedBand {
 const GEAR_SPEED_BANDS: readonly GearSpeedBand[] = [
   { minSpeed: 0, maxSpeed: 0, minRpm: IDLE_RPM, maxRpm: IDLE_RPM },   // 0: Neutral
   { minSpeed: 0, maxSpeed: 40, minRpm: IDLE_RPM, maxRpm: 7500 },      // 1st gear
-  { minSpeed: 25, maxSpeed: 80, minRpm: 3400, maxRpm: 7500 },        // 2nd gear
+  { minSpeed: 25, maxSpeed: 85, minRpm: 3400, maxRpm: 7500 },        // 2nd gear
   { minSpeed: 55, maxSpeed: 130, minRpm: 4000, maxRpm: 7600 },       // 3rd gear
   { minSpeed: 95, maxSpeed: 180, minRpm: 4600, maxRpm: 7600 },       // 4th gear
   { minSpeed: 145, maxSpeed: 240, minRpm: 5000, maxRpm: 7800 },      // 5th gear
@@ -107,28 +107,32 @@ export function updateGearbox(
 
     const absSlip = options?.slipAngle !== undefined ? Math.abs(options.slipAngle) : 0;
     const isDrifting = absSlip > 0.18 || Boolean(input.handbrake);
-    // In a slide or drift, evaluate gear based on forward tractive speed along wheels rather than sideways scrub
-    const effectiveSpeed = isDrifting ? Math.max(0, forwardSpeed * 3.6) : speedKmh;
+    // In a slide or drift, evaluate gear based on ground speed to prevent
+    // lateral slip angles from falsely collapsing transmission gear calculations into 1st gear
+    const effectiveSpeed = speedKmh;
 
     // Shift down: evaluate first under high load / drift
     if (newGear > 1) {
-      // Aggressive kickdown margin under heavy throttle, hard cornering, or active drift/slide
-      const kickdownMargin = isDrifting
-        ? 24
-        : (input.throttle > 0.65 || (input.steering && Math.abs(input.steering) > 0.4))
-        ? 12
-        : 0;
+      let kickdownMargin = 0;
+      if (isDrifting) {
+        // Kickdown from 3rd or higher into 2nd gear keeps high wheel torque in drifts
+        // But in 2nd gear during a slide, hold 2nd gear down to 18 km/h so the vehicle never drops to 1st gear mid-drift
+        kickdownMargin = newGear > 2 ? 24 : -12;
+      } else if (input.throttle > 0.65 || (input.steering && Math.abs(input.steering) > 0.4)) {
+        kickdownMargin = 12;
+      }
 
       if (effectiveSpeed < SHIFT_DOWN_SPEEDS[newGear] + kickdownMargin) {
         newGear--;
       }
     }
 
-    // Shift up (only if not already downshifting, and forbid upshifting during heavy sideways drift)
+    // Shift up (only if not already downshifting)
     if (newGear < 5 && newGear === currentGear) {
-      // While sideways in a drift, suppress premature upshifting to preserve maximum wheel torque
+      // In 1st gear, upshift promptly above 40 km/h even during a drift so the car never gets trapped in 1st gear redline
+      // In 2nd gear and higher, hold gear longer during drift (+15 km/h) to maintain high wheel torque
       const upshiftThreshold = isDrifting
-        ? SHIFT_UP_SPEEDS[newGear] + 15
+        ? (newGear === 1 ? SHIFT_UP_SPEEDS[1] : SHIFT_UP_SPEEDS[newGear] + 15)
         : SHIFT_UP_SPEEDS[newGear];
 
       if (effectiveSpeed > upshiftThreshold) {

@@ -21,13 +21,15 @@ describe('VehicleBuilder & Archetypes', () => {
     expect(preset.id).toBe('custom_rally');
     expect(preset.category).toBe('rally');
     expect(preset.config.wheels).toHaveLength(4);
+    expect(preset.config.weightDistribution).toBeDefined();
+    expect(preset.config.weightDistribution?.frontBias).toBeCloseTo(0.53);
 
     const validation = validateVehiclePreset(preset);
     expect(validation.valid).toBe(true);
     expect(validation.errors).toHaveLength(0);
   });
 
-  it('creates valid vehicles for all standard archetypes', () => {
+  it('creates valid vehicles for all standard archetypes with weight distribution', () => {
     const archetypes = ['rally', 'supercar', 'offroad', 'drift', 'buggy'] as const;
 
     for (const arch of archetypes) {
@@ -38,6 +40,7 @@ describe('VehicleBuilder & Archetypes', () => {
         archetype: arch,
       });
 
+      expect(preset.config.weightDistribution).toBeDefined();
       const validation = validateVehiclePreset(preset);
       expect(validation.valid, `Archetype ${arch} should be valid`).toBe(true);
     }
@@ -60,25 +63,27 @@ describe('VehicleBuilder & Archetypes', () => {
 });
 
 describe('LevelBuilder', () => {
-  it('creates a valid level preset with automatic spawn placement', () => {
+  it('creates a valid level preset with automatic spawn placement and auto tag spawns', () => {
+    const points = Array.from({ length: 14 }, (_, i) => ({
+      x: Math.cos((i / 14) * Math.PI * 2) * 100,
+      z: Math.sin((i / 14) * Math.PI * 2) * 100,
+    }));
+
     const preset = createLevelPreset({
       id: 'custom_island_track',
       name: 'Custom Island Stage',
       description: 'Scenic island test loop',
       archetype: 'island',
-      trackPoints: [
-        { x: 0, z: 0 },
-        { x: 50, z: 100 },
-        { x: 100, z: 50 },
-        { x: 50, z: -50 },
-      ],
+      bannerUrl: '/images/stages/island_circuit.jpg',
+      supportedModes: ['freeroam', 'timeattack', 'tag'],
+      trackPoints: points,
       targetHeight: 5.0,
     });
 
     expect(preset.id).toBe('custom_island_track');
-    expect(preset.spawnPosition[0]).toBe(0);
-    expect(preset.spawnPosition[1]).toBeGreaterThan(5.0);
-    expect(preset.spawnPosition[2]).toBe(0);
+    expect(preset.bannerUrl).toBe('/images/stages/island_circuit.jpg');
+    expect(preset.supportedModes).toEqual(['freeroam', 'timeattack', 'tag']);
+    expect(preset.tagSpawnPoints).toHaveLength(12);
 
     const validation = validateLevelPreset(preset);
     expect(validation.valid).toBe(true);

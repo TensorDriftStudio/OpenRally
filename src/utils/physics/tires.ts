@@ -1,11 +1,13 @@
-import type { VehicleConfig, IRapierVehicleController, SurfaceType } from '@/types/vehicle';
+import type { VehicleConfig, IRapierVehicleController, SurfaceType, TireType } from '@/types/vehicle';
 import type { InputState } from '@/types/game';
 import type { HeightmapData } from '@/types/terrain';
 import type { LevelData } from '@/types/level';
 import { BRAKE_SPEED_THRESHOLD, SAND_ELEVATION_THRESHOLD } from '@/config/vehicle';
 import { getSurfaceDefinition } from '@/config/surfaceRegistry';
+import { getTireDefinition, DEFAULT_TIRE_TYPE } from '@/config/tireRegistry';
+import { DRIVING_MODEL_BALANCE, type DrivingModelBalance } from '@/config/physicsBalance';
 
-export type { SurfaceType };
+export type { SurfaceType, TireType };
 
 /**
  * Determines the surface type under a given world position.
@@ -84,6 +86,12 @@ export function getInterpolatedSteeringAngle(speedKmh: number, curve: readonly [
   return curve[0][1];
 }
 
+/**
+ * Maximum physical steering lock available during active countersteer in a drift (~36 degrees).
+ * Provides generous countersteer authority while avoiding abrupt tire bite that flips direction.
+ */
+export const DRIFT_MAX_STEER_LOCK = Math.PI / 5.0;
+
 // Preallocated reusable grips array to avoid per-frame GC pressure
 const _gripsBuffer: number[] = [0, 0, 0, 0];
 
@@ -99,10 +107,16 @@ export function applyTireFrictionAndBrakes(
   slipAngle: number,
   heightmapData?: HeightmapData,
   levelData?: LevelData,
-): { grips: number[]; surface: SurfaceType } {
+  balance: DrivingModelBalance = DRIVING_MODEL_BALANCE,
+  assists?: { absEnabled?: boolean; tcsEnabled?: boolean; espEnabled?: boolean },
+  tireType: TireType = DEFAULT_TIRE_TYPE,
+): { grips: number[]; surface: SurfaceType; steerAngle: number; absActive: boolean; tireType: TireType } {
   const surface = getSurfaceAtPosition(posX, posY, posZ, heightmapData, levelData);
   const surfaceDef = getSurfaceDefinition(surface);
   const tireModel = surfaceDef.tireModel;
+  const tireDef = getTireDefinition(tireType);
+  const tireGripMultiplier = tireDef.surfaceGripMultipliers[surface] ?? 1.0;
+  const looseTractionMultiplier = tireDef.looseTractionLossMultiplier ?? 1.0;
 
   // Ensure buffer matches wheel count
   if (_gripsBuffer.length !== config.wheels.length) {
@@ -110,22 +124,44 @@ export function applyTireFrictionAndBrakes(
   }
 
   const throttle = input.throttle ?? 0;
+  const absEnabled = assists?.absEnabled ?? true;
+  const tcsEnabled = assists?.tcsEnabled ?? true;
+  const espEnabled = assists?.espEnabled ?? true;
+  let absActive = false;
 
-  const maxSteerAngle = getInterpolatedSteeringAngle(speedKmh, config.handling.steeringCurve);
-  const steerAngle = input.steering * maxSteerAngle;
+  const baseSteerLimit = getInterpolatedSteeringAngle(speedKmh, config.handling.steeringCurve);
+  const isCountersteer = Math.abs(slipAngle) > 0.05 && (input.steering * slipAngle < -0.005);
+  const driftExpansion = Math.min(1.0, Math.max(0, (Math.abs(slipAngle) - 0.05) / 0.35));
+  const effectiveSteerLimit = isCountersteer
+    ? baseSteerLimit + (DRIFT_MAX_STEER_LOCK - baseSteerLimit) * driftExpansion
+    : baseSteerLimit;
+  const steerAngle = input.steering * effectiveSteerLimit;
+
+  const hbBalance = balance.handbrake;
+  const tireBalance = balance.tires;
+
+  const isBraking = input.brake > 0.05 && forwardSpeed > BRAKE_SPEED_THRESHOLD;
+  const isHeavyBrake = input.brake > 0.45;
+  const isWheelLockup = isBraking && isHeavyBrake && !absEnabled;
+
+  if (isBraking && isHeavyBrake && absEnabled) {
+    absActive = true;
+  }
 
   for (let i = 0; i < config.wheels.length; i++) {
     const wheel = config.wheels[i];
 
     // Braking
     let brakeForce = 0;
-    if (input.brake > 0 && forwardSpeed > BRAKE_SPEED_THRESHOLD) {
+    if (isBraking) {
       // Brake Bias
       const frontBias = config.brakes.frontBias;
       const rearBias = 1.0 - frontBias;
       // Multiplier ensures the total braking power remains consistent
       const brakeMultiplier = wheel.steerable ? (frontBias * 2) : (rearBias * 2);
-      brakeForce = config.brakes.maxForce * input.brake * brakeMultiplier;
+      const rawForce = config.brakes.maxForce * input.brake * brakeMultiplier;
+      // When ABS is active, modulate brake force right at threshold to prevent full wheel lock
+      brakeForce = absActive ? rawForce * 0.88 : rawForce;
     }
 
     // Calculate local slip angle relative to wheel heading:
@@ -136,47 +172,103 @@ export function applyTireFrictionAndBrakes(
     // Countersteering thus directly reduces the front wheel slip angle to 0, recovering full steering authority!
     const localSlipAngle = wheel.steerable ? Math.abs(slipAngle + steerAngle) : Math.abs(slipAngle);
 
-    // Base friction with smooth slip curve (Pacejka-lite)
+    // Base friction with smooth progressive Pacejka-lite slip curve:
     const gripCurve = wheel.steerable ? tireModel.front : tireModel.rear;
-    let currentFriction = gripCurve.baseGrip;
-    
-    // Decrease grip if we exceed peak slip angle
-    if (localSlipAngle > gripCurve.peakSlipAngle) {
-      // Smooth cubic drop-off to slideGrip over slip angle range
-      const overSlip = Math.min(1.0, (localSlipAngle - gripCurve.peakSlipAngle) / (Math.PI / 4.5));
+    const peakAngle = gripCurve.peakSlipAngle;
+
+    // Apply active tire compound grip multiplier
+    const effectiveBaseGrip = gripCurve.baseGrip * tireGripMultiplier;
+    const effectiveSlideGrip = gripCurve.slideGrip * tireGripMultiplier;
+
+    // Progressive slip curve (Pacejka-lite):
+    // Eliminates binary "glued vs slide" behavior by providing an analog transition.
+    // When localSlipAngle exceeds slipBreakThreshold (~12°), grip begins a smooth cubic drop towards slideGrip.
+    let currentFriction: number;
+    const slipBreakThreshold = peakAngle * 0.45;
+    const slipRange = Math.PI / 4.5;
+
+    if (localSlipAngle > slipBreakThreshold) {
+      const overSlip = Math.min(1.0, (localSlipAngle - slipBreakThreshold) / slipRange);
       const smoothDrop = overSlip * overSlip * (3.0 - 2.0 * overSlip);
-      currentFriction = gripCurve.baseGrip - (gripCurve.baseGrip - gripCurve.slideGrip) * smoothDrop;
+      currentFriction = effectiveBaseGrip - (effectiveBaseGrip - effectiveSlideGrip) * smoothDrop;
+    } else {
+      currentFriction = effectiveBaseGrip;
     }
 
-    // Dynamic loose surface traction modulation under throttle (progressive rally wheelspin & power slides)
-    if (throttle > 0.15 && surfaceDef.looseSurfaceTractionLoss && wheel.powered) {
-      const tractionLoss = surfaceDef.looseSurfaceTractionLoss * throttle;
-      // Front wheels retain directional steering pull (0.75x), while rear wheels break away smoothly (1.15x)
-      // to deliver predictable, progressive rally slides without twitchy snap-spins
-      const axleTractionLoss = wheel.steerable ? (tractionLoss * 0.75) : (tractionLoss * 1.15);
-      currentFriction *= Math.max(0.70, 1.0 - axleTractionLoss);
+    // Continuous loose surface granular shearing and dynamic throttle churn:
+    // On loose terrain (sand, gravel, mud, snow), ground particles yield continuously under rolling tires.
+    // There is continuous micro-slip while moving (speedKmh > 1.0) so the vehicle never feels unnaturally
+    // glued to the ground, and throttle churn adds realistic power-slide wheelspin.
+    // Scaled by tire compound looseTractionLossMultiplier (gravel tires reduce slip loss, asphalt slicks suffer).
+    if (surfaceDef.looseSurfaceTractionLoss && speedKmh > 1.0) {
+      const speedRamp = Math.min(1.0, speedKmh / 20.0);
+      const effectiveLooseLoss = surfaceDef.looseSurfaceTractionLoss * looseTractionMultiplier;
+      const continuousShear = effectiveLooseLoss * 0.35 * speedRamp;
+      const throttleChurn = (throttle > 0.10 && wheel.powered)
+        ? effectiveLooseLoss * 0.65 * throttle
+        : 0;
+      const totalLooseLoss = continuousShear + throttleChurn;
+      const axleTractionLoss = wheel.steerable
+        ? (totalLooseLoss * tireBalance.looseSurfaceFrontWeight)
+        : (totalLooseLoss * tireBalance.looseSurfaceRearWeight);
+      currentFriction *= Math.max(0.40, 1.0 - axleTractionLoss);
     }
 
-    // Handbrake — drift assist grip multiplier
+    // Handbrake — drift assist grip multiplier and guaranteed rear mechanical lockup
     if (input.handbrake && !wheel.steerable) {
-      brakeForce = config.brakes.handbrakeForce;
+      brakeForce = Math.max(
+        config.brakes.handbrakeForce * hbBalance.rearLockupImpulseMultiplier,
+        hbBalance.minLockupBrakeForce,
+      );
       currentFriction *= config.handling.assists.driftGripMultiplier;
+    }
+
+    if (input.handbrake && wheel.steerable) {
+      // Front steerable wheels yield slightly during handbrake turns to prevent tripping tipping
+      currentFriction *= hbBalance.frontSteerYieldMultiplier;
     }
 
     // Dynamic power-slide wheelspin friction relaxation:
     // When wheels are spinning under throttle during a slide, dynamic kinetic friction drops,
     // allowing smooth, sustained, controllable drifts rather than violently bogging down.
-    if (throttle > 0.15 && Math.abs(slipAngle) > 0.10 && wheel.powered) {
-      const slideIntensity = Math.min(1.0, (Math.abs(slipAngle) - 0.10) / 0.35);
+    if (throttle > 0.15 && Math.abs(slipAngle) > tireBalance.minPowerSlideSlipAngle && wheel.powered) {
+      const slideIntensity = Math.min(1.0, (Math.abs(slipAngle) - tireBalance.minPowerSlideSlipAngle) / 0.35);
       const throttleSpin = throttle * slideIntensity;
-      // Front wheels retain directional bite (slight 10% reduction), while rear wheels break away (up to 30% reduction)
-      const wheelspinFrictionDrop = wheel.steerable ? (throttleSpin * 0.10) : (throttleSpin * 0.30);
+      // Front wheels retain directional bite, while rear wheels break away
+      const wheelspinFrictionDrop = wheel.steerable
+        ? (throttleSpin * tireBalance.wheelspinFrictionDropFront)
+        : (throttleSpin * tireBalance.wheelspinFrictionDropRear);
       currentFriction *= Math.max(0.60, 1.0 - wheelspinFrictionDrop);
     }
 
+    // TCS OFF Wheelspin: When Traction Control is disabled, flooring throttle at low-to-mid speeds
+    // causes driven wheels to spin aggressively (burnout / wheelspin slip), reducing tractive grip
+    // and letting the car fish-tail and power-slide freely.
+    if (!tcsEnabled && throttle > 0.45 && wheel.powered && speedKmh < 65) {
+      currentFriction *= 0.65;
+    }
+
+    // ESP OFF Breakaway: When Stability Control is disabled, un-countersteered slides allow
+    // the rear tires to break away freely, enabling authentic oversteer spinouts (loops).
+    if (!espEnabled && !wheel.steerable && Math.abs(slipAngle) > 0.18 && !isCountersteer) {
+      currentFriction *= 0.70;
+    }
+
+    // Wheel lockup without ABS:
+    // When ABS is disabled and brakes are slammed, wheels lock up completely into a flat skid.
+    // Tractive friction drops down to kinetic rubber skid level, and steerable front wheels
+    // lose almost all lateral grip (severe understeer plow straight ahead).
+    if (isWheelLockup) {
+      currentFriction = Math.min(currentFriction, effectiveSlideGrip * 0.50);
+      if (wheel.steerable) {
+        currentFriction *= 0.30;
+      }
+    }
+
+    const appliedSteerAngle = isWheelLockup ? steerAngle * 0.08 : steerAngle;
     const safeFriction = Number.isFinite(currentFriction) ? Math.max(0, currentFriction) : 1.0;
     const safeBrake = Number.isFinite(brakeForce) ? Math.max(0, brakeForce) : 0;
-    const safeSteer = Number.isFinite(steerAngle) ? steerAngle : 0;
+    const safeSteer = Number.isFinite(appliedSteerAngle) ? appliedSteerAngle : 0;
 
     controller.setWheelFrictionSlip(i, safeFriction);
     controller.setWheelBrake(i, safeBrake);
@@ -188,5 +280,21 @@ export function applyTireFrictionAndBrakes(
     }
   }
   
-  return { grips: _gripsBuffer, surface };
+  const finalSteerAngle = isWheelLockup ? steerAngle * 0.08 : steerAngle;
+  return {
+    grips: _gripsBuffer,
+    surface,
+    steerAngle: Number.isFinite(finalSteerAngle) ? finalSteerAngle : 0,
+    absActive,
+    tireType: tireDef.id,
+  };
 }
+
+/**
+ * Calculates the compound grip multiplier for a specific tire type on a surface.
+ */
+export function calculateTireSurfaceGripMultiplier(tireType: TireType, surface: SurfaceType): number {
+  const tireDef = getTireDefinition(tireType);
+  return tireDef.surfaceGripMultipliers[surface] ?? 1.0;
+}
+

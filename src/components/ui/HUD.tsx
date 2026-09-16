@@ -7,6 +7,8 @@ import { AnalogGauges, TimingBoard, GymkhanaBoard, TagBoard } from './gauges';
 import { GymkhanaCompleteModal } from './GymkhanaCompleteModal';
 import { TagCompleteModal } from './TagCompleteModal';
 import { MultiplayerHUD } from './MultiplayerHUD';
+import { RolloverAlert } from './RolloverAlert';
+import { SpeedEffects } from './SpeedEffects';
 
 /**
  * Rally HUD overlay — authentic twin-gauge rally cluster (analog Speedometer & Tachometer),
@@ -51,6 +53,9 @@ export function HUD() {
 
   return (
     <div id="hud" style={styles.container}>
+      {/* Dynamic High-Speed Peripheral Vignette & Radial Wind Streaks */}
+      <SpeedEffects />
+
       {/* Background Music */}
       <audio ref={bgmRef} src="/sounds/freeroam-music.mp3" autoPlay loop />
 
@@ -80,6 +85,9 @@ export function HUD() {
 
       {/* Online Multiplayer Gymkhana Arena Status & Roster */}
       <MultiplayerHUD />
+
+      {/* Vehicle Rollover / Inverted Roof Alert and Recovery Prompt */}
+      <RolloverAlert />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { LevelPreset } from '@/types/level';
+import type { TireType } from '@/types/vehicle';
 import { LEVEL1_DATA } from './levels/islandCircuit';
 import { LEVEL2_DESERT_DATA } from './levels/desertCanyon';
 import { LEVEL3_SWEDEN_DATA } from './levels/swedenSnow';
@@ -17,7 +18,9 @@ export const LEVEL_PRESET_ISLAND: LevelPreset = {
   description: 'Coastal circuit featuring rolling green hills, mud track curves, and ocean vistas.',
   difficulty: 'easy',
   surfaceDescription: 'Mud & Grass',
+  recommendedTire: 'gravel',
   supportedModes: ['freeroam', 'timeattack', 'tag'],
+  bannerUrl: '/images/stages/island_circuit.jpg',
   data: LEVEL1_DATA,
   spawnPosition: [-3.5, 9.5, 2.0],
   spawnRotationY: Math.atan2(130 - (-70), -70 - (-35)), // Aligned with start straight
@@ -52,13 +55,16 @@ export const LEVEL_PRESET_DESERT: LevelPreset = {
   description: 'Arid desert basin with rocky canyon passes, loose sand dunes, and elevated ridges.',
   difficulty: 'medium',
   surfaceDescription: 'Sand & Gravel',
+  recommendedTire: 'gravel',
   supportedModes: ['freeroam', 'timeattack', 'tag'],
+  bannerUrl: '/images/stages/desert_canyon.jpg',
   data: LEVEL2_DESERT_DATA,
-  spawnPosition: [-3.5, 9.5, -1.5],
+  spawnPosition: [-3.5, 9.8, -1.5],
   spawnRotationY: Math.atan2(140 - (-60), 50 - (-30)), // Aligned with start straight
   tagSpawnPoints: TAG_LEVEL_SPAWNS['level2_desert'],
   fallResetY: -10.0,
   environment: {
+    hasWater: true,
     sky: {
       sunPosition: [100, 30, -50],
       inclination: 0.6,
@@ -87,7 +93,9 @@ export const LEVEL_PRESET_SWEDEN: LevelPreset = {
   description: 'High-speed Scandinavian winter stage with snowbanks, crest jumps, red cottages, and frozen lake.',
   difficulty: 'hard',
   surfaceDescription: 'Snow & Ice',
+  recommendedTire: 'snow',
   supportedModes: ['freeroam', 'timeattack', 'tag'],
+  bannerUrl: '/images/stages/sweden_snow.jpg',
   data: LEVEL3_SWEDEN_DATA,
   spawnPosition: [-3.5, 9.5, 1.5],
   spawnRotationY: Math.atan2(130 - (-70), -50 - (-40)), // Aligned with start straight
@@ -123,7 +131,9 @@ export const LEVEL_PRESET_BRITAIN: LevelPreset = {
   description: 'Epic British highlands stage through medieval castle ruins, stone wall corridors, and tight technical hairpins.',
   difficulty: 'hard',
   surfaceDescription: 'Mud, Gravel & Stone',
+  recommendedTire: 'gravel',
   supportedModes: ['freeroam', 'timeattack', 'tag'],
+  bannerUrl: '/images/stages/highland_castle.jpg',
   data: LEVEL4_BRITAIN_DATA,
   spawnPosition: [-3.13, 9.75, -1.57],
   spawnRotationY: Math.atan2(45 - (-65), 20 - (-35)), // Aligned with CP0 track heading
@@ -158,7 +168,9 @@ export const LEVEL_PRESET_GYMKHANA: LevelPreset = {
   description: 'Industrial island drift compound featuring shipping container chicanes, 360 donut zones, and wide asphalt drift pads.',
   difficulty: 'medium',
   surfaceDescription: 'Tarmac & Concrete',
+  recommendedTire: 'asphalt',
   supportedModes: ['freeroam', 'gymkhana_blitz', 'tag'],
+  bannerUrl: '/images/stages/apex_gymkhana.jpg',
   data: LEVEL5_GYMKHANA_DATA,
   spawnPosition: [-1.86, 9.5, -4.64],
   spawnRotationY: Math.atan2(40, 100), // Aligned with CP0 track heading
@@ -209,5 +221,25 @@ export function getLevelPreset(id: string): LevelPreset {
 export function getAvailableLevels(): LevelPreset[] {
   return Object.values(LEVEL_REGISTRY);
 }
+
+/**
+ * Resolves the recommended default tire compound for a given level.
+ * Falls back to 'gravel' for unpaved terrain or 'asphalt' if unspecified.
+ */
+export function getRecommendedTireForLevel(levelOrId: LevelPreset | string): TireType {
+  const preset = typeof levelOrId === 'string' ? getLevelPreset(levelOrId) : levelOrId;
+  if (preset?.recommendedTire) {
+    return preset.recommendedTire;
+  }
+  const surfDesc = (preset?.surfaceDescription || '').toLowerCase();
+  if (surfDesc.includes('snow') || surfDesc.includes('ice') || surfDesc.includes('winter')) {
+    return 'snow';
+  }
+  if (surfDesc.includes('tarmac') || surfDesc.includes('asphalt') || surfDesc.includes('concrete')) {
+    return 'asphalt';
+  }
+  return 'gravel';
+}
+
 
 

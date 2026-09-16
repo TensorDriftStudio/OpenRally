@@ -68,6 +68,7 @@ export interface BlendInputsOptions {
   touch?: Partial<TouchInputState>;
   kbGearUp?: boolean;
   kbGearDown?: boolean;
+  sensitivity?: number;
 }
 
 export interface MergedInputResult {
@@ -91,6 +92,7 @@ export function blendInputs({
   touch = getTouchInputState(),
   kbGearUp = false,
   kbGearDown = false,
+  sensitivity = 1.0,
 }: BlendInputsOptions): MergedInputResult {
   const gpSteering = gp.steering ?? 0;
   const gpThrottle = gp.throttle ?? 0;
@@ -125,13 +127,19 @@ export function blendInputs({
   const gearDown = gpGearDown || touchGearDown || kbGearDown;
 
   // Determine steering speed:
-  // Analog inputs (gamepad stick or touch steering) use responsive GAMEPAD_STEER_SPEED.
-  // Pure digital keyboard inputs use STEER_SPEED.
+  // Analog inputs (gamepad stick or touch steering) use responsive GAMEPAD_STEER_SPEED scaled by sensitivity.
+  // Digital keyboard inputs use STEER_SPEED scaled by user sensitivity, allowing
+  // delicate micro-corrections at low sensitivity without jerky snap oversteer.
   let steerSpeed = STEER_SPEED;
-  if (Math.abs(gpSteering) > 0.001 || Math.abs(touchSteering) > 0.001) {
-    steerSpeed = GAMEPAD_STEER_SPEED;
+  const isAnalogSteering = Math.abs(gpSteering) > 0.001 || Math.abs(touchSteering) > 0.001;
+
+  if (isAnalogSteering) {
+    steerSpeed = GAMEPAD_STEER_SPEED * Math.max(0.4, Math.min(1.6, Math.sqrt(sensitivity)));
   } else if (kbSteer !== 0) {
-    steerSpeed = STEER_SPEED;
+    steerSpeed = STEER_SPEED * Math.max(0.15, Math.min(2.5, sensitivity));
+  } else {
+    // Re-centering when keyboard keys released: quick and stable
+    steerSpeed = Math.max(STEER_SPEED, STEER_SPEED * Math.min(1.5, sensitivity));
   }
 
   const combinedSteer = kbSteer + gpSteering + touchSteering;
@@ -404,6 +412,7 @@ export function useInputUpdater(): (dt: number) => InputState {
       touch,
       kbGearUp,
       kbGearDown,
+      sensitivity,
     });
 
     if (touch.gearUp) {

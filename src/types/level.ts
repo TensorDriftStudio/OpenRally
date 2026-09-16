@@ -1,5 +1,6 @@
 import type { TrackConfig } from './terrain';
 import type { GameMode } from './game';
+import type { TireType } from './vehicle';
 
 /**
  * Prop archetypes for realistic environmental scattering.
@@ -102,8 +103,12 @@ export interface LevelPreset {
   readonly difficulty: 'easy' | 'medium' | 'hard';
   /** Primary surface type description for UI */
   readonly surfaceDescription: string;
+  /** Recommended / default tire compound for this level */
+  readonly recommendedTire?: TireType;
   /** Allowed game modes for this level (defaults to ['freeroam', 'timeattack'] if omitted) */
   readonly supportedModes?: readonly GameMode[];
+  /** Optional stage preview image / banner URL */
+  readonly bannerUrl?: string;
   /** Underlying terrain, track, and props dataset */
   readonly data: LevelData;
   /** Vehicle spawn coordinates [x, y, z] */
@@ -130,6 +135,8 @@ export interface LevelPreset {
       near?: number;
       far?: number;
     };
+    /** Whether the stage features an active water/ocean body (defaults to true) */
+    hasWater?: boolean;
   };
 }
 

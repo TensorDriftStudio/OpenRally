@@ -75,7 +75,7 @@ describe('GameRoom - Rally Tag Lifecycle, Tagger, Proximity, Freeze & Scoring', 
   it('reverts to waiting phase if a player leaves during countdown and only 1 remains', () => {
     const ws1 = createMockWebSocket();
     const ws2 = createMockWebSocket();
-    const s1 = room.join(ws1, 'Driver1', 'zephyr_wr4');
+    const _s1 = room.join(ws1, 'Driver1', 'zephyr_wr4');
     const s2 = room.join(ws2, 'Driver2', 'apex_phantom_b');
 
     expect(room.tagPhase).toBe('countdown');

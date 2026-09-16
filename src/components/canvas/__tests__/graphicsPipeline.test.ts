@@ -107,6 +107,17 @@ describe('Graphics Pipeline & Settings Scaling', () => {
       expect(state.shadowsEnabled).toBe(true);
       expect(state.antiAliasing).toBe('off');
     });
+
+    it('manages dynamic resolution scaling configuration independently of quality preset', () => {
+      useSettingsStore.setState({ dynamicResolution: false });
+      expect(useSettingsStore.getState().dynamicResolution).toBe(false);
+
+      useSettingsStore.getState().toggleDynamicResolution();
+      expect(useSettingsStore.getState().dynamicResolution).toBe(true);
+
+      useSettingsStore.getState().setGraphicsQuality('low');
+      expect(useSettingsStore.getState().dynamicResolution).toBe(true);
+    });
   });
 
   describe('PostProcessingErrorBoundary containment', () => {

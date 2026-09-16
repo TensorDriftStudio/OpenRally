@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { Object3D, Vector3, CatmullRomCurve3 } from 'three';
 import { useTerrainData } from '@/components/terrain/TerrainContext';
+import { useSettingsStore } from '@/store/settingsStore';
+import { isMobileDevice } from '@/utils/device';
 import { getInterpolatedHeight } from '@/utils/terrainCompiler';
 import type { HeightmapData } from '@/types/terrain';
 import type { LevelData } from '@/types/level';
@@ -10,6 +12,10 @@ const _scratchDummy = new Object3D();
 const CELL_SIZE = 50;
 const getCellKey = (cx: number, cz: number) => `${cx}_${cz}`;
 
+export interface CategorizePropsOptions {
+  maxVegetationDistance?: number;
+}
+
 /**
  * Pure deterministic function that parses, snaps to terrain height, calculates transform matrices,
  * and categorizes all level props into distinct typed buckets along with spatial grid cells.
@@ -17,6 +23,7 @@ const getCellKey = (cx: number, cz: number) => `${cx}_${cz}`;
 export function categorizeProps(
   heightmapData: HeightmapData,
   levelData: LevelData,
+  options?: CategorizePropsOptions,
 ): CategorizedProps {
   const { heights, rows, cols } = heightmapData;
   const mapWidth = levelData.terrainBase.width;
@@ -117,6 +124,20 @@ export function categorizeProps(
       prop.type !== 'jump_ramp'
     ) {
       if (distToRoad < 12.0) continue;
+    }
+
+    // Performance Optimization (Mobile/Low GPU memory & tiler relief):
+    // Skip distant wild trees and rocks beyond the horizon fog boundary (leaves all structural props intact)
+    const isVegetationOrWildRock =
+      prop.type.startsWith('tree') ||
+      prop.type === 'rock' ||
+      prop.type === 'rock_sandstone';
+    if (
+      isVegetationOrWildRock &&
+      options?.maxVegetationDistance &&
+      distToRoad > options.maxVegetationDistance
+    ) {
+      continue;
     }
 
     const terrainY = getInterpolatedHeight(x, z, heights, rows, cols, mapWidth, mapDepth);
@@ -307,8 +328,22 @@ export function categorizeProps(
  */
 export function usePropsData(): CategorizedProps {
   const { heightmapData, levelData } = useTerrainData();
+  const graphicsQuality = useSettingsStore((s) => s.graphicsQuality);
+  const isMobile = isMobileDevice();
+
+  const maxVegetationDistance = useMemo(() => {
+    if (isMobile) {
+      if (graphicsQuality === 'low') return 130;
+      if (graphicsQuality === 'medium') return 180;
+      if (graphicsQuality === 'high') return 230;
+      return 260; // Very High on mobile: maintains rich foliage perimeter while eliminating distant out-of-bounds tiler bloat
+    }
+    if (graphicsQuality === 'low') return 350;
+    return Infinity; // Full unconstrained distance on desktop medium, high, and very_high
+  }, [isMobile, graphicsQuality]);
+
   return useMemo(
-    () => categorizeProps(heightmapData, levelData),
-    [heightmapData, levelData],
+    () => categorizeProps(heightmapData, levelData, { maxVegetationDistance }),
+    [heightmapData, levelData, maxVegetationDistance],
   );
 }

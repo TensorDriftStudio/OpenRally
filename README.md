@@ -6,13 +6,13 @@
   <p><strong>Next-generation open-source 3D arcade-sim rally experience running directly in modern web browsers and natively on Android at 60+ FPS.</strong></p>
 
   <p>
-    <a href="https://github.com/dawid10353/OpenRally/releases"><img src="https://img.shields.io/badge/Release-v1.0.0-blue?logo=github&logoColor=white" alt="Release v1.0.0" /></a>
+    <a href="https://github.com/TensorDriftStudio/OpenRally/releases"><img src="https://img.shields.io/badge/Release-v1.0.0-blue?logo=github&logoColor=white" alt="Release v1.0.0" /></a>
     <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-Strict_Zero_Any-3178C6?logo=typescript&logoColor=white" alt="TypeScript Strict" /></a>
     <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React 19" /></a>
     <a href="https://threejs.org/"><img src="https://img.shields.io/badge/Three.js-R3F-black?logo=three.js" alt="Three.js & R3F" /></a>
     <a href="https://rapier.rs/"><img src="https://img.shields.io/badge/Physics-Rapier3D_WASM-E95420" alt="Rapier3D WASM" /></a>
     <a href="https://capacitorjs.com/"><img src="https://img.shields.io/badge/Platform-Web_%7C_Android_APK-3880FF?logo=android&logoColor=white" alt="Web & Android" /></a>
-    <a href="https://vitest.dev/"><img src="https://img.shields.io/badge/Tests-1020_Passing-22c55e?logo=vitest&logoColor=white" alt="Vitest Tests" /></a>
+    <a href="https://vitest.dev/"><img src="https://img.shields.io/badge/Tests-1279_Passing-22c55e?logo=vitest&logoColor=white" alt="Vitest Tests" /></a>
     <a href="https://oxc.rs/"><img src="https://img.shields.io/badge/Linter-Oxlint_Clean-10b981" alt="Oxlint" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License" /></a>
   </p>
@@ -38,7 +38,7 @@
 
   <p align="center">
     <img src="docs/media/screenshots/gantry_finish.png" alt="OpenRally Modular Checkpoint Gate & Rally Timing" width="49%" style="border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);" />
-    <img src="docs/media/screenshots/drift_action.png" alt="OpenRally Vortex Rally1 Drift Action & Skid Marks" width="49%" style="border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);" />
+    <img src="docs/media/screenshots/drift_action.png" alt="OpenRally Vortex Rally B Drift Action & Skid Marks" width="49%" style="border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);" />
   </p>
 
   <p align="center">
@@ -98,10 +98,17 @@ The project blends authentic motorsport simulation principles with exhilarating,
 - **Mobile GPU Crash-Loop Resilience:** Automated `webglcontextlost` fail-safe guard preventing persistent crash loops on mobile devices (tested and verified on Google Pixel 10 & Pixel 10 Pro).
 - **Hardware-Accelerated Shadow Optimization:** Clean `PCFShadowMap` pipeline eliminating Three.js deprecation flip-flop loops, shader re-compilations, and VRAM memory exhaustion.
 
-### 🏁 Time Attack & Race Management
-- **3-2-1-GO Start Sequence:** Dynamic start countdown with synthesized WebAudio countdown beeps, input locking during the countdown, and instant launch on GO.
-- **Split Times & Live Deltas:** Real-time sector timing with delta indicators (green/red) comparing current pace against personal best lap records.
-- **Stage Progression & Lap Tracking:** Start/finish gantries, intermediate sector checkpoints, lap time recording, and instant stage reset.
+### 🕹️ Diverse Game Modes (Central `GameModeRegistry`)
+- **Time Attack:** Dynamic 3-2-1-GO start sequence, WebAudio countdown beeps, input locking during staging, sector split deltas (green/red), and personal best lap recording.
+- **Gymkhana Blitz:** High-octane drift score challenges, 360 donuts, speed runs, drift combo multipliers, and post-run results breakdown.
+- **Free Roam:** Open world exploration across all stages without time limits, checkpoints, or reset gates.
+- **Rally Tag:** Real-time multiplayer pursuit minigame featuring dynamic tagger/runner roles, immunity windows, freeze mechanics, and live leaderboards.
+
+### 🌐 Real-Time Multiplayer Architecture (WebSockets)
+- **Lobby Browser & Custom Rooms:** Host and join public rooms across all stages and game modes with custom nicknames and room configurations.
+- **High-Rate Telemetry Synchronization:** 60Hz vehicle telemetry broadcast (position, rotation, linear/angular velocity, wheel spin, steering, slip) decoupled from physics via `useMultiplayerTelemetrySync`.
+- **Dead-Reckoning & Snapshot Interpolation:** Remote vehicles are smoothed using jitter buffering (`RemoteVehicleManager`), preventing rubber-banding.
+- **In-Game Chat & Spectator Mode:** Integrated lobby messaging and seamless spectating when rooms reach full driver capacity.
 
 ### 🧭 Classic Motorsport Instrumentation & HUD
 - **Twin-Gauge Rally Cluster:** Authentic analog cockpit instruments featuring a 240 km/h speedometer, 8,000 RPM tachometer with redline zone, flashing **Shift Light LED**, and retro amber gear display.
@@ -175,17 +182,23 @@ OpenRally provides seamless support for **Keyboard**, **Gamepads** (PlayStation 
 
 | Vehicle | Class | Drivetrain | Top Speed | Handling | Character |
 |---|---|---|---|---|---|
-| **Apex Rally AWD** | Classic Group A Rally | AWD (50/50) | 240 km/h | ★★★★★ | Dedicated 3D rally legend with forgiving suspension, balanced AWD grip, and agile cornering. |
-| **Vortex Rally1** | Modern Rally1 | AWD (50/50) | 265 km/h | ★★★★★ | Next-gen modern Rally1 machine with aggressive aero, explosive turbo acceleration, and razor-sharp downforce handling. |
+| **Zephyr WR-4** | Classic Group A Rally | AWD (48/52) | 255 km/h | ★★★★★ | The golden standard of rally championships. Symmetrical all-wheel drive, telepathic turn-in, and controllable four-wheel drifts on loose surfaces. |
+| **Phantom B-Spec** | Group B Prototype | AWD (48/52) | 275 km/h | ★★★★★ | Ultra-lightweight mid-engine Group B prototype engineered for extreme acceleration, razor-sharp transient response, and high-rpm rally racing. |
+| **Bantam Turbo Maxi** | Widebody Hot Hatch | AWD (40/60) | 245 km/h | ★★★★★ | Widebody mid-engine hot hatch legend engineered for nimble hairpin mastery, explosive corner exit traction, and effortless Scandinavian flick oversteer. |
+| **Vortex Rally B** | Twin-Charged Group B | AWD (45/55) | 280 km/h | ★★★★★ | Twin-charged mid-engine Group B icon with tubular spaceframe, explosive turbo/supercharger boost, aggressive downforce, and legendary pedigree. |
+| **Vanguard GT-Aero** | Grand Touring Aero Coupe | AWD (35/65) | 280 km/h | ★★★★★ | Grand touring aerodynamic rally coupe with extended wheelbase high-speed tracking, rear-biased AWD balance, and 280 km/h top end. |
+| **Shadowfire RS** | Modern Rough-Terrain Rally1 | AWD (50/50) | 260 km/h | ★★★★★ | Aggressive modern widebody rally challenger equipped with heavy-duty long-travel suspension, supreme bump absorption, and tenacious rough-gravel grip. |
+| **Kodiak Raid Pro** | Armored Cross-Country Raid | AWD (50/50) | 235 km/h | ★★★★☆ | Armored cross-country raid titan engineered to conquer extreme desert dunes, deep mud ruts, and massive high-flying jumps without flinching. |
 
 ### Available Stages & Tracks
 
-| Stage | Environment | Surfaces | Description |
-|---|---|---|---|
-| **Island Circuit** | Coastal Archipelago | Mud, Grass, Tarmac | Scenic coastal curves, green hills, ocean vistas, and fast flowing elevation changes. |
-| **Desert Canyon** | Arid Badlands | Sand, Gravel, Rock | Dusty canyon corridors, loose dunes, sharp switchbacks, and elevation drops. |
-| **Sweden Snow Rally** | Nordic Tundra | Snow, Ice | Frozen Scandinavian roads through pine forests, icy hairpins, and snow-covered valleys. |
-| **Highland Castle** | Scottish Highlands | Mud, Grass, Heather | Rolling highland moors with ancient castle ruins, stone cottages, scenic lochs, and Celtic standing stones. |
+| Stage | Environment | Surfaces | Supported Modes | Description |
+|---|---|---|---|---|
+| **Island Circuit** | Coastal Archipelago | Mud & Grass | Free Roam, Time Attack, Rally Tag | Scenic coastal curves, green hills, ocean vistas, and fast flowing elevation changes. |
+| **Desert Canyon** | Arid Badlands | Sand & Gravel | Free Roam, Time Attack, Rally Tag | Dusty canyon corridors, loose dunes, sharp switchbacks, and elevation drops. |
+| **Sweden Snow Rally** | Nordic Tundra | Snow & Ice | Free Roam, Time Attack, Rally Tag | Frozen Scandinavian roads through pine forests, icy hairpins, and snow-covered valleys. |
+| **Highland Castle Rally** | Scottish Highlands | Mud, Gravel & Stone | Free Roam, Time Attack, Rally Tag | Rolling highland moors with ancient castle ruins, stone cottages, scenic lochs, and Celtic standing stones. |
+| **Apex Gymkhana Arena** | Industrial Drift Compound | Tarmac & Concrete | Free Roam, Gymkhana Blitz, Rally Tag | Industrial drift island compound featuring shipping container chicanes, 360 donut zones, and wide asphalt drift pads. |
 
 ---
 
@@ -200,7 +213,7 @@ OpenRally provides seamless support for **Keyboard**, **Gamepads** (PlayStation 
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/dawid10353/OpenRally.git
+   git clone https://github.com/TensorDriftStudio/OpenRally.git
    cd OpenRally
    ```
 
@@ -251,18 +264,22 @@ OpenRally Architecture
 ├── Physics Simulation:   @react-three/rapier (Rapier3D WASM Raycast Vehicle)
 ├── State Management:     Zustand (gameStore, settingsStore, racingStore)
 ├── UI & HUD:             React 19 + SVG Instrumentation + CSS Modules
+├── Game Modes:           Central GameModeRegistry (Time Attack, Gymkhana, Free Roam, Tag)
+├── Networking:           Native WebSocket Protocol + Lobby & Room Management
 ├── Post-Processing:      @react-three/postprocessing (Bloom, Vignette, ToneMapping)
 ├── Audio Engine:         WebAudio API (procedural synthesis & sampling)
 ├── Mobile Runtime:       Capacitor 8.5 (@capacitor/core & @capacitor/android)
-├── Testing & QA:         Vitest (1,020 automated tests) + Oxlint + Strict TypeScript
+├── Testing & QA:         Vitest (1,279 automated tests across 102 files) + Oxlint + Strict TypeScript
 └── Bundler & Build:      Vite 8 + Gradle Wrapper (Android APK)
 ```
 
 ### Key Architectural Patterns
-- **Centralized Registry Pattern:** Vehicle configurations, tracks, and surface physics are managed through decoupled, strongly-typed registries (`vehicleRegistry.ts`, `levelRegistry.ts`, `surfaceRegistry.ts`).
+- **Centralized Registry Pattern:** Vehicle configurations, tracks, surfaces, and game modes are managed through decoupled, strongly-typed registries (`vehicleRegistry.ts`, `levelRegistry.ts`, `surfaceRegistry.ts`, `gameModeRegistry.ts`).
+- **Decoupled Physics & Network Telemetry:** Hot physics tick loops (`useVehiclePhysics.ts`) remain purely simulation-focused, while network transmission and proximity checks are cleanly delegated to specialized lifecycle hooks (`useMultiplayerTelemetrySync.ts`, `useTagProximity.ts`).
+- **AI-Extensible Content Builders:** Content expansion follows enterprise builder patterns (`createVehiclePreset()`, `createLevelPreset()`) with pre-validated defaults, automatic 12-point tag spawn generation, and diagnostic self-checks.
 - **Zero-GC Hot Execution Loops:** All matrix transformations, quaternion rotations, and raycast calculations reuse module-level scratch instances (`_vec3`, `_quat`, `_euler`), preventing garbage collection stutters.
 - **Transient HUD DOM Subscriptions:** Speedometer, tachometer needle rotations, and shift light DOM updates subscribe directly to store state without triggering React component re-renders.
-- **Fail-Fast Runtime Validation:** Schemas for presets, levels, and surfaces are validated at runtime (`src/utils/validation/`) with automated self-checks (`src/utils/diagnostics/`).
+- **Fail-Fast Runtime Validation:** Schemas for presets, levels, surfaces, and network packets are validated at runtime (`src/utils/validation/`) with automated self-checks (`src/utils/diagnostics/`).
 - **GPU Resource Hygiene & Graceful Degradation:** Automatic WebGL context recovery, shadow map lifecycle disposal, and error boundary containment.
 
 ### In-Depth Documentation
@@ -277,7 +294,7 @@ OpenRally Architecture
 OpenRally enforces strict quality gates with zero tolerance for regressions:
 
 ```bash
-# Run complete verification suite (Typecheck + Oxlint + Vitest 1,020 tests)
+# Run complete verification suite (Typecheck + Oxlint + Vitest 1,279 tests across 102 files)
 npm run check
 
 # Run unit and integration tests only
@@ -302,11 +319,13 @@ npx vitest run tests/e2e/apk_validator.test.ts
 
 - [x] **Stage 1 — Foundation (Completed):** Procedural heightmap terrain, Rapier raycast vehicle physics, chase/bumper cameras, HUD, lighting.
 - [x] **Stage 2 — Simulation & Polish (Completed):** Particle systems, synthesized WebAudio, surface friction curves, skid ribbons, checkpoint racing system, Vitest test suite.
-- [x] **Stage 3 — Expansion (Current Stage):**
-  - [x] Dedicated 3D GLB vehicle models (`Apex Rally AWD`, `Vortex Rally1`) with raycast suspension & tire physics
+- [x] **Stage 3 — Expansion (Completed):**
+  - [x] 7 Championship 3D GLB vehicle models (`Zephyr WR-4`, `Phantom B-Spec`, `Bantam Turbo Maxi`, `Vortex Rally B`, `Vanguard GT-Aero`, `Shadowfire RS`, `Kodiak Raid Pro`) with raycast suspension & tire physics
   - [x] Authentic analog rally instrumentation (Speedometer, Tachometer, Shift Light, Gear Display)
   - [x] Stage roadbook minimap with compass directions and elevation awareness
-  - [x] Multi-track stage registry (Island Circuit, Desert Canyon, Sweden Snow Rally, Highland Castle)
+  - [x] 5 Championship stages in multi-track registry (Island Circuit, Desert Canyon, Sweden Snow Rally, Highland Castle Rally, Apex Gymkhana Arena)
+  - [x] Diverse game modes via `GameModeRegistry` (Time Attack, Gymkhana Blitz, Free Roam, Rally Tag)
+  - [x] Real-time multiplayer architecture (WebSockets, room lobbies, live chat, spectator mode, decoupled telemetry sync)
   - [x] Modular 3D race architecture (start/finish gantries, sector gates, race textures)
   - [x] Time Attack 3-2-1-GO countdown sequence with audio beeps & split time delta tracking
   - [x] Physics-based dynamic engine RPM simulation with inertia & limiter bounce
@@ -316,13 +335,11 @@ npx vitest run tests/e2e/apk_validator.test.ts
   - [x] Virtual touch controls HUD with analog steering, pedal buttons, and haptic feedback
   - [x] Mobile GPU optimization, hardware `PCFShadowMap` shadows & crash-loop protection
   - [x] 100% trademark-safe original assets & textures
-  - [x] Comprehensive automated test suite exceeding **1,020 passing unit/integration tests**
-  - [ ] Additional vehicle models (RWD Sports Coupe, Desert Trophy Truck)
-  - [ ] Hillclimb & rallycross stages
+  - [x] Comprehensive automated test suite exceeding **1,279 passing unit/integration tests across 102 files**
 - [ ] **Stage 4 — Future Visions:**
-  - [ ] Real-time multiplayer (WebRTC / WebSockets)
+  - [ ] Dedicated persistent multiplayer server infrastructure with global leaderboards
   - [ ] Procedural track editor & terrain sculptor
-  - [ ] Dynamic weather simulation (rain, wet asphalt reflections, fog)
+  - [ ] Dynamic weather simulation (rain, wet asphalt reflections, volumetric fog)
   - [ ] Automated AI asset generation pipeline
 
 ---

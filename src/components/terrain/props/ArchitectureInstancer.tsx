@@ -4,8 +4,6 @@ import {
   Color,
   MeshStandardMaterial,
   type Texture,
-  Sphere,
-  Vector3,
 } from 'three';
 import {
   createCabinStoneGeometry,
@@ -271,19 +269,14 @@ export function ArchitectureInstancer({
   // VRAM Upload per batch
   useLayoutEffect(() => {
     const uploadBatch = (mesh: InstancedMesh | null, items: PropItem[]) => {
-      if (!mesh) return;
+      if (!mesh || items.length === 0) return;
       for (let i = 0; i < items.length; i++) {
         mesh.setMatrixAt(i, items[i].matrix);
       }
       mesh.instanceMatrix.needsUpdate = true;
       mesh.count = items.length;
-      if (items.length > 0) {
-        mesh.visible = true;
-        mesh.computeBoundingSphere();
-      } else {
-        mesh.visible = false;
-        mesh.boundingSphere = new Sphere(new Vector3(0, 0, 0), -1);
-      }
+      mesh.visible = true;
+      mesh.computeBoundingSphere();
     };
 
     uploadBatch(cabinStoneRef.current, cabins);
@@ -367,103 +360,117 @@ export function ArchitectureInstancer({
   return (
     <>
       {/* 1. Rustic Cabins */}
-      <instancedMesh
-        ref={cabinStoneRef}
-        args={[cabinStoneGeo, cabinStoneMaterial, Math.max(1, cabins.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
-      <instancedMesh
-        ref={cabinWallRef}
-        args={[cabinWallGeo, cabinWallMaterial, Math.max(1, cabins.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
-      <instancedMesh
-        ref={cabinDoorRef}
-        args={[cabinDoorGeo, cabinDoorMaterial, Math.max(1, cabins.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
-      <instancedMesh
-        ref={cabinWindowRef}
-        args={[cabinWindowGeo, cabinWindowMaterial, Math.max(1, cabins.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
-      <instancedMesh
-        ref={cabinRoofRef}
-        args={[cabinRoofGeo, cabinRoofMaterial, Math.max(1, cabins.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {cabins.length > 0 && (
+        <>
+          <instancedMesh
+            ref={cabinStoneRef}
+            args={[cabinStoneGeo, cabinStoneMaterial, cabins.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            frustumCulled
+          />
+          <instancedMesh
+            ref={cabinWallRef}
+            args={[cabinWallGeo, cabinWallMaterial, cabins.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            frustumCulled
+          />
+          <instancedMesh
+            ref={cabinDoorRef}
+            args={[cabinDoorGeo, cabinDoorMaterial, cabins.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            frustumCulled
+          />
+          <instancedMesh
+            ref={cabinWindowRef}
+            args={[cabinWindowGeo, cabinWindowMaterial, cabins.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            frustumCulled
+          />
+          <instancedMesh
+            ref={cabinRoofRef}
+            args={[cabinRoofGeo, cabinRoofMaterial, cabins.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            frustumCulled
+          />
+        </>
+      )}
 
       {/* 2. Scottish Croft Cottages */}
-      <instancedMesh
-        ref={cottageWallRef}
-        args={[cottageWallGeo, cottageWallMaterial, Math.max(1, highlandCottages.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
-      <instancedMesh
-        ref={cottageRoofRef}
-        args={[cottageRoofGeo, cottageRoofMaterial, Math.max(1, highlandCottages.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {highlandCottages.length > 0 && (
+        <>
+          <instancedMesh
+            ref={cottageWallRef}
+            args={[cottageWallGeo, cottageWallMaterial, highlandCottages.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            frustumCulled
+          />
+          <instancedMesh
+            ref={cottageRoofRef}
+            args={[cottageRoofGeo, cottageRoofMaterial, highlandCottages.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            frustumCulled
+          />
+        </>
+      )}
 
       {/* 3. Medieval Castle Complex */}
-      <instancedMesh
-        ref={castleTowerRef}
-        args={[castleTowerGeo, castleStoneMaterial, Math.max(1, castleTowers.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
-      <instancedMesh
-        ref={castleWallRef}
-        args={[castleWallGeo, castleStoneMaterial, Math.max(1, castleWalls.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
-      <instancedMesh
-        ref={castleGateRef}
-        args={[castleGateGeo, castleStoneMaterial, Math.max(1, castleGates.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
-      <instancedMesh
-        ref={castleKeepRef}
-        args={[castleKeepGeo, castleStoneMaterial, Math.max(1, castleKeeps.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
-      <instancedMesh
-        ref={castleArchRef}
-        args={[castleArchGeo, castleStoneMaterial, Math.max(1, castleArches.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {castleTowers.length > 0 && (
+        <>
+          <instancedMesh
+            ref={castleTowerRef}
+            args={[castleTowerGeo, castleStoneMaterial, castleTowers.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            frustumCulled
+          />
+          <instancedMesh
+            ref={castleWallRef}
+            args={[castleWallGeo, castleStoneMaterial, castleWalls.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            frustumCulled
+          />
+          <instancedMesh
+            ref={castleGateRef}
+            args={[castleGateGeo, castleStoneMaterial, castleGates.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            frustumCulled
+          />
+          <instancedMesh
+            ref={castleKeepRef}
+            args={[castleKeepGeo, castleStoneMaterial, castleKeeps.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            frustumCulled
+          />
+          <instancedMesh
+            ref={castleArchRef}
+            args={[castleArchGeo, castleStoneMaterial, castleArches.length]}
+            castShadow={canShadow}
+            receiveShadow={canShadow}
+            frustumCulled
+          />
+        </>
+      )}
 
       {/* 4. Ancient Arched Stone Packhorse Bridges */}
-      <instancedMesh
-        ref={stoneBridgeRef}
-        args={[stoneBridgeGeo, stoneBridgeMaterial, Math.max(1, stoneBridges.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {stoneBridges.length > 0 && (
+        <instancedMesh
+          ref={stoneBridgeRef}
+          args={[stoneBridgeGeo, stoneBridgeMaterial, stoneBridges.length]}
+          castShadow={canShadow}
+          receiveShadow={canShadow}
+          frustumCulled
+        />
+      )}
     </>
   );
 }

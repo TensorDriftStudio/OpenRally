@@ -1,9 +1,11 @@
 import { VEHICLE_REGISTRY, DEFAULT_VEHICLE_ID } from '@/config/vehicleRegistry';
 import { LEVEL_REGISTRY, DEFAULT_LEVEL_ID } from '@/config/levelRegistry';
 import { SURFACE_REGISTRY } from '@/config/surfaceRegistry';
+import { DRIVING_MODEL_BALANCE } from '@/config/physicsBalance';
 import { validateVehiclePreset } from '@/utils/validation/vehicleValidator';
 import { validateLevelPreset } from '@/utils/validation/levelValidator';
 import { validateSurfaceDefinition } from '@/utils/validation/surfaceValidator';
+import { validateDrivingModelBalance } from '@/utils/validation/physicsBalanceValidator';
 
 export interface DiagnosticsReport {
   readonly valid: boolean;
@@ -141,15 +143,37 @@ export function validateSurfaceRegistryIntegrity(): { errors: string[]; warnings
 }
 
 /**
+ * Validates the global driving model balance configuration.
+ */
+export function validatePhysicsBalanceIntegrity(): { errors: string[]; warnings: string[] } {
+  const validation = validateDrivingModelBalance(DRIVING_MODEL_BALANCE);
+  return {
+    errors: validation.valid ? [] : validation.errors.map((e) => `[PhysicsBalance] ${e}`),
+    warnings: [],
+  };
+}
+
+/**
  * Runs a comprehensive project-wide sanity check across all registries and assets.
  */
 export function runGameDiagnostics(): DiagnosticsReport {
   const vehicleDiag = validateVehicleRegistryIntegrity();
   const levelDiag = validateLevelRegistryIntegrity();
   const surfaceDiag = validateSurfaceRegistryIntegrity();
+  const balanceDiag = validatePhysicsBalanceIntegrity();
 
-  const errors = [...vehicleDiag.errors, ...levelDiag.errors, ...surfaceDiag.errors];
-  const warnings = [...vehicleDiag.warnings, ...levelDiag.warnings, ...surfaceDiag.warnings];
+  const errors = [
+    ...vehicleDiag.errors,
+    ...levelDiag.errors,
+    ...surfaceDiag.errors,
+    ...balanceDiag.errors,
+  ];
+  const warnings = [
+    ...vehicleDiag.warnings,
+    ...levelDiag.warnings,
+    ...surfaceDiag.warnings,
+    ...balanceDiag.warnings,
+  ];
 
   return {
     valid: errors.length === 0,

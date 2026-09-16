@@ -30,6 +30,7 @@ describe('settingsStore', () => {
       graphicsQuality: 'very_high',
       antiAliasing: 'smaa',
       resolutionScale: 1.0,
+      dynamicResolution: false,
       shadowsEnabled: true,
       postProcessingEnabled: true,
       sensitivity: 1.0,
@@ -51,6 +52,7 @@ describe('settingsStore', () => {
       expect(settings.graphicsQuality).toBe('medium');
       expect(settings.antiAliasing).toBe('off');
       expect(settings.resolutionScale).toBe(1.0);
+      expect(settings.dynamicResolution).toBe(false);
       expect(settings.shadowsEnabled).toBe(false);
       expect(settings.postProcessingEnabled).toBe(false);
       expect(settings.graphicsConfiguredByUser).toBe(false);
@@ -61,6 +63,7 @@ describe('settingsStore', () => {
       expect(settings.graphicsQuality).toBe('very_high');
       expect(settings.antiAliasing).toBe('smaa');
       expect(settings.resolutionScale).toBe(1.0);
+      expect(settings.dynamicResolution).toBe(false);
       expect(settings.graphicsConfiguredByUser).toBe(false);
     });
   });
@@ -196,12 +199,17 @@ describe('settingsStore', () => {
       expect(persisted.graphicsConfiguredByUser).toBe(true);
     });
 
-    it('marks graphicsConfiguredByUser: true when toggleShadows or togglePostProcessing is called', () => {
+    it('marks graphicsConfiguredByUser: true when toggleShadows, togglePostProcessing or toggleDynamicResolution is called', () => {
       useSettingsStore.getState().toggleShadows();
       expect(useSettingsStore.getState().graphicsConfiguredByUser).toBe(true);
 
       useSettingsStore.getState().togglePostProcessing();
       expect(useSettingsStore.getState().graphicsConfiguredByUser).toBe(true);
+
+      useSettingsStore.setState({ graphicsConfiguredByUser: false });
+      useSettingsStore.getState().toggleDynamicResolution();
+      expect(useSettingsStore.getState().graphicsConfiguredByUser).toBe(true);
+      expect(useSettingsStore.getState().dynamicResolution).toBe(true);
     });
 
     it('marks graphicsConfiguredByUser: true when setTargetFps is called and persists value', () => {
@@ -308,7 +316,7 @@ describe('settingsStore', () => {
   });
 
   it('toggles settings boolean flags', () => {
-    const { toggleShadows, togglePostProcessing, toggleDebugPhysics } = useSettingsStore.getState();
+    const { toggleShadows, togglePostProcessing, toggleDebugPhysics, toggleDynamicResolution } = useSettingsStore.getState();
 
     toggleShadows();
     expect(useSettingsStore.getState().shadowsEnabled).toBe(false);
@@ -318,6 +326,12 @@ describe('settingsStore', () => {
 
     toggleDebugPhysics();
     expect(useSettingsStore.getState().debugPhysics).toBe(true);
+
+    expect(useSettingsStore.getState().dynamicResolution).toBe(false);
+    toggleDynamicResolution();
+    expect(useSettingsStore.getState().dynamicResolution).toBe(true);
+    toggleDynamicResolution();
+    expect(useSettingsStore.getState().dynamicResolution).toBe(false);
   });
 
   it('updates volume sliders', () => {
@@ -401,6 +415,76 @@ describe('settingsStore', () => {
 
       const loaded = loadSettingsFromStorage(false);
       expect(loaded.transmissionMode).toBe('manual');
+    });
+  });
+
+  describe('driving assists (ABS, TCS, ESP)', () => {
+    it('defaults to all assists enabled', () => {
+      const state = useSettingsStore.getState();
+      expect(state.absEnabled).toBe(true);
+      expect(state.tcsEnabled).toBe(true);
+      expect(state.espEnabled).toBe(true);
+    });
+
+    it('toggles ABS and persists to localStorage', () => {
+      const { toggleAbs, setAbsEnabled } = useSettingsStore.getState();
+
+      toggleAbs();
+      expect(useSettingsStore.getState().absEnabled).toBe(false);
+      let saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}');
+      expect(saved.absEnabled).toBe(false);
+
+      toggleAbs();
+      expect(useSettingsStore.getState().absEnabled).toBe(true);
+
+      setAbsEnabled(false);
+      expect(useSettingsStore.getState().absEnabled).toBe(false);
+    });
+
+    it('toggles TCS and persists to localStorage', () => {
+      const { toggleTcs, setTcsEnabled } = useSettingsStore.getState();
+
+      toggleTcs();
+      expect(useSettingsStore.getState().tcsEnabled).toBe(false);
+      let saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}');
+      expect(saved.tcsEnabled).toBe(false);
+
+      toggleTcs();
+      expect(useSettingsStore.getState().tcsEnabled).toBe(true);
+
+      setTcsEnabled(false);
+      expect(useSettingsStore.getState().tcsEnabled).toBe(false);
+    });
+
+    it('toggles ESP and persists to localStorage', () => {
+      const { toggleEsp, setEspEnabled } = useSettingsStore.getState();
+
+      toggleEsp();
+      expect(useSettingsStore.getState().espEnabled).toBe(false);
+      let saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}');
+      expect(saved.espEnabled).toBe(false);
+
+      toggleEsp();
+      expect(useSettingsStore.getState().espEnabled).toBe(true);
+
+      setEspEnabled(false);
+      expect(useSettingsStore.getState().espEnabled).toBe(false);
+    });
+
+    it('loads assists from localStorage correctly', () => {
+      localStorage.setItem(
+        SETTINGS_STORAGE_KEY,
+        JSON.stringify({
+          absEnabled: false,
+          tcsEnabled: false,
+          espEnabled: false,
+        })
+      );
+
+      const loaded = loadSettingsFromStorage(false);
+      expect(loaded.absEnabled).toBe(false);
+      expect(loaded.tcsEnabled).toBe(false);
+      expect(loaded.espEnabled).toBe(false);
     });
   });
 });

@@ -1,7 +1,7 @@
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import type { RapierRigidBody } from '@react-three/rapier';
-import { InstancedMesh, Object3D, Color, Vector3, CanvasTexture, Quaternion } from 'three';
+import { InstancedMesh, Object3D, Color, Vector3, CanvasTexture, Quaternion, BufferAttribute } from 'three';
 
 // Reusable objects for matrix composition (saves CPU and GC)
 const _q = new Quaternion();
@@ -251,8 +251,8 @@ export function DustParticles({ wheelsRef, chassisRef }: DustParticlesProps) {
         currentOpacity = 1;
       }
 
-      // Keep expanding, don't shrink! (minimal expansion)
-      const currentScale = p.scale * (1 + progress * 1.5);
+      // Controlled particle expansion to prevent screen-covering overdraw
+      const currentScale = p.scale * (1 + progress * 0.8);
 
       // Billboarding: face camera + individual particle rotation
       _q.setFromAxisAngle(_axisZ, p.rotationAngle);
@@ -273,12 +273,29 @@ export function DustParticles({ wheelsRef, chassisRef }: DustParticlesProps) {
     meshRef.current.count = writeIdx;
 
     if (writeIdx > 0) {
-      meshRef.current.instanceMatrix.needsUpdate = true;
-      if (meshRef.current.instanceColor) {
-        meshRef.current.instanceColor.needsUpdate = true;
+      const matAttr = meshRef.current.instanceMatrix;
+      if (typeof matAttr.clearUpdateRanges === 'function') {
+        matAttr.clearUpdateRanges();
+        matAttr.addUpdateRange(0, writeIdx * 16);
       }
+      matAttr.needsUpdate = true;
+
+      if (meshRef.current.instanceColor) {
+        const colorAttr = meshRef.current.instanceColor;
+        if (typeof colorAttr.clearUpdateRanges === 'function') {
+          colorAttr.clearUpdateRanges();
+          colorAttr.addUpdateRange(0, writeIdx * 3);
+        }
+        colorAttr.needsUpdate = true;
+      }
+
       if (meshRef.current.geometry && meshRef.current.geometry.attributes.instanceOpacity) {
-        meshRef.current.geometry.attributes.instanceOpacity.needsUpdate = true;
+        const opAttr = meshRef.current.geometry.attributes.instanceOpacity;
+        if (opAttr instanceof BufferAttribute) {
+          opAttr.clearUpdateRanges();
+          opAttr.addUpdateRange(0, writeIdx);
+        }
+        opAttr.needsUpdate = true;
       }
       wasRenderingRef.current = true;
     } else if (wasRenderingRef.current) {
@@ -290,7 +307,7 @@ export function DustParticles({ wheelsRef, chassisRef }: DustParticlesProps) {
   return (
     <instancedMesh ref={meshRef} args={[undefined, undefined, poolSize]} frustumCulled={false}>
 
-      <planeGeometry args={[1.5, 1.5]}>
+      <planeGeometry args={[1.1, 1.1]}>
         <instancedBufferAttribute
           attach="attributes-instanceOpacity"
           args={[opacityArray, 1]}
@@ -300,7 +317,7 @@ export function DustParticles({ wheelsRef, chassisRef }: DustParticlesProps) {
         transparent
         map={dustTexture}
         depthWrite={false}
-        opacity={0.8}
+        opacity={0.65}
         onBeforeCompile={(shader) => {
           shader.vertexShader = `
             attribute float instanceOpacity;

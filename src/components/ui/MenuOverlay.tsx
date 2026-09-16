@@ -12,6 +12,7 @@ import { resetGamepadEdgeState } from '@/utils/input/gamepad';
 import { useGameEventListener } from '@/utils/events';
 import { unlockSharedAudioContext } from '@/utils/audio/audioContext';
 import { returnToMainMenu } from '@/utils/navigation';
+import { getGameModeDefinition } from '@/config/gameModeRegistry';
 import type { GameMode } from '@/types';
 import {
   menuStyles,
@@ -45,6 +46,8 @@ export function MenuOverlay() {
   const setGameMode = useGameStore((s) => s.setGameMode);
   const selectedVehicleId = useGameStore((s) => s.selectedVehicleId);
   const setSelectedVehicleId = useGameStore((s) => s.setSelectedVehicleId);
+  const selectedTireType = useGameStore((s) => s.selectedTireType);
+  const setSelectedTireType = useGameStore((s) => s.setSelectedTireType);
   const selectedLevelId = useGameStore((s) => s.selectedLevelId);
   const setSelectedLevelId = useGameStore((s) => s.setSelectedLevelId);
   const gamepadConnected = useGameStore((s) => s.gamepadConnected);
@@ -133,6 +136,7 @@ export function MenuOverlay() {
     drawDistance, setDrawDistance,
     antiAliasing, setAntiAliasing,
     resolutionScale, setResolutionScale,
+    dynamicResolution, toggleDynamicResolution,
     shadowsEnabled, toggleShadows, 
     postProcessingEnabled, togglePostProcessing,
     sfxVolume, setSfxVolume,
@@ -240,6 +244,7 @@ export function MenuOverlay() {
     setSelectedLevelId(levelId);
     syncBestLapForLevel(levelId);
     useGymkhanaStore.getState().syncBestScoreForLevel(levelId);
+    setFocusedIndexInternal(0);
     setView('start_mode');
   }, [setSelectedLevelId, setView, syncBestLapForLevel]);
 
@@ -435,14 +440,14 @@ export function MenuOverlay() {
               <span style={{
                 padding: '4px 10px',
                 borderRadius: '6px',
-                background: 'rgba(227, 24, 55, 0.15)',
-                border: '1px solid rgba(227, 24, 55, 0.35)',
-                color: '#F87171',
+                background: getGameModeDefinition(gameMode).badgeBg,
+                border: `1px solid ${getGameModeDefinition(gameMode).badgeBorder}`,
+                color: getGameModeDefinition(gameMode).badgeColor,
                 fontSize: '11px',
                 fontWeight: 800,
                 letterSpacing: '1px',
               }}>
-                {gameMode === 'timeattack' ? 'TIME ATTACK' : gameMode === 'gymkhana_blitz' ? 'GYMKHANA BLITZ' : 'FREE ROAM'}
+                {getGameModeDefinition(gameMode).badgeLabel}
               </span>
             </div>
 
@@ -457,7 +462,7 @@ export function MenuOverlay() {
                   borderRadius: '12px',
                   backgroundImage: `
                     linear-gradient(90deg, rgba(10, 14, 25, 0.95) 0%, rgba(10, 14, 25, 0.72) 55%, rgba(10, 14, 25, 0.4) 100%),
-                    url('${STAGE_BANNERS[currentLevelPreset.id] || '/images/stages/island_circuit.jpg'}')
+                    url('${currentLevelPreset.bannerUrl || STAGE_BANNERS[currentLevelPreset.id] || '/images/stages/island_circuit.jpg'}')
                   `,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
@@ -538,6 +543,7 @@ export function MenuOverlay() {
             availableVehicles={availableVehicles}
             previewVehicleId={previewVehicleId}
             selectedVehicleId={selectedVehicleId}
+            selectedTireType={selectedTireType}
             previewPreset={previewPreset}
             focusedIndex={focusedIndex}
             textColor={textColor}
@@ -546,6 +552,7 @@ export function MenuOverlay() {
             gameMode={gameMode}
             onPointerMoveItem={handlePointerMoveItem}
             onSelectPreviewVehicle={setPreviewVehicleId}
+            onSelectTireType={setSelectedTireType}
             onEquipVehicle={(id) => {
               setSelectedVehicleId(id);
               useGameStore.getState().triggerReset(true);
@@ -585,6 +592,7 @@ export function MenuOverlay() {
             drawDistance={drawDistance}
             antiAliasing={antiAliasing}
             resolutionScale={resolutionScale}
+            dynamicResolution={dynamicResolution}
             shadowsEnabled={shadowsEnabled}
             postProcessingEnabled={postProcessingEnabled}
             sensitivity={sensitivity}
@@ -609,6 +617,7 @@ export function MenuOverlay() {
             onSetDrawDistance={setDrawDistance}
             onSetAntiAliasing={setAntiAliasing}
             onSetResolutionScale={setResolutionScale}
+            onToggleDynamicResolution={toggleDynamicResolution}
             onToggleShadows={toggleShadows}
             onTogglePostProcessing={togglePostProcessing}
             onSetSensitivity={setSensitivity}
@@ -721,7 +730,7 @@ export function MenuOverlay() {
               letterSpacing: '0.5px',
               whiteSpace: 'nowrap',
             }}>
-              <span>Game by <strong style={{ color: '#FFFFFF' }}>dawid10353 (Dawid Warzocha)</strong></span>
+              <span>Game by <strong style={{ color: '#FFFFFF' }}>TensorDriftStudio (Dawid Warzocha)</strong></span>
               <span>•</span>
               <span style={{ color: '#E31837', fontWeight: 700 }}>OpenRally v1.0.0</span>
             </span>

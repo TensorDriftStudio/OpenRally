@@ -53,3 +53,11 @@ export function useTerrainData(): TerrainContextValue {
   }
   return ctx;
 }
+
+/**
+ * Optional hook to consume terrain data if rendered inside a <TerrainProvider>,
+ * returning null otherwise without throwing an exception.
+ */
+export function useOptionalTerrainData(): TerrainContextValue | null {
+  return useContext(TerrainCtx);
+}

@@ -668,12 +668,12 @@ export const LEVEL4_BRITAIN_DATA: LevelData = {
   terrainBase: {
     width: 2600,
     depth: 2600,
-    subdivisions: 384,
-    amplitude: 22,
+    subdivisions: 512,
+    amplitude: 17,
     frequency: 0.0016,
-    octaves: 4,
+    octaves: 3,
     lacunarity: 2.1,
-    persistence: 0.44,
+    persistence: 0.35,
     seed: 491823,
   },
   track: {
@@ -681,6 +681,7 @@ export const LEVEL4_BRITAIN_DATA: LevelData = {
     width: 5.5,
     falloff: 4.5,
     targetHeight: 0,
+    roadGrading: 0.65,
   },
   props: generateBritainProps(2600, 2600),
   heightModifiers: [

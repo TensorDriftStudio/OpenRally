@@ -7,6 +7,9 @@ import {
   calculateTargetDpr,
   MOBILE_MAX_DPR,
   DESKTOP_MAX_DPR,
+  MOBILE_MAX_PIXELS,
+  DESKTOP_HIGH_MAX_PIXELS,
+  DESKTOP_VERY_HIGH_MAX_PIXELS,
   getClampedAnisotropy,
 } from '../device';
 
@@ -310,6 +313,90 @@ describe('Device Detection & DPR Scaling', () => {
           expect(config.dprTuple[0]).toBeLessThanOrEqual(config.dprTuple[1]);
         }
       }
+    });
+
+    it('locks dprTuple to [targetDpr, targetDpr] when dynamicResolution is false', () => {
+      const config = calculateDprConfig({
+        windowDpr: 2.0,
+        graphicsQuality: 'high',
+        resolutionScale: 1.0,
+        isMobile: false,
+        dynamicResolution: false,
+      });
+      expect(config.targetDpr).toBe(1.5);
+      expect(config.dprTuple).toEqual([1.5, 1.5]);
+    });
+  });
+
+  describe('calculateDprConfig Pixel Ceiling Clamping (Fill-Rate Guard)', () => {
+    it('clamps mobile DPR to protect against GPU thermal throttling on ultra-high res phones', () => {
+      // e.g. 1080x2400 mobile screen at windowDpr 3.0, very_high quality (target would normally be 1.75)
+      const vpWidth = 1080;
+      const vpHeight = 2400;
+      const config = calculateDprConfig({
+        windowDpr: 3.0,
+        graphicsQuality: 'very_high',
+        resolutionScale: 1.0,
+        isMobile: true,
+        viewportWidth: vpWidth,
+        viewportHeight: vpHeight,
+      });
+
+      const effectivePixels = vpWidth * vpHeight * config.targetDpr * config.targetDpr;
+      expect(effectivePixels).toBeLessThanOrEqual(MOBILE_MAX_PIXELS + 1);
+      // Math.sqrt(2_150_000 / 2_592_000) ~= 0.9107
+      expect(config.targetDpr).toBeCloseTo(Math.sqrt(MOBILE_MAX_PIXELS / (vpWidth * vpHeight)), 3);
+    });
+
+    it('clamps desktop 4K screen on high quality to protect desktop GPU fill-rate', () => {
+      const vpWidth = 3840;
+      const vpHeight = 2160;
+      const config = calculateDprConfig({
+        windowDpr: 2.0,
+        graphicsQuality: 'high',
+        resolutionScale: 1.0,
+        isMobile: false,
+        viewportWidth: vpWidth,
+        viewportHeight: vpHeight,
+      });
+
+      const effectivePixels = vpWidth * vpHeight * config.targetDpr * config.targetDpr;
+      expect(effectivePixels).toBeLessThanOrEqual(DESKTOP_HIGH_MAX_PIXELS + 1);
+      expect(config.targetDpr).toBeCloseTo(Math.sqrt(DESKTOP_HIGH_MAX_PIXELS / (vpWidth * vpHeight)), 3);
+    });
+
+    it('allows 4K UHD rendering on desktop with very_high quality up to DESKTOP_VERY_HIGH_MAX_PIXELS', () => {
+      const vpWidth = 3840;
+      const vpHeight = 2160;
+      const config = calculateDprConfig({
+        windowDpr: 1.0,
+        graphicsQuality: 'very_high',
+        resolutionScale: 1.0,
+        isMobile: false,
+        viewportWidth: vpWidth,
+        viewportHeight: vpHeight,
+      });
+
+      // 3840 * 2160 * 1.0 = 8.294M <= 8.3M
+      expect(config.targetDpr).toBe(1.0);
+      const effectivePixels = vpWidth * vpHeight * config.targetDpr * config.targetDpr;
+      expect(effectivePixels).toBeLessThanOrEqual(DESKTOP_VERY_HIGH_MAX_PIXELS);
+    });
+
+    it('does not artificially clamp standard 1080p desktop monitors', () => {
+      const vpWidth = 1920;
+      const vpHeight = 1080;
+      const config = calculateDprConfig({
+        windowDpr: 1.0,
+        graphicsQuality: 'high',
+        resolutionScale: 1.0,
+        isMobile: false,
+        viewportWidth: vpWidth,
+        viewportHeight: vpHeight,
+      });
+
+      // 1920 * 1080 * 1.0 = 2.07M, well below 3.7M
+      expect(config.targetDpr).toBe(1.0);
     });
   });
 

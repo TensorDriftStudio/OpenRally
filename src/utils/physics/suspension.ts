@@ -1,6 +1,8 @@
 import type { RapierRigidBody } from '@react-three/rapier';
 import type { VehicleConfig, IRapierVehicleController } from '@/types/vehicle';
 import { Vector3, Quaternion } from 'three';
+import { clamp } from '@/utils/math';
+import { DRIVING_MODEL_BALANCE, type SuspensionBalanceConfig } from '@/config/physicsBalance';
 
 const _localPoint = new Vector3();
 const _worldPoint = new Vector3();
@@ -17,7 +19,8 @@ export function applyAntiRollBars(
   body: RapierRigidBody,
   controller: IRapierVehicleController,
   config: VehicleConfig,
-  dt: number
+  dt: number,
+  balance: SuspensionBalanceConfig = DRIVING_MODEL_BALANCE.suspension,
 ): void {
   if (!config.suspension) return;
 
@@ -28,16 +31,16 @@ export function applyAntiRollBars(
 
   // Front Axle (Wheels 0 and 1 are FL and FR)
   if (config.suspension.frontAntiRollBarStiffness > 0) {
-    applyAxleARB(body, controller, config, 0, 1, config.suspension.frontAntiRollBarStiffness, dt);
+    applyAxleARB(body, controller, config, 0, 1, config.suspension.frontAntiRollBarStiffness, dt, balance);
   }
   
   // Rear Axle (Wheels 2 and 3 are RL and RR)
   if (config.suspension.rearAntiRollBarStiffness > 0) {
-    applyAxleARB(body, controller, config, 2, 3, config.suspension.rearAntiRollBarStiffness, dt);
+    applyAxleARB(body, controller, config, 2, 3, config.suspension.rearAntiRollBarStiffness, dt, balance);
   }
 
   // Active longitudinal pitch stabilization (Anti-Squat & Anti-Dive)
-  applyPitchStabilization(body, controller, config, dt);
+  applyPitchStabilization(body, controller, config, dt, balance);
 }
 
 /**
@@ -51,6 +54,7 @@ export function applyPitchStabilization(
   controller: IRapierVehicleController,
   config: VehicleConfig,
   dt: number,
+  balance: SuspensionBalanceConfig = DRIVING_MODEL_BALANCE.suspension,
 ): void {
   if (config.wheels.length < 4) return;
 
@@ -75,31 +79,40 @@ export function applyPitchStabilization(
   const mass = typeof body.mass === 'function' ? body.mass() : (config.chassisMass || 150);
   const baseAntiSquatStiffness = config.suspension?.antiSquatStiffness ?? 24.0;
 
+  const suspBalance = balance;
+
   // In Three.js / Rapier right-handed system (+X Right, +Y Up, +Z Forward):
   // Positive torque around X tilts nose DOWN towards the road.
   // Negative torque around X tilts nose UP towards the sky.
   // When tail squats (pitchCompressionDelta < 0), we need POSITIVE torque to push nose DOWN.
   // When nose dives (pitchCompressionDelta > 0), we need NEGATIVE torque to push nose UP.
-  const squatMultiplier = pitchCompressionDelta < 0 ? 2.5 : 1.5;
-  const pitchStiffness = baseAntiSquatStiffness * mass * squatMultiplier;
+  const squatMultiplier = pitchCompressionDelta < 0 ? 2.0 : 1.0;
+  // Scaled progressive pitch stiffness with soft saturation:
+  // Prevents road bumps, ruts, and berms from jerking the chassis with thousands of N*m torque.
+  const pitchStiffness = baseAntiSquatStiffness * mass * suspBalance.antiSquatMassScale * squatMultiplier;
   let pitchRestoringTorque = -pitchCompressionDelta * pitchStiffness;
 
-  // Extra anti-wheelie progressive clamping:
+  // Saturated clamp: limit static anti-dive/anti-squat spring torque to prevent harsh bump kick
+  const maxRestoringTorque = mass * suspBalance.maxRestoringPitchTorqueG;
+  pitchRestoringTorque = clamp(pitchRestoringTorque, -maxRestoringTorque, maxRestoringTorque);
+
+  // Progressive anti-wheelie clamping:
   // If front suspension has unweighted towards full extension while rear is compressed,
-  // apply positive restoring torque to firmly plant the front wheels down.
-  if (frontCompression < 0.04 && rearCompression > 0.03) {
-    const unweightedSeverity = Math.min(1.0, Math.max(0, (0.04 - frontCompression) / 0.04));
-    pitchRestoringTorque += unweightedSeverity * mass * 25.0; // Positive torque pushes nose down
+  // apply progressive restoring torque to firmly plant the front wheels down.
+  if (frontCompression < 0.05 && rearCompression > 0.02) {
+    const unweightedSeverity = Math.min(1.0, Math.max(0, (0.05 - frontCompression) / 0.05));
+    pitchRestoringTorque += unweightedSeverity * mass * suspBalance.antiWheeliePitchMultiplier; // Positive torque pushes nose down
   }
 
   // Angular pitch rate damping (around chassis local X axis)
   // When nose pitches UP, localAngvel.x is negative.
   // -localAngvel.x is positive, applying positive torque to push nose down and oppose pitch-up.
+  // Robust pitch velocity damping smoothly absorbs bumps, crests, and landings.
   const angvel = typeof body.angvel === 'function' ? body.angvel() : { x: 0, y: 0, z: 0 };
   _angvel.set(angvel.x, angvel.y, angvel.z);
   _invQuat.copy(_bodyQuat).invert();
   _localAngvel.copy(_angvel).applyQuaternion(_invQuat);
-  const pitchDamping = -_localAngvel.x * mass * 4.0;
+  const pitchDamping = -_localAngvel.x * mass * suspBalance.pitchDampingMassScale;
 
   // Apply restoring pitch torque in world space
   const totalPitchTorque = (pitchRestoringTorque + pitchDamping) * dt;
@@ -122,7 +135,8 @@ function applyAxleARB(
   leftIndex: number,
   rightIndex: number,
   stiffness: number,
-  dt: number
+  dt: number,
+  balance: SuspensionBalanceConfig = DRIVING_MODEL_BALANCE.suspension,
 ) {
   const leftLength = controller.wheelSuspensionLength(leftIndex);
   const rightLength = controller.wheelSuspensionLength(rightIndex);
@@ -135,9 +149,11 @@ function applyAxleARB(
   const leftCompression = leftWheel.suspensionRestLength - leftLength;
   const rightCompression = rightWheel.suspensionRestLength - rightLength;
   
-  // Force proportional to difference in compression
+  // Force proportional to difference in compression scaled by vehicle mass
   // If left is more compressed than right, antiRollForce > 0
-  const antiRollForce = (leftCompression - rightCompression) * stiffness;
+  const mass = typeof body.mass === 'function' ? body.mass() : (config.chassisMass || 150);
+  const antiRollForce =
+    (leftCompression - rightCompression) * stiffness * mass * balance.antiRollBarMassScale;
   
   if (Number.isFinite(antiRollForce)) {
     // We want to push the left side UP (positive local Y impulse)
@@ -148,7 +164,7 @@ function applyAxleARB(
 }
 
 function applyWheelForce(body: RapierRigidBody, controller: IRapierVehicleController, wheelIndex: number, forceY: number) {
-  if (!Number.isFinite(forceY)) return;
+  if (!Number.isFinite(forceY) || Math.abs(forceY) < 1e-5) return;
   const conn = controller.wheelChassisConnectionPointCs(wheelIndex);
   if (!conn) return;
   

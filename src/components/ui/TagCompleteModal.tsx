@@ -9,7 +9,7 @@ import { returnToMainMenu } from '@/utils/navigation';
 import { useIsMobile } from './MultiplayerHUD';
 
 /**
- * Rally Tag (Berek) Stage Complete modal.
+ * Rally Tag (Pursuit) Stage Complete modal.
  * Displays match winner, full driver classification ranked by Clean Time,
  * 20-second intermission countdown, and universal gamepad & keyboard navigation.
  */

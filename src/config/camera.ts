@@ -2,13 +2,13 @@ import { Vector3 } from 'three';
 
 // ─── Chase Camera Offsets ────────────────────────────────────────────
 /** Camera position offset behind and above the vehicle (chassis-local) */
-export const CHASE_OFFSET = new Vector3(0, 5.5, -14);
+export const CHASE_OFFSET = new Vector3(0, 4.58, -14);
 
 /** Camera position offset closer behind the vehicle (chassis-local) */
-export const CHASE_CLOSE_OFFSET = new Vector3(0, 2.6, -7);
+export const CHASE_CLOSE_OFFSET = new Vector3(0, 2.17, -7);
 
 /** Look-at target offset ahead of the vehicle (chassis-local) */
-export const LOOK_AHEAD_OFFSET = new Vector3(0, 1.5, 5);
+export const LOOK_AHEAD_OFFSET = new Vector3(0, 1.27, 5);
 
 // ─── FOV ─────────────────────────────────────────────────────────────
 /** Minimum field of view (degrees) at standstill */
@@ -19,6 +19,25 @@ export const MAX_FOV = 85;
 
 /** Speed (km/h) at which FOV reaches MAX_FOV */
 export const MAX_SPEED_FOR_FOV = 200;
+
+/** Maximum dynamic FOV expansion delta for chase_close mode (degrees) */
+export const DYNAMIC_FOV_DELTA_CLOSE = 15;
+
+/** Maximum dynamic FOV expansion delta for standard chase mode (degrees) */
+export const DYNAMIC_FOV_DELTA_NORMAL = 18;
+
+/** Speed (km/h) where dynamic FOV reaches full expansion */
+export const DYNAMIC_FOV_MAX_SPEED = 180;
+
+/** Speed threshold (km/h) above which high-speed camera micro-rumble begins */
+export const SPEED_RUMBLE_MIN_SPEED = 70;
+
+/** Speed (km/h) where high-speed camera micro-rumble reaches maximum intensity */
+export const SPEED_RUMBLE_MAX_SPEED = 180;
+
+/** Maximum camera elevation drop (meters) at top speed for ground texture velocity perception */
+export const SPEED_HEIGHT_DROP_CLOSE = 0.22;
+export const SPEED_HEIGHT_DROP_NORMAL = 0.38;
 
 // ─── Smoothing ───────────────────────────────────────────────────────
 /** Exponential decay rate for camera position smoothing (lower = lazier) */

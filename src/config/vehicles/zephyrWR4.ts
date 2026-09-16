@@ -13,9 +13,10 @@ export const ZEPHYR_WR4_VEHICLE_CONFIG: VehicleConfig = {
     engineOffsetZ: 0.85,
     engineOffsetY: -0.18,
     centerOfMassZ: 0.08, // +0.08m forward offset (~53/47 weight distribution)
+    centerOfMassY: -0.36,
   },
   engine: {
-    maxForce: 410,
+    maxForce: 425,
     maxSpeed: 255,
   },
   drivetrain: {
@@ -23,41 +24,52 @@ export const ZEPHYR_WR4_VEHICLE_CONFIG: VehicleConfig = {
   },
   brakes: {
     maxForce: 18,
-    handbrakeForce: 70,
+    handbrakeForce: 40,
     frontBias: 0.50, // Balanced 50/50 brake distribution preventing nose-dive
   },
   suspension: {
     frontAntiRollBarStiffness: 18.0,
     rearAntiRollBarStiffness: 20.0, // Stiffer rear ARB eliminates understeer
-    antiSquatStiffness: 35.0,
+    antiSquatStiffness: 44.0,
   },
   handling: {
     steeringCurve: [
-      [0, Math.PI / 3.8],
-      [40, Math.PI / 4.5],
-      [90, Math.PI / 7.0],
-      [150, Math.PI / 11.0],
-      [240, Math.PI / 16.0],
+      [0, Math.PI / 3.6],
+      [40, Math.PI / 4.1],
+      [90, Math.PI / 6.3],
+      [150, Math.PI / 10.0],
+      [240, Math.PI / 15.0],
     ],
-    steeringSpeed: 8.0,
+    steeringSpeed: 8.8,
     assists: {
       yawDamping: 0.14,
-      driftGripMultiplier: 0.25,
+      driftGripMultiplier: 0.68,
     },
   },
   aerodynamics: {
     downforceFactor: 21,
+  },
+  chassisDynamics: {
+    maxRollAngle: 0.088, // ~5.0 degrees (classic balanced rally body roll)
+    rollStiffness: 1.0,
+    maxPitchDive: 0.055, // ~3.1 degrees
+    maxPitchSquat: 0.045, // ~2.6 degrees
+    pitchStiffness: 1.0,
+    naturalFrequency: 10.5,
+    dampingRatio: 0.90,
+    heaveMultiplier: 0.32,
   },
   wheels: [
     {
       // Front-left
       position: [-0.88, -0.2, 1.38],
       radius: 0.32,
-      suspensionRestLength: 0.30,
-      suspensionTravel: 0.22,
-      suspensionStiffness: 42,
-      suspensionDamping: 5.0,
-      maxSuspensionForce: 10000,
+      suspensionRestLength: 0.32,
+      suspensionTravel: 0.26,
+      minSuspensionLength: 0.18,
+      suspensionStiffness: 30,
+      suspensionDamping: 6.8,
+      maxSuspensionForce: 15000,
       steerable: true,
       powered: true,
     },
@@ -65,11 +77,12 @@ export const ZEPHYR_WR4_VEHICLE_CONFIG: VehicleConfig = {
       // Front-right
       position: [0.88, -0.2, 1.38],
       radius: 0.32,
-      suspensionRestLength: 0.30,
-      suspensionTravel: 0.22,
-      suspensionStiffness: 42,
-      suspensionDamping: 5.0,
-      maxSuspensionForce: 10000,
+      suspensionRestLength: 0.32,
+      suspensionTravel: 0.26,
+      minSuspensionLength: 0.18,
+      suspensionStiffness: 30,
+      suspensionDamping: 6.8,
+      maxSuspensionForce: 15000,
       steerable: true,
       powered: true,
     },
@@ -77,11 +90,12 @@ export const ZEPHYR_WR4_VEHICLE_CONFIG: VehicleConfig = {
       // Rear-left
       position: [-0.89, -0.2, -1.23],
       radius: 0.32,
-      suspensionRestLength: 0.27,
-      suspensionTravel: 0.20,
-      suspensionStiffness: 44,
-      suspensionDamping: 5.0,
-      maxSuspensionForce: 10000,
+      suspensionRestLength: 0.31,
+      suspensionTravel: 0.25,
+      minSuspensionLength: 0.18,
+      suspensionStiffness: 31,
+      suspensionDamping: 6.8,
+      maxSuspensionForce: 15000,
       steerable: false,
       powered: true,
     },
@@ -89,11 +103,12 @@ export const ZEPHYR_WR4_VEHICLE_CONFIG: VehicleConfig = {
       // Rear-right
       position: [0.89, -0.2, -1.23],
       radius: 0.32,
-      suspensionRestLength: 0.27,
-      suspensionTravel: 0.20,
-      suspensionStiffness: 44,
-      suspensionDamping: 5.0,
-      maxSuspensionForce: 10000,
+      suspensionRestLength: 0.31,
+      suspensionTravel: 0.25,
+      minSuspensionLength: 0.18,
+      suspensionStiffness: 31,
+      suspensionDamping: 6.8,
+      maxSuspensionForce: 15000,
       steerable: false,
       powered: true,
     },
@@ -106,7 +121,7 @@ export const VEHICLE_ZEPHYR_WR4: VehiclePreset = {
   description: 'The golden standard of rally championships. Featuring symmetrical all-wheel drive, telepathic turn-in, and exceptionally controllable four-wheel drifts on loose surfaces.',
   category: 'rally',
   modelPath: VEHICLE_ZEPHYR_WR4_MODEL_PATH,
-  modelPositionOffset: [0, 0.025, 0.0],
+  modelPositionOffset: [0, 0.065, 0.0],
   modelScale: [4.5, 4.5, 4.5],
   stats: {
     topSpeed: 8.5,

@@ -87,6 +87,30 @@ describe('powertrain physics', () => {
       });
       expect(gear).toBe(2);
     });
+
+    it('holds 2nd gear during a power drift at 45-60 km/h instead of downshifting to 1st gear', () => {
+      // Car in 2nd gear sliding at 55 km/h with 40-degree slip angle
+      const gear = updateGearbox(55, 11.5, { ...baseInput, throttle: 1 }, 2, false, {
+        slipAngle: 0.70,
+      });
+      expect(gear).toBe(2);
+    });
+
+    it('upshifts from 1st to 2nd gear above 40 km/h during a drift to prevent rev-limiter bogging', () => {
+      // Car in 1st gear accelerating out of a tight hairpin at 44 km/h with slip angle
+      const gear = updateGearbox(44, 11.0, { ...baseInput, throttle: 1 }, 1, false, {
+        slipAngle: 0.40,
+      });
+      expect(gear).toBe(2);
+    });
+
+    it('downshifts to 1st gear during a slide only when speed drops below 18 km/h', () => {
+      // Car spinning out or coming to a halt: at 15 km/h, safely drops to 1st
+      const gear = updateGearbox(15, 3.5, { ...baseInput, throttle: 0.5 }, 2, false, {
+        slipAngle: 0.50,
+      });
+      expect(gear).toBe(1);
+    });
   });
 
   describe('handleManualGearShift', () => {

@@ -124,7 +124,7 @@ describe('Adversarial Challenger 2: Milestone M2 Empirical Stress Harness', () =
     it('M2-ADV-1.2: Confirms menuGamepadNavigation correctly adjusts indexing when vibration is toggled', () => {
       const navHookContent = fs.readFileSync(navHookPath, 'utf-8');
       expect(navHookContent).toContain('const isVib = useSettingsStore.getState().vibrationEnabled;');
-      expect(navHookContent).toContain('return isVib ? 7 : 6;');
+      expect(navHookContent).toContain('return isVib ? 10 : 9;');
     });
 
     it('M2-ADV-1.3: Confirms all 5 categories are accessible in SettingsView including Touch Controls', () => {

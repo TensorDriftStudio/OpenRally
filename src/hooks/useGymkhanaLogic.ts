@@ -36,6 +36,17 @@ export function useGymkhanaLogic(): void {
     return unsub;
   }, []);
 
+  // Reset blitz and restart countdown upon vehicle reset
+  useEffect(() => {
+    const unsub = onGameEvent('vehicle_reset', () => {
+      if (useGameStore.getState().gameMode === 'gymkhana_blitz' && useGameStore.getState().gameState === 'playing') {
+        useGymkhanaStore.getState().resetBlitz();
+        useGymkhanaStore.getState().startCountdown();
+      }
+    });
+    return unsub;
+  }, []);
+
   // Frame tick loop
   useFrame((_, delta) => {
     if (useGameStore.getState().gameState !== 'playing') return;

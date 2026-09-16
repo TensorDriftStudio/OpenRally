@@ -112,6 +112,54 @@ describe('gameStore', () => {
     useGameStore.getState().setLoadingTarget('menu');
     expect(useGameStore.getState().loadingTarget).toBe('menu');
   });
+
+  it('resets telemetry, updates spawn position/heading and triggers pendingReset when setSelectedLevelId is called', () => {
+    // Set dirty telemetry
+    useGameStore.setState({
+      speed: 140,
+      lateralSpeed: 12,
+      slipAngle: 0.35,
+      rpm: 6500,
+      gear: 4,
+      pendingReset: false,
+    });
+
+    useGameStore.getState().setSelectedLevelId('level2_desert');
+    const state = useGameStore.getState();
+
+    expect(state.selectedLevelId).toBe('level2_desert');
+    expect(state.selectedTireType).toBe('gravel');
+    expect(state.isSceneReady).toBe(false);
+    expect(state.speed).toBe(0);
+    expect(state.lateralSpeed).toBe(0);
+    expect(state.slipAngle).toBe(0);
+    expect(state.rpm).toBe(1000);
+    expect(state.gear).toBe(1);
+    expect(state.pendingReset).toBe(true);
+    expect(state.position).toEqual([-3.5, 9.8, -1.5]);
+  });
+
+  it('automatically preselects appropriate tire compound when switching levels and allows manual override', () => {
+    // 1. Sweden Snow Rally must default to snow tires
+    useGameStore.getState().setSelectedLevelId('level3_sweden');
+    expect(useGameStore.getState().selectedLevelId).toBe('level3_sweden');
+    expect(useGameStore.getState().selectedTireType).toBe('snow');
+
+    // 2. Apex Gymkhana Arena must default to asphalt tires
+    useGameStore.getState().setSelectedLevelId('level5_gymkhana');
+    expect(useGameStore.getState().selectedLevelId).toBe('level5_gymkhana');
+    expect(useGameStore.getState().selectedTireType).toBe('asphalt');
+
+    // 3. Desert Canyon must default to gravel tires
+    useGameStore.getState().setSelectedLevelId('level2_desert');
+    expect(useGameStore.getState().selectedLevelId).toBe('level2_desert');
+    expect(useGameStore.getState().selectedTireType).toBe('gravel');
+
+    // 4. User can still freely override tire choice for the stage
+    useGameStore.getState().setSelectedTireType('asphalt');
+    expect(useGameStore.getState().selectedTireType).toBe('asphalt');
+    expect(useGameStore.getState().selectedLevelId).toBe('level2_desert');
+  });
 });
 
 

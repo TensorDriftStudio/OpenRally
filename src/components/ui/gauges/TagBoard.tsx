@@ -12,7 +12,7 @@ function formatRoundTime(seconds: number): string {
 }
 
 /**
- * Rally Tag (Berek) HUD Board.
+ * Rally Tag (Pursuit) HUD Board.
  * Displays real-time match state, round timer, role indicator (Tagger vs Runner),
  * countdown notifications, and freeze / immunity status banners.
  */

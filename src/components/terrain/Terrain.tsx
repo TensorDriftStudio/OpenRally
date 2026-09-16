@@ -42,15 +42,33 @@ export function Terrain() {
   const shadowsEnabled = useSettingsStore((s) => s.shadowsEnabled);
   const shouldReceiveShadow = shadowsEnabled && graphicsQuality !== 'low';
 
-  // Load AI-generated terrain textures
+  const levelId = levelData.id.toLowerCase();
+  const isDesert = levelId.includes('desert');
+  const isSnow = levelId.includes('sweden') || levelId.includes('snow') || levelId.includes('winter');
+  const isBritain = levelId.includes('britain') || levelId.includes('highland');
+  const isGymkhana = levelId.includes('gymkhana');
+
+  // Lightweight 68-byte placeholder texture to substitute unneeded terrain textures per biome,
+  // saving over 20MB VRAM and eliminating texture thrashing on TBDR mobile GPUs.
+  const BLANK = '/textures/placeholder.png';
+
+  const grassPath = (!isDesert && !isSnow && !isBritain && !isGymkhana) ? '/textures/terrain/grass.jpg' : BLANK;
+  const highlandHeatherPath = isBritain ? '/textures/terrain/highland_heather.jpg' : BLANK;
+  const trackPath = !isSnow ? '/textures/terrain/dirt_track.jpg' : BLANK;
+  const rockPath = '/textures/terrain/rock_cliff.jpg';
+  const sandPath = isDesert ? '/textures/terrain/desert_sand.jpg' : BLANK;
+  const snowPath = isSnow ? '/textures/terrain/snow.jpg' : BLANK;
+  const snowTrackPath = isSnow ? '/textures/terrain/snow_track.jpg' : BLANK;
+
+  // Load AI-generated terrain textures (biome-tailored to reduce VRAM by over 20MB)
   const [grassTexture, trackTexture, rockTexture, sandTexture, snowTexture, snowTrackTexture, highlandHeatherTexture] = useTexture([
-    '/textures/terrain/grass.jpg',
-    '/textures/terrain/dirt_track.jpg',
-    '/textures/terrain/rock_cliff.jpg',
-    '/textures/terrain/desert_sand.jpg',
-    '/textures/terrain/snow.jpg',
-    '/textures/terrain/snow_track.jpg',
-    '/textures/terrain/highland_heather.jpg',
+    grassPath,
+    trackPath,
+    rockPath,
+    sandPath,
+    snowPath,
+    snowTrackPath,
+    highlandHeatherPath,
   ]);
 
   // Set repeat wrapping and SRGB color space on all terrain textures (clamped to <= 2 on mobile)
@@ -66,12 +84,6 @@ export function Terrain() {
       tex.needsUpdate = true;
     });
   }, [grassTexture, trackTexture, rockTexture, sandTexture, snowTexture, snowTrackTexture, highlandHeatherTexture, graphicsQuality]);
-
-  const levelId = levelData.id.toLowerCase();
-  const isDesert = levelId.includes('desert');
-  const isSnow = levelId.includes('sweden') || levelId.includes('snow') || levelId.includes('winter');
-  const isBritain = levelId.includes('britain') || levelId.includes('highland');
-  const isGymkhana = levelId.includes('gymkhana');
 
   const chunkGeometries = useMemo(() => {
     return buildTerrainChunkGeometries({
@@ -154,6 +166,7 @@ export function Terrain() {
           geometry={chunkGeo}
           material={material}
           receiveShadow={shouldReceiveShadow}
+          renderOrder={0}
           frustumCulled
         />
       ))}

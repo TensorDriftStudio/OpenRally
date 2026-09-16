@@ -36,6 +36,17 @@ import {
  * soft shoreline foam/frost, and physically balanced sun/sky specular reflections.
  */
 export function Ocean() {
+  const { levelPreset } = useTerrainData();
+  const hasWater = levelPreset.environment?.hasWater ?? true;
+
+  if (!hasWater) {
+    return null;
+  }
+
+  return <OceanContent />;
+}
+
+function OceanContent() {
   const waterRef = useRef<Mesh>(null);
   const { heightmapData, levelData } = useTerrainData();
   const graphicsQuality = useSettingsStore((s) => s.graphicsQuality);
@@ -73,8 +84,9 @@ export function Ocean() {
   }, [heightmapData]);
 
   const waterMesh = useMemo(() => {
-    // On mobile, clamp segments to 8 (128 tris) since wave motion is 100% in fragment shader with 0 vertex displacement
-    const effectiveSegments = isMobileDevice() ? Math.min(segmentsCount, 8) : segmentsCount;
+    // On mobile, clamp segments to 8 (128 tris) since wave motion is 100% in fragment shader with 0 vertex displacement;
+    // On desktop, clamp to 32 (2,048 tris) to eliminate over 125,000 redundant vertices without any visual degradation
+    const effectiveSegments = isMobileDevice() ? Math.min(segmentsCount, 8) : Math.min(segmentsCount, 32);
     const geometry = new PlaneGeometry(
       WATER_SIZE,
       WATER_SIZE,
@@ -92,6 +104,7 @@ export function Ocean() {
       u_foamThreshold: { value: WATER_FOAM_THRESHOLD },
       u_iceTexture: { value: iceTexture },
       u_isSnow: { value: isSnow ? 1.0 : 0.0 },
+      u_isMobile: { value: isMobileDevice() ? 1.0 : 0.0 },
     };
 
     const material = new MeshStandardMaterial({
@@ -101,9 +114,16 @@ export function Ocean() {
       flatShading: false,
     });
 
+    const isMobile = isMobileDevice();
+
     const mesh = new Mesh(geometry, material);
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.y = WATER_POSITION_Y;
+    mesh.renderOrder = 1;
+
+    material.customProgramCacheKey = () => {
+      return `openrally-ocean-${isSnow ? 'snow' : 'water'}-${isMobile ? 'mobile' : 'desktop'}`;
+    };
 
     material.onBeforeCompile = (shader) => {
       shader.uniforms.time = { value: 0 };
@@ -140,10 +160,39 @@ export function Ocean() {
         uniform float u_foamThreshold;
         uniform sampler2D u_iceTexture;
         uniform float u_isSnow;
+        uniform float u_isMobile;
         
         varying vec3 vWorldPos;
 
-        // Fast 2D Simplex/Perlin Gradient Noise for natural organic water turbulence
+        ${isMobile ? /* glsl */ `
+        // Ultra-fast analytical wave normal for mobile devices:
+        // Eliminates 15 procedural Simplex noise evaluations per fragment while preserving rich hydrodynamic ripple motion.
+        vec3 getMobileWaterNormal(vec2 p, float t, float viewDist) {
+          float distFade = clamp(viewDist / 320.0, 0.0, 1.0);
+          float waveStrength = mix(0.24, 0.03, distFade);
+
+          // Wave train 1: primary oceanic swell
+          vec2 dir1 = vec2(0.707, 0.707);
+          float phase1 = dot(p, dir1) * 0.22 + t * 1.35;
+          float c1 = cos(phase1) * 0.18;
+
+          // Wave train 2: cross choppy ripple
+          vec2 dir2 = vec2(-0.45, 0.89);
+          float phase2 = dot(p, dir2) * 0.50 - t * 1.85;
+          float c2 = cos(phase2) * 0.09;
+
+          // Wave train 3: high-frequency surface shimmer
+          vec2 dir3 = vec2(0.85, -0.52);
+          float phase3 = dot(p, dir3) * 1.15 + t * 2.4;
+          float c3 = cos(phase3) * (0.04 * (1.0 - distFade * 0.8));
+
+          float dX = dir1.x * c1 + dir2.x * c2 + dir3.x * c3;
+          float dZ = dir1.y * c1 + dir2.y * c2 + dir3.y * c3;
+
+          return normalize(vec3(-dX * waveStrength, 1.0, -dZ * waveStrength));
+        }
+        ` : /* glsl */ `
+        // Fast 2D Simplex/Perlin Gradient Noise for natural organic water turbulence (desktop)
         vec2 hash2(vec2 p) {
           p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
           return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
@@ -164,16 +213,13 @@ export function Ocean() {
         }
 
         float waterHeight(vec2 p, float t, float distFade) {
-          // Domain warping creates organic liquid fluid motion (eliminates any waffle/grid artifacts)
           vec2 q = vec2(
             noise2D(p * 0.14 + vec2(t * 0.14, t * 0.09)),
             noise2D(p * 0.14 + vec2(-t * 0.11, t * 0.16) + vec2(5.2, 1.3))
           );
 
           vec2 r = p * 0.28 + q * 0.65 + vec2(t * 0.22, -t * 0.18);
-          // Octave 1: broad smooth swell
           float h1 = noise2D(r) * 0.5;
-          // Octave 2 & 3: high-frequency ripples filtered with distance to eliminate specular grain/shimmer
           float h2 = noise2D(r * 2.2 - vec2(t * 0.32, t * 0.25)) * (0.25 * (1.0 - distFade * 0.7));
           float h3 = noise2D(r * 4.2 + vec2(-t * 0.55, t * 0.42)) * (0.12 * (1.0 - distFade * 0.95));
 
@@ -193,10 +239,11 @@ export function Ocean() {
           float waveStrength = mix(0.24, 0.03, distFade);
           return normalize(vec3(-dX * waveStrength, 1.0, -dZ * waveStrength));
         }
+        `}
         `
       );
 
-      // Organic fluid wave normal perturbation with distance anti-aliasing (frozen ice is smooth plane)
+      // Wave normal perturbation with distance anti-aliasing (frozen ice is smooth plane)
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <normal_fragment_maps>',
         /* glsl */ `
@@ -207,7 +254,7 @@ export function Ocean() {
           waveNormalWorld = vec3(0.0, 1.0, 0.0);
         } else {
           float viewDist = length(vWorldPos - cameraPosition);
-          waveNormalWorld = getOrganicWaterNormal(vWorldPos.xz, time * 1.1, viewDist);
+          waveNormalWorld = ${isMobile ? 'getMobileWaterNormal(vWorldPos.xz, time * 1.1, viewDist);' : 'getOrganicWaterNormal(vWorldPos.xz, time * 1.1, viewDist);'}
         }
         normal = normalize(mat3(viewMatrix) * waveNormalWorld);
         `

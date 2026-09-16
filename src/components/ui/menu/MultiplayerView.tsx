@@ -9,6 +9,7 @@ import { useTagStore } from '@/store/tagStore';
 import { networkClient } from '@/network/networkClient';
 import { getAvailableVehicles, getVehiclePreset } from '@/config/vehicleRegistry';
 import { getAvailableLevels, getLevelPreset } from '@/config/levelRegistry';
+import { AVAILABLE_TIRE_TYPES, getTireDefinition } from '@/config/tireRegistry';
 import { unlockSharedAudioContext } from '@/utils/audio/audioContext';
 import { registerMenuGamepadDelegate } from './menuGamepadRegistry';
 import type { RoomSummary } from '@/types/network';
@@ -16,6 +17,7 @@ import type { GameMode } from '@/types/game';
 
 export type MultiplayerFocusTarget =
   | { area: 'vehicles'; index: number }
+  | { area: 'tires'; index: number }
   | { area: 'refresh' }
   | { area: 'create_toggle' }
   | { area: 'modal_track'; index: number }
@@ -59,6 +61,8 @@ export function MultiplayerView({
 
   const selectedVehicleId = useGameStore((s) => s.selectedVehicleId);
   const setSelectedVehicleId = useGameStore((s) => s.setSelectedVehicleId);
+  const selectedTireType = useGameStore((s) => s.selectedTireType);
+  const setSelectedTireType = useGameStore((s) => s.setSelectedTireType);
   const setSelectedLevelId = useGameStore((s) => s.setSelectedLevelId);
   const setGameMode = useGameStore((s) => s.setGameMode);
   const setGameState = useGameStore((s) => s.setGameState);
@@ -93,6 +97,8 @@ export function MultiplayerView({
   levelsRef.current = levels;
   const selectedVehicleIdRef = useRef(selectedVehicleId);
   selectedVehicleIdRef.current = selectedVehicleId;
+  const selectedTireTypeRef = useRef(selectedTireType);
+  selectedTireTypeRef.current = selectedTireType;
   const selfIdRef = useRef(selfId);
   selfIdRef.current = selfId;
 
@@ -260,23 +266,39 @@ export function MultiplayerView({
   useEffect(() => {
     const unregister = registerMenuGamepadDelegate('multiplayer', {
       handleTabLeft: () => {
-        const vList = vehiclesRef.current;
-        const curId = selectedVehicleIdRef.current;
-        const curIdx = vList.findIndex((v) => v.id === curId);
-        const prevIdx = (curIdx - 1 + vList.length) % vList.length;
-        setSelectedVehicleId(vList[prevIdx].id);
-        if (focusTargetRef.current.area === 'vehicles') {
-          setFocusTarget({ area: 'vehicles', index: prevIdx });
+        if (focusTargetRef.current.area === 'tires') {
+          const curTire = selectedTireTypeRef.current;
+          const curIdx = AVAILABLE_TIRE_TYPES.indexOf(curTire);
+          const prevIdx = (curIdx - 1 + AVAILABLE_TIRE_TYPES.length) % AVAILABLE_TIRE_TYPES.length;
+          setSelectedTireType(AVAILABLE_TIRE_TYPES[prevIdx]);
+          setFocusTarget({ area: 'tires', index: prevIdx });
+        } else {
+          const vList = vehiclesRef.current;
+          const curId = selectedVehicleIdRef.current;
+          const curIdx = vList.findIndex((v) => v.id === curId);
+          const prevIdx = (curIdx - 1 + vList.length) % vList.length;
+          setSelectedVehicleId(vList[prevIdx].id);
+          if (focusTargetRef.current.area === 'vehicles') {
+            setFocusTarget({ area: 'vehicles', index: prevIdx });
+          }
         }
       },
       handleTabRight: () => {
-        const vList = vehiclesRef.current;
-        const curId = selectedVehicleIdRef.current;
-        const curIdx = vList.findIndex((v) => v.id === curId);
-        const nextIdx = (curIdx + 1) % vList.length;
-        setSelectedVehicleId(vList[nextIdx].id);
-        if (focusTargetRef.current.area === 'vehicles') {
-          setFocusTarget({ area: 'vehicles', index: nextIdx });
+        if (focusTargetRef.current.area === 'tires') {
+          const curTire = selectedTireTypeRef.current;
+          const curIdx = AVAILABLE_TIRE_TYPES.indexOf(curTire);
+          const nextIdx = (curIdx + 1) % AVAILABLE_TIRE_TYPES.length;
+          setSelectedTireType(AVAILABLE_TIRE_TYPES[nextIdx]);
+          setFocusTarget({ area: 'tires', index: nextIdx });
+        } else {
+          const vList = vehiclesRef.current;
+          const curId = selectedVehicleIdRef.current;
+          const curIdx = vList.findIndex((v) => v.id === curId);
+          const nextIdx = (curIdx + 1) % vList.length;
+          setSelectedVehicleId(vList[nextIdx].id);
+          if (focusTargetRef.current.area === 'vehicles') {
+            setFocusTarget({ area: 'vehicles', index: nextIdx });
+          }
         }
       },
       handleNavLeft: () => {
@@ -296,8 +318,11 @@ export function MultiplayerView({
           setFocusTarget({ area: 'room_join', index: cur.index });
         } else if (cur.area === 'room_join') {
           setFocusTarget({ area: 'vehicles', index: Math.min(vList.length - 1, cur.index) });
+        } else if (cur.area === 'tires') {
+          if (cur.index > 0) setFocusTarget({ area: 'tires', index: cur.index - 1 });
+          else setFocusTarget({ area: 'vehicles', index: vList.length - 1 });
         } else if (cur.area === 'quick_play' || cur.area === 'back') {
-          setFocusTarget({ area: 'vehicles', index: vList.length - 1 });
+          setFocusTarget({ area: 'tires', index: 0 });
         }
       },
       handleNavRight: () => {
@@ -309,6 +334,16 @@ export function MultiplayerView({
             setFocusTarget({ area: 'modal_track', index: 0 });
           } else if (rList.length > 0) {
             setFocusTarget({ area: 'room_join', index: Math.min(rList.length - 1, cur.index) });
+          } else {
+            setFocusTarget({ area: 'create_toggle' });
+          }
+        } else if (cur.area === 'tires') {
+          if (cur.index < AVAILABLE_TIRE_TYPES.length - 1) {
+            setFocusTarget({ area: 'tires', index: cur.index + 1 });
+          } else if (showCreateModalRef.current) {
+            setFocusTarget({ area: 'modal_track', index: 0 });
+          } else if (rList.length > 0) {
+            setFocusTarget({ area: 'room_join', index: Math.min(rList.length - 1, 0) });
           } else {
             setFocusTarget({ area: 'create_toggle' });
           }
@@ -334,6 +369,8 @@ export function MultiplayerView({
         const rList = roomsRef.current;
         if (cur.area === 'vehicles') {
           if (cur.index > 0) setFocusTarget({ area: 'vehicles', index: cur.index - 1 });
+        } else if (cur.area === 'tires') {
+          setFocusTarget({ area: 'vehicles', index: vehiclesRef.current.length - 1 });
         } else if (cur.area === 'refresh') {
           setFocusTarget({ area: 'vehicles', index: 0 });
         } else if (cur.area === 'create_toggle') {
@@ -356,7 +393,7 @@ export function MultiplayerView({
           } else if (rList.length > 0) {
             setFocusTarget({ area: 'room_join', index: rList.length - 1 });
           } else {
-            setFocusTarget({ area: 'create_toggle' });
+            setFocusTarget({ area: 'tires', index: 0 });
           }
         } else if (cur.area === 'back') {
           setFocusTarget({ area: 'quick_play' });
@@ -370,8 +407,10 @@ export function MultiplayerView({
           if (cur.index < vList.length - 1) {
             setFocusTarget({ area: 'vehicles', index: cur.index + 1 });
           } else {
-            setFocusTarget({ area: 'quick_play' });
+            setFocusTarget({ area: 'tires', index: 0 });
           }
+        } else if (cur.area === 'tires') {
+          setFocusTarget({ area: 'quick_play' });
         } else if (cur.area === 'refresh') {
           setFocusTarget({ area: 'create_toggle' });
         } else if (cur.area === 'create_toggle') {
@@ -404,6 +443,8 @@ export function MultiplayerView({
         const rList = roomsRef.current;
         if (cur.area === 'vehicles') {
           setSelectedVehicleId(vList[cur.index].id);
+        } else if (cur.area === 'tires') {
+          setSelectedTireType(AVAILABLE_TIRE_TYPES[cur.index]);
         } else if (cur.area === 'refresh') {
           networkClient.requestRooms();
         } else if (cur.area === 'create_toggle') {
@@ -459,9 +500,11 @@ export function MultiplayerView({
     });
 
     return unregister;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const currentPreset = getVehiclePreset(selectedVehicleId);
+  const activeTireDef = getTireDefinition(selectedTireType);
 
   return (
     <div
@@ -573,7 +616,7 @@ export function MultiplayerView({
           />
         </div>
         <div style={{ flex: 1, fontSize: '11px', color: '#94A3B8' }}>
-          Selected: <strong style={{ color: '#38BDF8' }}>{currentPreset.name}</strong> ({currentPreset.stats.driveType}, {currentPreset.config.engine.maxSpeed} km/h)
+          Selected: <strong style={{ color: '#38BDF8' }}>{currentPreset.name}</strong> ({currentPreset.stats.driveType}, {currentPreset.config.engine.maxSpeed} km/h) • Tire: <strong style={{ color: activeTireDef.color }}>{activeTireDef.label}</strong>
         </div>
       </div>
 
@@ -640,7 +683,7 @@ export function MultiplayerView({
                       {v.name}
                     </div>
                     <div style={{ fontSize: '10px', color: isSelected ? '#BAE6FD' : '#64748B' }}>
-                      {v.category.toUpperCase()} • {v.config.chassisMass} kg
+                      {v.category.toUpperCase()}
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
@@ -661,6 +704,90 @@ export function MultiplayerView({
                 </button>
               );
             })}
+          </div>
+
+          {/* Tire Compound Selection */}
+          <div
+            style={{
+              marginTop: '8px',
+              padding: '10px',
+              borderRadius: '8px',
+              background: 'rgba(15, 23, 42, 0.7)',
+              border: '1px solid rgba(56, 189, 248, 0.25)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: '#38BDF8', letterSpacing: '1px' }}>
+                TIRE COMPOUND
+              </span>
+              <span style={{ fontSize: '10px', fontWeight: 700, color: activeTireDef.color }}>
+                {activeTireDef.icon} {activeTireDef.label}
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '6px',
+                width: '100%',
+              }}
+            >
+              {AVAILABLE_TIRE_TYPES.map((tType, idx) => {
+                const tireDef = getTireDefinition(tType);
+                const isSelected = selectedTireType === tType;
+                const isFocused = focusTarget.area === 'tires' && focusTarget.index === idx;
+
+                return (
+                  <button
+                    key={tType}
+                    type="button"
+                    data-gamepad-focused={isFocused ? 'true' : undefined}
+                    onClick={() => {
+                      setSelectedTireType(tType);
+                      setFocusTarget({ area: 'tires', index: idx });
+                    }}
+                    onPointerMove={() => setFocusTarget({ area: 'tires', index: idx })}
+                    style={{
+                      minHeight: '38px',
+                      padding: '4px 6px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '2px',
+                      background: isSelected
+                        ? `linear-gradient(135deg, ${tireDef.badgeBg} 0%, rgba(15, 23, 42, 0.9) 100%)`
+                        : 'rgba(255, 255, 255, 0.04)',
+                      border: isSelected
+                        ? `1.5px solid ${tireDef.color}`
+                        : '1px solid rgba(255, 255, 255, 0.12)',
+                      boxShadow: isSelected ? `0 0 10px ${tireDef.badgeBg}` : 'none',
+                      color: isSelected ? '#FFFFFF' : '#94A3B8',
+                      fontWeight: 700,
+                      fontSize: '11px',
+                      transition: 'all 0.15s ease',
+                      boxSizing: 'border-box',
+                      touchAction: 'manipulation',
+                      ...getGamepadFocusStyle(isFocused),
+                    }}
+                    title={tireDef.description}
+                  >
+                    <span style={{ fontSize: '13px' }}>{tireDef.icon}</span>
+                    <span style={{ letterSpacing: '0.4px', fontWeight: 800, fontSize: '10px' }}>{tireDef.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <span style={{ fontSize: '9px', color: '#94A3B8', lineHeight: 1.2 }}>
+              {activeTireDef.description}
+            </span>
           </div>
         </div>
 

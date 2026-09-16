@@ -1,7 +1,5 @@
 import { useMemo } from 'react';
 import {
-  Vector3,
-  Sphere,
   RepeatWrapping,
   SRGBColorSpace,
 } from 'three';
@@ -18,7 +16,6 @@ import {
   TracksidePropsInstancer,
   GymkhanaPropsInstancer,
 } from './props';
-import type { PropItem } from './props/types';
 
 // Re-export all procedural geometry builders for 100% test suite and project-wide compatibility
 export {
@@ -73,33 +70,7 @@ export function canPropsCastShadow(isMobile: boolean, graphicsQuality: string): 
   return !isMobile && graphicsQuality !== 'low';
 }
 
-/**
- * Computes a genuine bounding sphere encompassing all placed instances for a prop group.
- */
-export function computeInstanceBoundingSphere(items: PropItem[], geometryRadius = 5): Sphere {
-  const sphere = new Sphere();
-  if (!items || items.length === 0) {
-    sphere.radius = -1;
-    return sphere;
-  }
-  const min = new Vector3(Infinity, Infinity, Infinity);
-  const max = new Vector3(-Infinity, -Infinity, -Infinity);
-  const pos = new Vector3();
-  for (let i = 0; i < items.length; i++) {
-    pos.setFromMatrixPosition(items[i].matrix);
-    min.min(pos);
-    max.max(pos);
-  }
-  sphere.center.addVectors(min, max).multiplyScalar(0.5);
-  let maxDistSq = 0;
-  for (let i = 0; i < items.length; i++) {
-    pos.setFromMatrixPosition(items[i].matrix);
-    const dSq = pos.distanceToSquared(sphere.center);
-    if (dSq > maxDistSq) maxDistSq = dSq;
-  }
-  sphere.radius = Math.sqrt(maxDistSq) + geometryRadius;
-  return sphere;
-}
+export { computeInstanceBoundingSphere } from './props/types';
 
 /**
  * Clean orchestrator component for all GPU-instanced terrain props,
@@ -109,7 +80,64 @@ export function PropsInstancer() {
   const { levelData } = useTerrainData();
   const graphicsQuality = useSettingsStore((s) => s.graphicsQuality);
 
-  // Load shared props textures
+  const levelId = levelData.id.toLowerCase();
+  const isDesert = levelId.includes('desert');
+  const isSnow = levelId.includes('sweden') || levelId.includes('snow') || levelId.includes('winter');
+  const isBritain = levelId.includes('britain') || levelId.includes('highland');
+  const isGymkhana = levelId.includes('gymkhana');
+  const isIsland = levelId.includes('island') && !isGymkhana;
+
+  // Dynamically inspect level props so any level containing specific prop types gets the right textures
+  const propsList = levelData.props ?? [];
+  const hasProp = (type: string) => propsList.some((p) => p.type === type);
+  const hasPrefix = (prefix: string) => propsList.some((p) => p.type.startsWith(prefix));
+
+  const hasHayBale = hasProp('hay_bale');
+  const hasFence = hasProp('fence');
+  const hasRallySign = hasProp('rally_sign');
+  const hasJumpRamp = hasProp('jump_ramp');
+  const hasCastle = hasPrefix('castle_') || hasProp('stone_bridge');
+  const hasStoneWall = hasProp('stone_wall');
+  const hasStandingStone = hasProp('standing_stone');
+  const hasHighlandCottage = hasProp('highland_cottage');
+  const hasCabin = hasProp('cabin');
+  const hasBirch = hasProp('tree_birch') || isBritain || isIsland;
+  const hasDesertTree = hasProp('tree_desert') || isDesert;
+  const hasPine = hasProp('tree_pine') || hasProp('tree') || (!isDesert && !hasDesertTree);
+
+  // Lightweight 1x1 neutral white fallback texture to substitute unneeded prop textures per biome,
+  // saving over 90MB VRAM and eliminating texture thrashing on TBDR mobile GPUs without pitch-black darkening.
+  const BLANK =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
+
+  const pineBarkPath = (hasPine || !isDesert) ? '/textures/foliage/tree_bark.jpg' : BLANK;
+  const pineBranchPath = (!isDesert && !isSnow) ? '/textures/foliage/pine_branch.jpg' : BLANK;
+  const pineBranchSnowPath = isSnow ? '/textures/foliage/pine_branch_snow.jpg' : BLANK;
+  const birchBarkPath = hasBirch ? '/textures/foliage/birch_bark.jpg' : BLANK;
+  const leafyBranchPath = (hasBirch && !isSnow) ? '/textures/foliage/leafy_branch.jpg' : BLANK;
+  const desertBarkPath = hasDesertTree ? '/textures/foliage/desert_bark.jpg' : BLANK;
+  const desertAcaciaBranchPath = hasDesertTree ? '/textures/foliage/desert_acacia_branch.jpg' : BLANK;
+
+  const rockPath = !isDesert ? '/textures/terrain/rock_cliff.jpg' : BLANK;
+  const sandPath = (isDesert || isIsland) ? '/textures/terrain/desert_sand.jpg' : BLANK;
+
+  const cabinTimberWallPath = (hasCabin || isSnow || isIsland) ? '/textures/props/cabin_timber_wall.jpg' : BLANK;
+  const cabinRedWallPath = (hasRallySign || hasCabin || isSnow || isIsland || isBritain || isGymkhana) ? '/textures/props/cabin_red_wall.jpg' : BLANK;
+  const cabinDoorPath = (hasCabin || isSnow || isIsland) ? '/textures/props/cabin_door.jpg' : BLANK;
+  const cabinWindowPath = (hasCabin || isSnow || isIsland) ? '/textures/props/cabin_window.jpg' : BLANK;
+  const cabinRoofPath = (hasCabin || isIsland) ? '/textures/props/cabin_roof.jpg' : BLANK;
+  const cabinRoofSnowPath = (hasCabin && isSnow) || isSnow ? '/textures/props/cabin_roof_snow.jpg' : BLANK;
+  const fencePath = (hasFence || isSnow || isIsland || isBritain || isGymkhana) ? '/textures/props/rustic_fence.jpg' : BLANK;
+
+  const castleStonePath = (hasCastle || isBritain) ? '/textures/props/castle_stone_wall.jpg' : BLANK;
+  const castleCobblestonePath = (hasCastle || isBritain) ? '/textures/props/castle_cobblestone.jpg' : BLANK;
+  const britishDrystonePath = (hasStoneWall || isBritain) ? '/textures/props/british_drystone_wall.jpg' : BLANK;
+  const celticStandingStonePath = (hasStandingStone || isBritain) ? '/textures/props/celtic_standing_stone.jpg' : BLANK;
+  const highlandCottageWallPath = (hasHighlandCottage || isBritain) ? '/textures/props/highland_cottage_wall.jpg' : BLANK;
+  const highlandCottageThatchPath = (hasHayBale || hasHighlandCottage || isBritain || isGymkhana) ? '/textures/props/highland_cottage_thatch.jpg' : BLANK;
+  const jumpRampPath = (hasJumpRamp || isGymkhana) ? '/textures/props/jump_ramp_diffuse.png' : BLANK;
+
+  // Load shared props textures (biome-tailored to reduce VRAM by up to 120MB)
   const [
     pineBarkTexture,
     pineBranchTexture,
@@ -135,29 +163,29 @@ export function PropsInstancer() {
     highlandCottageThatchTexture,
     jumpRampTexture,
   ] = useTexture([
-    '/textures/foliage/tree_bark.jpg',
-    '/textures/foliage/pine_branch.jpg',
-    '/textures/foliage/pine_branch_snow.jpg',
-    '/textures/foliage/birch_bark.jpg',
-    '/textures/foliage/leafy_branch.jpg',
-    '/textures/foliage/desert_bark.jpg',
-    '/textures/foliage/desert_acacia_branch.jpg',
-    '/textures/terrain/rock_cliff.jpg',
-    '/textures/terrain/desert_sand.jpg',
-    '/textures/props/cabin_timber_wall.jpg',
-    '/textures/props/cabin_red_wall.jpg',
-    '/textures/props/cabin_door.jpg',
-    '/textures/props/cabin_window.jpg',
-    '/textures/props/cabin_roof.jpg',
-    '/textures/props/cabin_roof_snow.jpg',
-    '/textures/props/rustic_fence.jpg',
-    '/textures/props/castle_stone_wall.jpg',
-    '/textures/props/castle_cobblestone.jpg',
-    '/textures/props/british_drystone_wall.jpg',
-    '/textures/props/celtic_standing_stone.jpg',
-    '/textures/props/highland_cottage_wall.jpg',
-    '/textures/props/highland_cottage_thatch.jpg',
-    '/textures/props/jump_ramp_diffuse.png',
+    pineBarkPath,
+    pineBranchPath,
+    pineBranchSnowPath,
+    birchBarkPath,
+    leafyBranchPath,
+    desertBarkPath,
+    desertAcaciaBranchPath,
+    rockPath,
+    sandPath,
+    cabinTimberWallPath,
+    cabinRedWallPath,
+    cabinDoorPath,
+    cabinWindowPath,
+    cabinRoofPath,
+    cabinRoofSnowPath,
+    fencePath,
+    castleStonePath,
+    castleCobblestonePath,
+    britishDrystonePath,
+    celticStandingStonePath,
+    highlandCottageWallPath,
+    highlandCottageThatchPath,
+    jumpRampPath,
   ]);
 
   useMemo(() => {
@@ -220,9 +248,6 @@ export function PropsInstancer() {
     jumpRampTexture,
   ]);
 
-  const levelId = levelData.id.toLowerCase();
-  const isDesert = levelId.includes('desert');
-  const isSnow = levelId.includes('sweden') || levelId.includes('snow') || levelId.includes('winter');
   const isMobile = isMobileDevice();
   const canShadow = canPropsCastShadow(isMobile, graphicsQuality);
 

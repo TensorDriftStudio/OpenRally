@@ -178,5 +178,37 @@ describe('Universal Gamepad Menu Navigation Integrity Suite', () => {
         error: 'Room name must be between 2 and 24 characters.',
       });
     });
+
+    it('verifies multiplayer tire compound selection and bumper cycling', () => {
+      const tires = ['asphalt', 'gravel', 'snow'] as const;
+      useGameStore.setState({ selectedTireType: 'gravel' });
+
+      // TabRight / cycle next
+      const cycleNextTire = () => {
+        const curTire = useGameStore.getState().selectedTireType;
+        const curIdx = tires.indexOf(curTire as (typeof tires)[number]);
+        const nextIdx = (curIdx + 1) % tires.length;
+        useGameStore.setState({ selectedTireType: tires[nextIdx] });
+      };
+
+      // TabLeft / cycle prev
+      const cyclePrevTire = () => {
+        const curTire = useGameStore.getState().selectedTireType;
+        const curIdx = tires.indexOf(curTire as (typeof tires)[number]);
+        const prevIdx = (curIdx - 1 + tires.length) % tires.length;
+        useGameStore.setState({ selectedTireType: tires[prevIdx] });
+      };
+
+      expect(useGameStore.getState().selectedTireType).toBe('gravel');
+
+      cycleNextTire();
+      expect(useGameStore.getState().selectedTireType).toBe('snow');
+
+      cycleNextTire(); // wraps to asphalt
+      expect(useGameStore.getState().selectedTireType).toBe('asphalt');
+
+      cyclePrevTire(); // wraps back to snow
+      expect(useGameStore.getState().selectedTireType).toBe('snow');
+    });
   });
 });

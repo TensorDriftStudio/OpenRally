@@ -77,11 +77,24 @@ export function isMobileDevice(): boolean {
 export const MOBILE_MAX_DPR = 1.75;
 export const DESKTOP_MAX_DPR = 2.0;
 
+/**
+ * Maximum rendered pixel ceilings to protect GPU fill-rate and memory bandwidth:
+ * - Mobile: ~2.15 Megapixels (~1080p, prevents thermal throttling on 1440p+ phones)
+ * - Desktop High: ~3.7 Megapixels (~1440p, protects integrated GPUs and laptops)
+ * - Desktop Very High: ~8.3 Megapixels (4K UHD)
+ */
+export const MOBILE_MAX_PIXELS = 2_150_000;
+export const DESKTOP_HIGH_MAX_PIXELS = 3_700_000;
+export const DESKTOP_VERY_HIGH_MAX_PIXELS = 8_300_000;
+
 export interface DprCalculationParams {
   windowDpr?: number;
   graphicsQuality: 'low' | 'medium' | 'high' | 'very_high';
   resolutionScale?: number;
   isMobile?: boolean;
+  dynamicResolution?: boolean;
+  viewportWidth?: number;
+  viewportHeight?: number;
 }
 
 export interface DprCalculationResult {
@@ -99,6 +112,9 @@ export function calculateDprConfig({
   graphicsQuality,
   resolutionScale = 1.0,
   isMobile = isMobileDevice(),
+  dynamicResolution = true,
+  viewportWidth,
+  viewportHeight,
 }: DprCalculationParams): DprCalculationResult {
   const safeBase = Number.isFinite(windowDpr) && windowDpr > 0 ? windowDpr : 1.0;
   const maxCap = isMobile ? MOBILE_MAX_DPR : DESKTOP_MAX_DPR;
@@ -122,11 +138,31 @@ export function calculateDprConfig({
   const rawTarget = Math.min(baseDpr, qualityMaxDpr) * clampedResolutionScale;
 
   // On mobile, guarantee the target DPR never breaches the thermal ceiling even with super-sampling
-  const targetDpr = isMobile ? Math.min(rawTarget, MOBILE_MAX_DPR) : rawTarget;
+  let clampedTargetDpr = isMobile ? Math.min(rawTarget, MOBILE_MAX_DPR) : rawTarget;
+
+  // Clamp target DPR by maximum rendered pixel count to avoid GPU fill-rate exhaustion on 4K/QHD displays
+  const vpWidth = viewportWidth ?? (typeof window !== 'undefined' ? window.innerWidth : undefined);
+  const vpHeight = viewportHeight ?? (typeof window !== 'undefined' ? window.innerHeight : undefined);
+
+  if (vpWidth && vpHeight && Number.isFinite(vpWidth) && Number.isFinite(vpHeight) && vpWidth > 0 && vpHeight > 0) {
+    const maxPixels = isMobile
+      ? MOBILE_MAX_PIXELS
+      : graphicsQuality === 'very_high'
+      ? DESKTOP_VERY_HIGH_MAX_PIXELS
+      : DESKTOP_HIGH_MAX_PIXELS;
+
+    const currentPixels = vpWidth * vpHeight * clampedTargetDpr * clampedTargetDpr;
+    if (currentPixels > maxPixels) {
+      const pixelCapDpr = Math.sqrt(maxPixels / (vpWidth * vpHeight));
+      clampedTargetDpr = Math.min(clampedTargetDpr, pixelCapDpr);
+    }
+  }
+
+  const targetDpr = clampedTargetDpr;
 
   // Dynamic range for R3F AdaptiveDpr / performance regression
-  const minDpr = Math.min(0.5 * clampedResolutionScale, targetDpr);
-  const maxDpr = Math.max(0.5, targetDpr);
+  const minDpr = dynamicResolution ? Math.min(0.5 * clampedResolutionScale, targetDpr) : targetDpr;
+  const maxDpr = dynamicResolution ? Math.max(0.5, targetDpr) : targetDpr;
 
   return {
     baseDpr,

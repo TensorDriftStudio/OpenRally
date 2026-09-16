@@ -26,7 +26,7 @@ export const VEHICLE_MY_CAR = createVehiclePreset({
     topSpeed: 9.8,
     acceleration: 9.5,
   },
-  // Optional physics overrides:
+  // Optional physics overrides (weightDistribution is automatically inherited from archetype):
   config: {
     engine: { maxForce: 560, maxSpeed: 310 },
   },
@@ -39,6 +39,12 @@ export const VEHICLE_REGISTRY: Record<string, VehiclePreset> = {
 };
 ```
 *(The vehicle will automatically appear in the Garage UI and be selectable by players!)*
+
+### Step 3: Register in Network Validators (Client & Server)
+To allow multiplayer peers to render your vehicle and prevent packet drops:
+1. Add `'my_supercar'` to `VALID_VEHICLE_IDS` in `src/network/packetValidator.ts`.
+2. Add `'my_supercar'` to `VALID_VEHICLE_IDS` in `server/src/packetValidator.ts`.
+*(This invariant is automatically verified by `npm run check` via `networkRegistryIntegrity.test.ts`!)*
 
 ---
 
@@ -56,6 +62,8 @@ export const LEVEL_PRESET_MOUNTAIN = createLevelPreset({
   description: 'Elevated alpine track with sharp switchbacks and scenic cliff edges.',
   difficulty: 'hard',
   archetype: 'alpine', // 'island' | 'desert' | 'alpine' | 'tundra' | 'canyon'
+  bannerUrl: '/images/stages/mountain_pass.jpg',
+  supportedModes: ['freeroam', 'timeattack', 'tag'], // 12 Rally Tag spawns are auto-generated!
   trackPoints: generateProceduralCircuit({
     radius: 220,
     pointsCount: 14,
@@ -75,6 +83,11 @@ export const LEVEL_REGISTRY: Record<string, LevelPreset> = {
   level_mountain: LEVEL_PRESET_MOUNTAIN,
 };
 ```
+
+### Step 3: Register in Network Validators (Client & Server)
+1. Add `'level_mountain'` to `VALID_LEVEL_IDS` in `src/network/packetValidator.ts`.
+2. Add `'level_mountain'` to `VALID_LEVEL_IDS` in `server/src/packetValidator.ts`.
+*(Automatically verified by `npm run check`!)*
 
 ---
 
@@ -104,9 +117,62 @@ export const SURFACE_REGISTRY: Record<SurfaceType, SurfaceDefinition> = {
 };
 ```
 
+### Step 3: Register in `src/network/packetValidator.ts`
+Add `'ice'` to `VALID_SURFACES`.
+
 ---
 
-## 4. Listening to Gameplay Events (Event Bus)
+## 4. Adding a New Game Mode in 4 Steps
+
+OpenRally uses `GameModeRegistry` as the single source of truth for all game modes:
+
+### Step 1: Add Literal to `GameMode` Type
+In `src/types/game.ts`:
+```ts
+export type GameMode = 'freeroam' | 'timeattack' | 'gymkhana_blitz' | 'tag' | 'hillclimb';
+```
+
+### Step 2: Register in `src/config/gameModeRegistry.ts`
+```ts
+export const GAME_MODE_REGISTRY: Record<GameMode, GameModeDefinition> = {
+  // ...
+  hillclimb: {
+    id: 'hillclimb',
+    name: 'Hillclimb Run',
+    badgeLabel: 'HILLCLIMB',
+    badgeColor: '#EC4899',
+    badgeBg: 'rgba(236, 72, 153, 0.15)',
+    badgeBorder: 'rgba(236, 72, 153, 0.35)',
+    description: 'Steep single-run ascent against the clock with zero run-off margin.',
+    isMultiplayerSupported: false,
+    requiresTrackSpline: true,
+  },
+};
+```
+*(All UI menus and badges automatically pick up the new mode and style without hardcoded ternaries!)*
+
+### Step 3: Register in Network Validators
+Add `'hillclimb'` to `VALID_GAME_MODES` in `src/network/packetValidator.ts` and `server/src/packetValidator.ts`.
+
+### Step 4: Hook into the Decoupled Game Event Bus
+Gameplay logic runs in dedicated hooks without touching `useVehiclePhysics.ts`:
+```ts
+import { onGameEvent } from '@/utils/events';
+
+// In your mode controller (e.g. useHillclimbLogic.ts):
+useEffect(() => {
+  const unsub = onGameEvent('vehicle_reset', () => {
+    if (useGameStore.getState().gameMode === 'hillclimb') {
+      // Reset timer and return to bottom staging gate
+    }
+  });
+  return unsub;
+}, []);
+```
+
+---
+
+## 5. Listening to Gameplay Events (Event Bus)
 
 To build new features (e.g., sound effects, camera shakes, ghost replay, achievements):
 ```ts
@@ -125,7 +191,7 @@ const unsub = onGameEvent('gear_shifted', ({ fromGear, toGear }) => {
 
 ---
 
-## 5. Working with Gamepad & Controller Haptics
+## 6. Working with Gamepad & Controller Haptics
 
 OpenRally includes standard W3C Gamepad API support tuned specifically for Xbox / XInput controllers:
 ```ts
@@ -146,12 +212,12 @@ rumbleSurface(0.4); // Rough off-road terrain vibration
 
 ---
 
-## 6. Validating Changes & Integrity
+## 7. Validating Changes & Integrity
 Before submitting changes, run automated verification:
 ```bash
 npm run check
 ```
-This executes compiler checks, oxlint linter, full-project diagnostics (`diagnostics.test.ts`), and vitest unit tests across all registries, generators, and physics formulas.
+This executes compiler checks, oxlint linter, full-project diagnostics (`diagnostics.test.ts`, `networkRegistryIntegrity.test.ts`), and vitest unit tests across all registries, generators, and physics formulas.
 
 ---
 

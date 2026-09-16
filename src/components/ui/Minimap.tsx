@@ -5,6 +5,7 @@ import { useMultiplayerStore } from '@/store/multiplayerStore';
 import { useTagStore } from '@/store/tagStore';
 import { getAllRemoteVehicleMeshes } from '@/components/vehicle/remoteVehicleRegistry';
 import { getLevelPreset } from '@/config/levelRegistry';
+import { isMobileDevice } from '@/utils/device';
 import { CatmullRomCurve3, Vector3 } from 'three';
 
 const CANVAS_SIZE = 146;
@@ -153,13 +154,24 @@ export function Minimap() {
     // ─── 2. Dynamic render loop for player & checkpoints ───
     let animationFrameId: number;
     let isInitialRender = true;
+    let lastRenderTime = 0;
+    // Paces 2D canvas minimap updates: 30 FPS (~33ms) on mobile saves substantial CPU/battery,
+    // 60 FPS (~16ms) on desktop prevents wasteful 144Hz-240Hz redraws.
+    const isMobile = isMobileDevice();
+    const MIN_INTERVAL_MS = isMobile ? 32.0 : 16.0;
 
-    const renderMinimap = () => {
+    const renderMinimap = (now: number) => {
+      animationFrameId = requestAnimationFrame(renderMinimap);
+
       const currentState = useGameStore.getState().gameState;
       if (currentState === 'paused' && !isInitialRender) {
-        animationFrameId = requestAnimationFrame(renderMinimap);
         return;
       }
+
+      if (!isInitialRender && now - lastRenderTime < MIN_INTERVAL_MS) {
+        return;
+      }
+      lastRenderTime = now;
       isInitialRender = false;
 
       ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
@@ -287,8 +299,6 @@ export function Minimap() {
           ctx.restore();
         }
       }
-
-      animationFrameId = requestAnimationFrame(renderMinimap);
     };
 
     animationFrameId = requestAnimationFrame(renderMinimap);
@@ -299,12 +309,7 @@ export function Minimap() {
   }, [selectedLevelId, gameState]);
 
   return (
-    <div style={styles.container}>
-      {/* Rally Bezel Header Badge */}
-      <div style={styles.headerBadge}>
-        <span style={styles.headerText}>STAGE MAP</span>
-      </div>
-
+    <div className="minimap-container" style={styles.container}>
       <canvas
         ref={canvasRef}
         width={CANVAS_SIZE}
@@ -335,25 +340,6 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     pointerEvents: 'none',
     zIndex: 20,
-  },
-  headerBadge: {
-    position: 'absolute',
-    top: '3px',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    background: 'rgba(15, 20, 30, 0.9)',
-    border: '1px solid rgba(255, 255, 255, 0.15)',
-    borderRadius: '8px',
-    padding: '1px 6px',
-    zIndex: 25,
-    pointerEvents: 'none',
-  },
-  headerText: {
-    fontSize: '7.5px',
-    fontWeight: 900,
-    color: '#94a3b8',
-    letterSpacing: '1px',
-    fontFamily: "'Segoe UI', sans-serif",
   },
   canvas: {
     width: '100%',

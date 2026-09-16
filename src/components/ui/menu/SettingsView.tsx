@@ -12,6 +12,7 @@ import type {
 import { useSettingsStore } from '@/store/settingsStore';
 import { isMobileOrAndroid } from '@/utils/device';
 import { menuStyles, getFocusStyle } from './menuStyles';
+import { MIN_STEERING_SENSITIVITY, MAX_STEERING_SENSITIVITY, STEERING_SENSITIVITY_STEP } from '@/config/input';
 import type { ControlsTab, MenuView, ResetConfirmState, SettingsCategory } from './types';
 import { ControlsView } from './ControlsView';
 
@@ -23,6 +24,7 @@ interface SettingsViewProps {
   drawDistance: DrawDistance;
   antiAliasing: AntiAliasingMode;
   resolutionScale: number;
+  dynamicResolution: boolean;
   shadowsEnabled: boolean;
   postProcessingEnabled: boolean;
   sensitivity: number;
@@ -47,6 +49,7 @@ interface SettingsViewProps {
   onSetDrawDistance: (distance: DrawDistance) => void;
   onSetAntiAliasing: (mode: AntiAliasingMode) => void;
   onSetResolutionScale: (scale: number) => void;
+  onToggleDynamicResolution: () => void;
   onToggleShadows: () => void;
   onTogglePostProcessing: () => void;
   onSetSensitivity: (val: number) => void;
@@ -79,6 +82,7 @@ export function SettingsView({
   drawDistance,
   antiAliasing,
   resolutionScale,
+  dynamicResolution,
   shadowsEnabled,
   postProcessingEnabled,
   sensitivity,
@@ -103,6 +107,7 @@ export function SettingsView({
   onSetDrawDistance,
   onSetAntiAliasing,
   onSetResolutionScale,
+  onToggleDynamicResolution,
   onToggleShadows,
   onTogglePostProcessing,
   onSetSensitivity,
@@ -127,6 +132,12 @@ export function SettingsView({
     setTouchHaptics,
     transmissionMode,
     setTransmissionMode,
+    absEnabled,
+    toggleAbs,
+    tcsEnabled,
+    toggleTcs,
+    espEnabled,
+    toggleEsp,
   } = useSettingsStore();
 
   const [internalCategory, setInternalCategory] = useState<SettingsCategory>('graphics');
@@ -135,7 +146,7 @@ export function SettingsView({
 
   const backIdx =
     activeCategory === 'graphics'
-      ? 8
+      ? 9
       : activeCategory === 'audio'
         ? 4
         : activeCategory === 'controls'
@@ -143,8 +154,8 @@ export function SettingsView({
           : activeCategory === 'touch'
             ? 6
             : vibrationEnabled
-              ? 6
-              : 5;
+              ? 9
+              : 8;
 
   return (
     <div
@@ -313,10 +324,31 @@ export function SettingsView({
               </select>
             </div>
 
-            {/* Row 6: Real-time Shadows */}
+            {/* Row 6: Dynamic Resolution (Adaptive DPR) */}
             <div
               style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 6) }}
               onPointerMove={(e) => onPointerMoveItem(6, e)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span>Dynamic Resolution</span>
+                <span style={{ fontSize: '11px', color: '#94A3B8', padding: '2px 8px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)' }}>
+                  Adaptive DPR
+                </span>
+              </div>
+              <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '48px', minHeight: '44px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={dynamicResolution}
+                  onChange={onToggleDynamicResolution}
+                  style={menuStyles.checkbox}
+                />
+              </label>
+            </div>
+
+            {/* Row 7: Real-time Shadows */}
+            <div
+              style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 7) }}
+              onPointerMove={(e) => onPointerMoveItem(7, e)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <span>Real-time Shadows</span>
@@ -337,10 +369,10 @@ export function SettingsView({
               </label>
             </div>
 
-            {/* Row 7: Post Processing */}
+            {/* Row 8: Post Processing */}
             <div
-              style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 7) }}
-              onPointerMove={(e) => onPointerMoveItem(7, e)}
+              style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 8) }}
+              onPointerMove={(e) => onPointerMoveItem(8, e)}
             >
               <span>Post Processing</span>
               <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '48px', minHeight: '44px', cursor: 'pointer' }}>
@@ -529,29 +561,134 @@ export function SettingsView({
               style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 1) }}
               onPointerMove={(e) => onPointerMoveItem(1, e)}
             >
-              <span>Transmission / Skrzynia biegów</span>
+              <span>Transmission</span>
               <select
                 value={transmissionMode}
                 onChange={(e) => setTransmissionMode(e.target.value as TransmissionMode)}
                 style={menuStyles.select}
               >
-                <option value="automatic">Automatyczna (Automatic)</option>
-                <option value="manual">Manualna (Manual Sequential)</option>
+                <option value="automatic">Automatic</option>
+                <option value="manual">Manual Sequential</option>
               </select>
             </div>
 
-            {/* Row 2: Steering Sensitivity */}
+            {/* Row 2: Anti-lock Braking System (ABS) */}
             <div
               style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 2) }}
               onPointerMove={(e) => onPointerMoveItem(2, e)}
             >
-              <span>Steering Sensitivity ({sensitivity.toFixed(1)}x)</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'left' }}>
+                <span style={{ fontWeight: 700 }}>Anti-lock Braking System (ABS)</span>
+                <span style={{ fontSize: '11px', color: '#94A3B8', fontWeight: 500 }}>
+                  Prevents wheel lockup under heavy braking to maintain steering authority
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={toggleAbs}
+                style={{
+                  background: absEnabled ? '#10b981' : 'rgba(255, 255, 255, 0.1)',
+                  color: absEnabled ? '#ffffff' : '#94A3B8',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  minWidth: '56px',
+                  minHeight: '44px',
+                  cursor: 'pointer',
+                  touchAction: 'manipulation',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {absEnabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+
+            {/* Row 3: Traction Control System (TCS) */}
+            <div
+              style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 3) }}
+              onPointerMove={(e) => onPointerMoveItem(3, e)}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'left' }}>
+                <span style={{ fontWeight: 700 }}>Traction Control System (TCS)</span>
+                <span style={{ fontSize: '11px', color: '#94A3B8', fontWeight: 500 }}>
+                  Modulates engine throttle under extreme wheelspin to prevent power oversteer
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={toggleTcs}
+                style={{
+                  background: tcsEnabled ? '#10b981' : 'rgba(255, 255, 255, 0.1)',
+                  color: tcsEnabled ? '#ffffff' : '#94A3B8',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  minWidth: '56px',
+                  minHeight: '44px',
+                  cursor: 'pointer',
+                  touchAction: 'manipulation',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {tcsEnabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+
+            {/* Row 4: Electronic Stability Program (ESP) */}
+            <div
+              style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 4) }}
+              onPointerMove={(e) => onPointerMoveItem(4, e)}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'left' }}>
+                <span style={{ fontWeight: 700 }}>Stability Control (ESP)</span>
+                <span style={{ fontSize: '11px', color: '#94A3B8', fontWeight: 500 }}>
+                  Applies stabilizing yaw damping moments during slides to prevent spin-outs
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={toggleEsp}
+                style={{
+                  background: espEnabled ? '#10b981' : 'rgba(255, 255, 255, 0.1)',
+                  color: espEnabled ? '#ffffff' : '#94A3B8',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  minWidth: '56px',
+                  minHeight: '44px',
+                  cursor: 'pointer',
+                  touchAction: 'manipulation',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {espEnabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+
+            {/* Row 5: Steering Sensitivity */}
+            <div
+              style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 5) }}
+              onPointerMove={(e) => onPointerMoveItem(5, e)}
+            >
+              <span>Steering Sensitivity ({sensitivity.toFixed(2)}x)</span>
               <div style={{ display: 'inline-flex', alignItems: 'center', minHeight: '44px' }}>
                 <input
                   type="range"
-                  min="0.5"
-                  max="2.0"
-                  step="0.1"
+                  min={MIN_STEERING_SENSITIVITY}
+                  max={MAX_STEERING_SENSITIVITY}
+                  step={STEERING_SENSITIVITY_STEP}
                   value={sensitivity}
                   onChange={(e) => onSetSensitivity(parseFloat(e.target.value))}
                   style={{ cursor: 'pointer', minHeight: '32px' }}
@@ -559,10 +696,10 @@ export function SettingsView({
               </div>
             </div>
 
-            {/* Row 3: Controller Vibration */}
+            {/* Row 6: Controller Vibration */}
             <div
-              style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 3) }}
-              onPointerMove={(e) => onPointerMoveItem(3, e)}
+              style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 6) }}
+              onPointerMove={(e) => onPointerMoveItem(6, e)}
             >
               <span>Controller Vibration (Rumble)</span>
               <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '48px', minHeight: '44px', cursor: 'pointer' }}>
@@ -575,11 +712,11 @@ export function SettingsView({
               </label>
             </div>
 
-            {/* Row 4 (if vibration): Vibration Intensity */}
+            {/* Row 7 (if vibration): Vibration Intensity */}
             {vibrationEnabled && (
               <div
-                style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 4) }}
-                onPointerMove={(e) => onPointerMoveItem(4, e)}
+                style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 7) }}
+                onPointerMove={(e) => onPointerMoveItem(7, e)}
               >
                 <span>Vibration Intensity ({Math.round(vibrationIntensity * 100)}%)</span>
                 <div style={{ display: 'inline-flex', alignItems: 'center', minHeight: '44px' }}>
@@ -596,7 +733,7 @@ export function SettingsView({
               </div>
             )}
 
-            {/* Row 5 (or 4 if !vibration): Clear Records */}
+            {/* Row 8 (or 7 if !vibration): Clear Records */}
             <div
               className="settings-option-span-2"
               style={{
@@ -613,9 +750,9 @@ export function SettingsView({
                   : resetConfirmState === 'done'
                     ? 'rgba(16, 185, 129, 0.08)'
                     : 'rgba(0,0,0,0.1)',
-                ...getFocusStyle(focusedIndex === (vibrationEnabled ? 5 : 4)),
+                ...getFocusStyle(focusedIndex === (vibrationEnabled ? 8 : 7)),
               }}
-              onPointerMove={(e) => onPointerMoveItem(vibrationEnabled ? 5 : 4, e)}
+              onPointerMove={(e) => onPointerMoveItem(vibrationEnabled ? 8 : 7, e)}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'left' }}>
                 <span style={{ fontWeight: 700, color: '#F1F5F9' }}>Clear Stage Lap Records</span>

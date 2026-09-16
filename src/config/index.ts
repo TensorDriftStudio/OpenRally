@@ -9,3 +9,6 @@ export * from '@/config/environment';
 export * from '@/config/surfaceRegistry';
 export * from '@/config/vehicleRegistry';
 export * from '@/config/levelRegistry';
+export * from '@/config/gameModeRegistry';
+export * from '@/config/physicsBalance';
+export * from '@/config/tireRegistry';

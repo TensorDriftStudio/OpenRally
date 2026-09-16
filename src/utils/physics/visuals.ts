@@ -1,5 +1,6 @@
 import { Object3D } from 'three';
 import type { VehicleConfig, IRapierVehicleController } from '@/types/vehicle';
+import type { InputState } from '@/types/game';
 import { SHIFT_UP_SPEEDS } from '@/config/vehicle';
 
 export function syncWheelVisuals(
@@ -10,6 +11,7 @@ export function syncWheelVisuals(
   dt: number,
   rpm: number = 1000,
   currentGear: number = 1,
+  input?: Pick<InputState, 'handbrake' | 'throttle'>,
 ): void {
   const wheels = wheelRefs.current;
   if (!wheels) return;
@@ -24,10 +26,18 @@ export function syncWheelVisuals(
     const wheelConfig = config.wheels[i];
 
     if (connection != null && suspension != null) {
+      // Hard mechanical bump stop clearance guard:
+      // Even under extreme jump landings or physics solver compressions, prevent wheel from traveling
+      // higher than the wheel arch / fender clearance line.
+      const minLength =
+        wheelConfig.minSuspensionLength ??
+        Math.max(0.18, wheelConfig.suspensionRestLength - wheelConfig.suspensionTravel);
+      const safeSuspension = Math.max(minLength, Math.min(wheelConfig.suspensionRestLength + 0.05, suspension));
+
       // Position: connection point - suspension compression
       wheelObj.position.set(
         connection.x,
-        connection.y - suspension,
+        connection.y - safeSuspension,
         connection.z,
       );
 
@@ -41,7 +51,12 @@ export function syncWheelVisuals(
       wheelObj.userData.isGrounded = Boolean(isContact);
 
       let effectiveSpeed = forwardSpeed;
-      if (!isContact && wheelConfig.powered) {
+      const isLockedByHandbrake = Boolean(input?.handbrake && !wheelConfig.steerable);
+
+      if (isLockedByHandbrake) {
+        // Handbrake mechanically locks rear wheels: zero spin rotation
+        effectiveSpeed = 0;
+      } else if (!isContact && wheelConfig.powered) {
         // When airborne and powered, wheel spin speed reflects engine RPM in current gear
         const sign = currentGear === -1 ? -1 : 1;
         const maxGearSpeed = currentGear === -1 ? 40 : (SHIFT_UP_SPEEDS[currentGear] ?? 240);
@@ -49,6 +64,13 @@ export function syncWheelVisuals(
         const rpmFraction = Math.max(0, (rpm - 1000) / 7000);
         const freeWheelSpeedMps = (sign * (rpmFraction * effectiveMaxSpeed)) / 3.6;
         effectiveSpeed = Math.abs(freeWheelSpeedMps) > Math.abs(forwardSpeed) ? freeWheelSpeedMps : forwardSpeed;
+      } else if (input?.handbrake && input?.throttle && input.throttle > 0.1 && wheelConfig.steerable && wheelConfig.powered) {
+        // Standing handbrake burnout / launch: front wheels spin under throttle while rear is locked
+        const rpmFraction = Math.max(0, (rpm - 1000) / 7000);
+        const frontBurnoutSpeed = (rpmFraction * 80) / 3.6;
+        if (frontBurnoutSpeed > Math.abs(forwardSpeed)) {
+          effectiveSpeed = frontBurnoutSpeed;
+        }
       }
 
       // Spin rotation (X axis) based on speed with division-by-zero & NaN sanity guards

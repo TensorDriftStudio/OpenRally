@@ -1,11 +1,13 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Vector3 } from 'three';
+import { Vector3, type Group } from 'three';
 import { useTerrainData } from '@/components/terrain/TerrainContext';
 import { useGameStore } from '@/store/gameStore';
 import { useRacingStore } from '@/store/racingStore';
 import type { CheckpointData } from '@/types/racing';
 import { getInterpolatedHeight } from '@/utils/terrainCompiler';
+import { onGameEvent } from '@/utils/events';
+import { isMobileOrAndroid } from '@/utils/device';
 import { StartFinishGantry } from './StartFinishGantry';
 import { CheckpointGate } from './CheckpointGate';
 
@@ -15,7 +17,8 @@ const _gatePos = new Vector3();
 /**
  * Checkpoints manager component.
  * Samples track spline tangents for coherent gate orientations aligned with the driving line,
- * renders the realistic Start/Finish gantry for Sector 0, manages countdown and race checkpoint proximity triggers.
+ * renders the realistic Start/Finish gantry for Sector 0, manages countdown, and handles
+ * centralized distance-based culling for all checkpoint gates to eliminate per-gate useFrame overhead.
  */
 export function Checkpoints() {
   const gameState = useGameStore((s) => s.gameState);
@@ -25,6 +28,9 @@ export function Checkpoints() {
   const currentCheckpoint = useRacingStore((s) => s.currentCheckpoint);
   const passCheckpoint = useRacingStore((s) => s.passCheckpoint);
   const updateTimer = useRacingStore((s) => s.updateTimer);
+
+  const gateGroupRefs = useRef<(Group | null)[]>([]);
+  const cullingFrameRef = useRef(0);
 
   const { checkpoints } = useMemo(() => {
     const { heights, cols, rows } = heightmapData;
@@ -106,10 +112,47 @@ export function Checkpoints() {
     }
   }, [gameMode, isSceneReady, gameState, levelData.id]);
 
-  // Frame loop for race countdown, timer & proximity trigger detection
-  useFrame((_, delta) => {
+  // Restart countdown upon vehicle reset
+  useEffect(() => {
+    const unsub = onGameEvent('vehicle_reset', () => {
+      if (useGameStore.getState().gameMode === 'timeattack' && useGameStore.getState().gameState === 'playing') {
+        useRacingStore.getState().startCountdown();
+      }
+    });
+    return unsub;
+  }, []);
+
+  // Frame loop for race countdown, timer, proximity trigger, and centralized gate culling
+  useFrame(({ camera }, delta) => {
     if (useGameStore.getState().gameState !== 'playing') return;
     if (gameMode !== 'timeattack') return;
+
+    // Centralized gate distance culling (runs once per 6 frames for all gates)
+    cullingFrameRef.current++;
+    if (cullingFrameRef.current % 6 === 0) {
+      const isMobile = isMobileOrAndroid();
+      const maxDistSq = isMobile ? 240 * 240 : 380 * 380;
+      const camX = camera.position.x;
+      const camY = camera.position.y;
+      const camZ = camera.position.z;
+
+      for (let i = 0; i < checkpoints.length; i++) {
+        const group = gateGroupRefs.current[i];
+        if (!group) continue;
+        if (i === currentCheckpoint || checkpoints[i].isStart) {
+          if (!group.visible) group.visible = true;
+          continue;
+        }
+        const pos = checkpoints[i].position;
+        const dx = camX - pos[0];
+        const dy = camY - pos[1];
+        const dz = camZ - pos[2];
+        const shouldBeVisible = dx * dx + dy * dy + dz * dz <= maxDistSq;
+        if (group.visible !== shouldBeVisible) {
+          group.visible = shouldBeVisible;
+        }
+      }
+    }
 
     const { raceStatus, countdown } = useRacingStore.getState();
 
@@ -160,12 +203,18 @@ export function Checkpoints() {
         }
 
         return (
-          <CheckpointGate
+          <group
             key={cp.id}
-            data={cp}
-            isTarget={isTarget}
-            isPassed={isPassed}
-          />
+            ref={(el) => {
+              gateGroupRefs.current[cp.id] = el;
+            }}
+          >
+            <CheckpointGate
+              data={cp}
+              isTarget={isTarget}
+              isPassed={isPassed}
+            />
+          </group>
         );
       })}
     </group>

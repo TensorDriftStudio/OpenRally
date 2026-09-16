@@ -50,10 +50,16 @@ export const DESERT_GRASS_COLOR_LIGHT = new Color('#c29b48');
 /** Desert dry grass root color */
 export const DESERT_GRASS_COLOR_DARK = new Color('#5c441a');
 
-// ─── Chunking (Performance) ─────────────────────────────────────────
+// ─── Chunking & Culling (Performance) ───────────────────────────────
 
-/** Number of chunks to divide the grass into (e.g. 6 = 6x6 grid = 36 chunks) */
+/** Number of chunks per axis to divide the grass into (e.g. 6 = 6x6 grid = 36 chunks) */
 export const GRASS_CHUNKS = 6;
+
+/** Number of chunks per axis on mobile TBDR GPUs (3 = 3x3 grid = 9 chunks) */
+export const GRASS_CHUNKS_MOBILE = 3;
+
+/** Distance range (meters) over which grass smoothly scales to 0 at the draw distance boundary */
+export const GRASS_FADE_RANGE = 28;
 
 
 

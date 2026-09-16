@@ -24,7 +24,7 @@ export const VALID_GAME_MODES: ReadonlySet<GameMode> = new Set([
   'tag',
 ]);
 
-const VALID_SURFACES: ReadonlySet<SurfaceType> = new Set([
+export const VALID_SURFACES: ReadonlySet<SurfaceType> = new Set([
   'tarmac',
   'gravel',
   'mud',
@@ -33,7 +33,7 @@ const VALID_SURFACES: ReadonlySet<SurfaceType> = new Set([
   'snow',
 ]);
 
-const VALID_VEHICLE_IDS: ReadonlySet<string> = new Set([
+export const VALID_VEHICLE_IDS: ReadonlySet<string> = new Set([
   // Primary Championship Roster
   'zephyr_wr4',
   'apex_phantom_b',

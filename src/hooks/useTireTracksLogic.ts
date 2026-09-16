@@ -54,6 +54,7 @@ export function useTireTracksLogic(
   // Geometries for each wheel ribbon (recreated when ribbon buffer capacity changes)
   const geometries = useMemo(() => {
     return Array.from({ length: 4 }, () => new BufferGeometry());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ribbonBuffers]);
 
   // Bind buffer geometry attributes on initialization or quality change

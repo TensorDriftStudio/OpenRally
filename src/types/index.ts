@@ -11,6 +11,7 @@ export type {
   AerodynamicsConfig,
   VehicleConfig,
   SurfaceType,
+  TireType,
   VehicleCategory,
   VehicleStats,
   VehiclePreset,

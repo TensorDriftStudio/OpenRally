@@ -1,5 +1,7 @@
 import type { LevelPreset } from '@/types/level';
 import { useGymkhanaStore } from '@/store/gymkhanaStore';
+import { getRecommendedTireForLevel } from '@/config/levelRegistry';
+import { getTireDefinition } from '@/config/tireRegistry';
 import { menuStyles, getFocusStyle, formatLapTime } from './menuStyles';
 import type { MenuView } from './types';
 import { STAGE_BANNERS } from './HeroShowcase';
@@ -57,7 +59,9 @@ export function TrackSelectView({
         {availableLevels.map((lvl, index) => {
           const isSelected = selectedLevelId === lvl.id;
           const bestTime = bestLapTimes[lvl.id] ?? null;
-          const bannerUrl = (STAGE_BANNERS as Record<string, string>)[lvl.id] || '/images/stages/island_circuit.jpg';
+          const bannerUrl = lvl.bannerUrl || (STAGE_BANNERS as Record<string, string>)[lvl.id] || '/images/stages/island_circuit.jpg';
+          const recTire = getRecommendedTireForLevel(lvl);
+          const recTireDef = getTireDefinition(recTire);
 
           return (
             <div
@@ -117,9 +121,25 @@ export function TrackSelectView({
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '1px 0' }}>
-                  <span style={{ fontSize: '11px', color: '#94A3B8' }}>
-                    Surface: <strong style={{ color: '#E2E8F0' }}>{lvl.surfaceDescription}</strong>
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '11px', color: '#94A3B8' }}>
+                      Surface: <strong style={{ color: '#E2E8F0' }}>{lvl.surfaceDescription}</strong>
+                    </span>
+                    <span
+                      style={{
+                        fontSize: '9px',
+                        fontWeight: 700,
+                        padding: '1px 5px',
+                        borderRadius: '4px',
+                        color: recTireDef.color,
+                        background: recTireDef.badgeBg,
+                        border: `1px solid ${recTireDef.badgeBorder}`,
+                        letterSpacing: '0.4px',
+                      }}
+                    >
+                      {recTireDef.icon} {recTireDef.label} Spec
+                    </span>
+                  </div>
                   {lvl.supportedModes?.includes('gymkhana_blitz') ? (
                     (() => {
                       const gymScore = useGymkhanaStore.getState().getBestScoreForLevel(lvl.id);

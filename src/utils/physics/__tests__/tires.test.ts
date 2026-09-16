@@ -1,11 +1,30 @@
 import { describe, it, expect, vi } from 'vitest';
-import { getSurfaceAtPosition, getInterpolatedSteeringAngle, applyTireFrictionAndBrakes } from '../tires';
+import { getSurfaceAtPosition, getInterpolatedSteeringAngle, applyTireFrictionAndBrakes, calculateTireSurfaceGripMultiplier, DRIFT_MAX_STEER_LOCK } from '../tires';
 import { DEFAULT_VEHICLE_CONFIG } from '@/config/vehicle';
 import type { IRapierVehicleController } from '@/types/vehicle';
 import type { HeightmapData } from '@/types/terrain';
 import type { LevelData } from '@/types/level';
 
 describe('tire and surface physics', () => {
+  const mockLevel: LevelData = {
+    id: 'level1_island',
+    name: 'Island Level',
+    terrainBase: {
+      width: 300,
+      depth: 300,
+      subdivisions: 2,
+      amplitude: 10,
+      frequency: 0.01,
+      octaves: 2,
+      lacunarity: 2,
+      persistence: 0.5,
+      seed: 1,
+    },
+    track: { points: [], width: 10, falloff: 2, targetHeight: 5 },
+    heightModifiers: [],
+    props: [],
+  };
+
   describe('getSurfaceAtPosition', () => {
     const mockHeightmap: HeightmapData = {
       heights: new Float32Array(9),
@@ -14,25 +33,6 @@ describe('tire and surface physics', () => {
       rows: 3,
       minHeight: 0,
       maxHeight: 10,
-    };
-
-    const mockLevel: LevelData = {
-      id: 'level1_island',
-      name: 'Island Level',
-      terrainBase: {
-        width: 300,
-        depth: 300,
-        subdivisions: 2,
-        amplitude: 10,
-        frequency: 0.01,
-        octaves: 2,
-        lacunarity: 2,
-        persistence: 0.5,
-        seed: 1,
-      },
-      track: { points: [], width: 10, falloff: 2, targetHeight: 5 },
-      heightModifiers: [],
-      props: [],
     };
 
     const mockDesertLevel: LevelData = {
@@ -175,11 +175,11 @@ describe('tire and surface physics', () => {
         0
       );
 
-      // Handbrake only locks rear wheels (index 2, 3)
+      // Handbrake only locks rear wheels (index 2, 3) with robust mechanical lockup impulse
       expect(controller.brakes[0]).toBe(0);
       expect(controller.brakes[1]).toBe(0);
-      expect(controller.brakes[2]).toBeGreaterThan(0);
-      expect(controller.brakes[3]).toBeGreaterThan(0);
+      expect(controller.brakes[2]).toBeGreaterThanOrEqual(160);
+      expect(controller.brakes[3]).toBeGreaterThanOrEqual(160);
       // Rear grip reduced for drifting
       expect(result.grips[2]).toBeLessThan(result.grips[0]);
     });
@@ -277,6 +277,11 @@ describe('tire and surface physics', () => {
 
     it('delivers responsive gymkhana asphalt grip on tarmac with controlled throttle traction modulation', () => {
       const controller = createMockController();
+      const mockGymkhanaLevel: LevelData = {
+        ...mockLevel,
+        id: 'gymkhana_arena',
+        name: 'Gymkhana Arena',
+      };
       const result = applyTireFrictionAndBrakes(
         controller,
         {
@@ -288,7 +293,9 @@ describe('tire and surface physics', () => {
         0,
         5, // Tarmac / elevated
         0,
-        0
+        0,
+        undefined,
+        mockGymkhanaLevel,
       );
 
       // On tarmac, asphalt provides responsive front directional authority while allowing controlled rear breakaway
@@ -365,5 +372,401 @@ describe('tire and surface physics', () => {
       // Front wheels maintain directional authority
       expect(resultPowerSlide.grips[0]).toBeGreaterThan(resultPowerSlide.grips[2]);
     });
+
+    it('expands countersteer lock up to DRIFT_MAX_STEER_LOCK during high slip angle power slides', () => {
+      const controllerStraight = createMockController();
+      // Driving at 80 km/h in straight line: steering limit is base steering curve (~26 deg)
+      const resultStraight = applyTireFrictionAndBrakes(
+        controllerStraight,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: -1.0, throttle: 1.0 },
+        80,
+        22.2,
+        0,
+        5,
+        0,
+        0 // No slip
+      );
+
+      const controllerDrift = createMockController();
+      // Driving at 80 km/h in deep slide (slipAngle = 0.4 rad): countersteering expands lock
+      const resultDrift = applyTireFrictionAndBrakes(
+        controllerDrift,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: -1.0, throttle: 1.0 },
+        80,
+        22.2,
+        0,
+        5,
+        0,
+        0.4 // 0.4 rad (~23 deg) slide to right
+      );
+
+      // Countersteer lock should be significantly deeper than straight-line high-speed lock
+      expect(Math.abs(resultDrift.steerAngle)).toBeGreaterThan(Math.abs(resultStraight.steerAngle));
+      expect(Math.abs(resultDrift.steerAngle)).toBeCloseTo(DRIFT_MAX_STEER_LOCK, 1);
+    });
+
+    it('maintains direct driver steering authority without autonomous wheel steering when steering is neutral', () => {
+      const controller = createMockController();
+      // Sliding to the right (slipAngle = +0.3 rad) with neutral steering (steering = 0)
+      const result = applyTireFrictionAndBrakes(
+        controller,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 1.0 },
+        60,
+        16.6,
+        0,
+        5,
+        0,
+        0.3 // +0.3 rad slip
+      );
+
+      // Front wheel steer angle must strictly remain 0 when driver input is 0 (no autonomous caster intervention)
+      expect(result.steerAngle).toBe(0);
+    });
+
+    it('modulates brake force and maintains steering authority when ABS is enabled during panic braking', () => {
+      const controller = createMockController();
+      const result = applyTireFrictionAndBrakes(
+        controller,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 1.0, handbrake: false, steering: 1.0, throttle: 0 },
+        60,
+        16.6,
+        0,
+        5, // Tarmac
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        { absEnabled: true }
+      );
+
+      // ABS should be active
+      expect(result.absActive).toBe(true);
+      // Steering angle maintains full authority
+      expect(Math.abs(result.steerAngle)).toBeGreaterThan(0.2);
+      // Brake calls should be modulated (~82% threshold) rather than raw full 100%
+      expect(controller.setWheelBrake).toHaveBeenCalled();
+    });
+
+    it('locks wheels and degrades steering authority to 25% when ABS is disabled during panic braking', () => {
+      const controllerAbsOff = createMockController();
+      const resultAbsOff = applyTireFrictionAndBrakes(
+        controllerAbsOff,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 1.0, handbrake: false, steering: 1.0, throttle: 0 },
+        60,
+        16.6,
+        0,
+        5, // Tarmac
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        { absEnabled: false }
+      );
+
+      // ABS should not be active
+      expect(resultAbsOff.absActive).toBe(false);
+      const absOffGrips = [...resultAbsOff.grips];
+
+      const controllerAbsOn = createMockController();
+      const resultAbsOn = applyTireFrictionAndBrakes(
+        controllerAbsOn,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 1.0, handbrake: false, steering: 1.0, throttle: 0 },
+        60,
+        16.6,
+        0,
+        5,
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        { absEnabled: true }
+      );
+
+      // Without ABS, steering authority under lockup drops to 25% of ABS-on steering authority
+      expect(Math.abs(resultAbsOff.steerAngle)).toBeLessThan(Math.abs(resultAbsOn.steerAngle) * 0.3);
+      // Sliding friction under locked wheels is lower than modulated ABS friction
+      expect(absOffGrips[0]).toBeLessThan(resultAbsOn.grips[0]);
+    });
+
+    it('reduces driven tire friction due to burnout wheelspin when TCS is disabled under heavy throttle', () => {
+      const controllerTcsOff = createMockController();
+      const resultTcsOff = applyTireFrictionAndBrakes(
+        controllerTcsOff,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 1.0 },
+        20,
+        5.5,
+        0,
+        5,
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        { tcsEnabled: false }
+      );
+      const tcsOffGrips = [...resultTcsOff.grips];
+
+      const controllerTcsOn = createMockController();
+      const resultTcsOn = applyTireFrictionAndBrakes(
+        controllerTcsOn,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 1.0 },
+        20,
+        5.5,
+        0,
+        5,
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        { tcsEnabled: true }
+      );
+
+      expect(tcsOffGrips[0]).toBeLessThan(resultTcsOn.grips[0]);
+    });
+
+    it('continuously reduces grip on loose sand while moving even with zero throttle (continuous granular shear)', () => {
+      const controllerStationary = createMockController();
+      const resultStationary = applyTireFrictionAndBrakes(
+        controllerStationary,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        0,
+        0,
+        0,
+        -7, // Sand
+        0,
+        0
+      );
+
+      const stationaryGrips = [...resultStationary.grips];
+
+      const controllerMoving = createMockController();
+      const resultMoving = applyTireFrictionAndBrakes(
+        controllerMoving,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        40,
+        11.1,
+        0,
+        -7, // Sand
+        0,
+        0
+      );
+      const movingGrips = [...resultMoving.grips];
+
+      // On sand, moving over granular terrain continuously shears the ground, reducing grip even without throttle
+      expect(movingGrips[0]).toBeLessThan(stationaryGrips[0]);
+      expect(movingGrips[2]).toBeLessThan(stationaryGrips[2]);
+      // Sand grip must remain loose and under 1.2 (never glued like asphalt)
+      expect(movingGrips[0]).toBeLessThan(1.2);
+      expect(movingGrips[2]).toBeLessThan(1.2);
+    });
+
+    it('smoothly transitions lateral grip along an analog curve without binary step artifacts', () => {
+      const angles = [0, 0.15, 0.30, 0.45, 0.60];
+      const grips: number[] = [];
+
+      for (const slip of angles) {
+        const ctrl = createMockController();
+        const res = applyTireFrictionAndBrakes(
+          ctrl,
+          DEFAULT_VEHICLE_CONFIG,
+          { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+          40,
+          11.1,
+          0,
+          -7, // Sand
+          0,
+          slip
+        );
+        grips.push(res.grips[2]);
+      }
+
+      // Grip should smoothly decrease or remain non-increasing as slip angle deepens
+      for (let i = 1; i < grips.length; i++) {
+        expect(grips[i]).toBeLessThanOrEqual(grips[i - 1]);
+      }
+
+      // The transition from small slip to deep slide must be progressive (no sudden single-step cliff drop)
+      const maxSingleStepDrop = Math.max(
+        grips[0] - grips[1],
+        grips[1] - grips[2],
+        grips[2] - grips[3],
+        grips[3] - grips[4]
+      );
+      expect(maxSingleStepDrop).toBeLessThan(0.20);
+    });
+
+    it('orders surface traction realistically across tarmac, gravel, and sand', () => {
+      const mockGymkhanaLevel: LevelData = {
+        ...mockLevel,
+        id: 'gymkhana_arena',
+        name: 'Gymkhana Arena',
+      };
+
+      const ctrlTarmac = createMockController();
+      const resTarmac = applyTireFrictionAndBrakes(
+        ctrlTarmac,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        40,
+        11.1,
+        0,
+        10, // Gymkhana elevated plateau = tarmac
+        0,
+        0,
+        undefined,
+        mockGymkhanaLevel
+      );
+      const tarmacGrips = [...resTarmac.grips];
+
+      const ctrlSand = createMockController();
+      const resSand = applyTireFrictionAndBrakes(
+        ctrlSand,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        40,
+        11.1,
+        0,
+        -7, // Sand
+        0,
+        0
+      );
+      const sandGrips = [...resSand.grips];
+
+      // Tarmac has full grip (> 2.0), while sand is loose and floating (< 1.2)
+      expect(tarmacGrips[0]).toBeGreaterThan(2.0);
+      expect(sandGrips[0]).toBeLessThan(1.2);
+      expect(tarmacGrips[0]).toBeGreaterThan(sandGrips[0]);
+    });
+
+    it('applies tire compound multipliers across asphalt, gravel, and snow compounds', () => {
+      const mockGymkhanaLevel: LevelData = {
+        ...mockLevel,
+        id: 'gymkhana_arena',
+        name: 'Gymkhana Arena',
+      };
+
+      // 1. On Tarmac (Gymkhana): Asphalt tires should have highest grip
+      const ctrlAsphaltTarmac = createMockController();
+      const resAsphaltTarmac = applyTireFrictionAndBrakes(
+        ctrlAsphaltTarmac,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        40,
+        11.1,
+        0,
+        10, // Tarmac
+        0,
+        0,
+        undefined,
+        mockGymkhanaLevel,
+        undefined,
+        undefined,
+        'asphalt',
+      );
+      const asphaltTarmacGrip = resAsphaltTarmac.grips[0];
+
+      const ctrlGravelTarmac = createMockController();
+      const resGravelTarmac = applyTireFrictionAndBrakes(
+        ctrlGravelTarmac,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        40,
+        11.1,
+        0,
+        10, // Tarmac
+        0,
+        0,
+        undefined,
+        mockGymkhanaLevel,
+        undefined,
+        undefined,
+        'gravel',
+      );
+      const gravelTarmacGrip = resGravelTarmac.grips[0];
+
+      const ctrlSnowTarmac = createMockController();
+      const resSnowTarmac = applyTireFrictionAndBrakes(
+        ctrlSnowTarmac,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        40,
+        11.1,
+        0,
+        10, // Tarmac
+        0,
+        0,
+        undefined,
+        mockGymkhanaLevel,
+        undefined,
+        undefined,
+        'snow',
+      );
+      const snowTarmacGrip = resSnowTarmac.grips[0];
+
+      // On Tarmac: Asphalt > Gravel > Snow
+      expect(asphaltTarmacGrip).toBeGreaterThan(gravelTarmacGrip);
+      expect(gravelTarmacGrip).toBeGreaterThan(snowTarmacGrip);
+
+      // 2. On Sand/Loose ground: Gravel compound should outperform Asphalt
+      const ctrlAsphaltSand = createMockController();
+      const resAsphaltSand = applyTireFrictionAndBrakes(
+        ctrlAsphaltSand,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        40,
+        11.1,
+        0,
+        -7, // Sand
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'asphalt',
+      );
+      const asphaltSandGrip = resAsphaltSand.grips[0];
+
+      const ctrlGravelSand = createMockController();
+      const resGravelSand = applyTireFrictionAndBrakes(
+        ctrlGravelSand,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        40,
+        11.1,
+        0,
+        -7, // Sand
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'gravel',
+      );
+      const gravelSandGrip = resGravelSand.grips[0];
+
+      expect(gravelSandGrip).toBeGreaterThan(asphaltSandGrip);
+
+      // 3. Helper function calculateTireSurfaceGripMultiplier
+      expect(calculateTireSurfaceGripMultiplier('asphalt', 'tarmac')).toBe(1.0);
+      expect(calculateTireSurfaceGripMultiplier('gravel', 'gravel')).toBe(1.25);
+      expect(calculateTireSurfaceGripMultiplier('snow', 'snow')).toBe(1.40);
+    });
   });
 });
+

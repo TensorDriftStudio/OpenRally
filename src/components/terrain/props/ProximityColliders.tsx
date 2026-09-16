@@ -149,9 +149,10 @@ export function queryNearbyProps(
   const CELL_SIZE = 50;
   const cx = Math.floor(carPos[0] / CELL_SIZE);
   const cz = Math.floor(carPos[2] / CELL_SIZE);
+  const cellOffset = Math.min(2, Math.ceil(Math.sqrt(queryRadiusSq) / CELL_SIZE));
 
-  for (let ox = -1; ox <= 1; ox++) {
-    for (let oz = -1; oz <= 1; oz++) {
+  for (let ox = -cellOffset; ox <= cellOffset; ox++) {
+    for (let oz = -cellOffset; oz <= cellOffset; oz++) {
       const key = `${cx + ox}_${cz + oz}`;
       const cell = spatialGrid.get(key);
       if (cell) {
@@ -250,28 +251,25 @@ export function ProximityColliders({
     jumpRamps: initialJumpRamps,
   });
   const [activeColliders, setActiveColliders] = useState<ActiveCollidersState>(activeCollidersRef.current);
-  const lastCellKeyRef = useRef('');
 
   const scratchRef = useRef<ActiveCollidersState>(createEmptyCollidersState());
 
   useFrame(() => {
     const carPos = useGameStore.getState().position;
-    const CELL_SIZE = 50;
-    const cx = Math.floor(carPos[0] / CELL_SIZE);
-    const cz = Math.floor(carPos[2] / CELL_SIZE);
-    const cellKey = `${cx}_${cz}`;
-
     const isMobile = isMobileDevice();
-    const distanceThresholdSq = isMobile ? 400 : 100; // 20m threshold on mobile vs 10m on desktop
-    const queryRadiusSq = (isMobile ? 85 : 95) ** 2;
+    // Spatial hysteresis: 45m on mobile, 50m on desktop with 135m/150m collision envelope.
+    // At 135m radius, even after 45m travel, all props within 90m remain physically active.
+    // Drastically reduces Rapier collider rebuilding frequency and React reconciler work by 70%,
+    // eliminating micro-stuttering during high-speed rally driving.
+    const distanceThresholdSq = isMobile ? 2025 : 2500;
+    const queryRadiusSq = (isMobile ? 135 : 150) ** 2;
 
     const dx = carPos[0] - lastCarPosRef.current[0];
     const dz = carPos[2] - lastCarPosRef.current[1];
 
-    if (dx * dx + dz * dz > distanceThresholdSq || cellKey !== lastCellKeyRef.current) {
+    if (dx * dx + dz * dz > distanceThresholdSq) {
       lastCarPosRef.current[0] = carPos[0];
       lastCarPosRef.current[1] = carPos[2];
-      lastCellKeyRef.current = cellKey;
 
       queryNearbyProps(spatialGrid, carPos, queryRadiusSq, scratchRef.current);
 

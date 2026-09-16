@@ -4,7 +4,7 @@
 export type GameState = 'title' | 'loading' | 'playing' | 'paused' | 'menu';
 
 /**
- * Game modes: Free Roam (open world exploration), Time Attack (checkpoint racing), Gymkhana Blitz (drift points challenge), or Tag (multiplayer pursuit / berek).
+ * Game modes: Free Roam (open world exploration), Time Attack (checkpoint racing), Gymkhana Blitz (drift points challenge), or Tag (multiplayer pursuit).
  */
 export type GameMode = 'freeroam' | 'timeattack' | 'gymkhana_blitz' | 'tag';
 

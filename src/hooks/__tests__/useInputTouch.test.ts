@@ -449,5 +449,31 @@ describe('useInput Touch Integration & Multi-Source Blending', () => {
       expect(snap2.throttle).toBe(0.8);
       expect(snap2.steering).toBe(-0.5);
     });
+
+    it('scales digital keyboard steering turn rate with user sensitivity setting', () => {
+      const keys = new Set(['KeyA']);
+      const dt = 1 / 60;
+
+      // Default sensitivity (1.0)
+      const resDefault = blendInputs({
+        dt,
+        prevSteering: 0,
+        keys,
+        sensitivity: 1.0,
+      });
+
+      // Low sensitivity (0.2)
+      const resLow = blendInputs({
+        dt,
+        prevSteering: 0,
+        keys,
+        sensitivity: 0.2,
+      });
+
+      // Steering builds up much more gradually at low sensitivity
+      expect(resLow.state.steering).toBeLessThan(resDefault.state.steering);
+      expect(resLow.state.steering).toBeGreaterThan(0);
+      expect(resLow.steerSpeed).toBeLessThan(resDefault.steerSpeed);
+    });
   });
 });

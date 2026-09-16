@@ -87,6 +87,10 @@ export function createDetailedTerrainMaterial(options: TerrainMaterialOptions): 
       '#include <common>',
       /* glsl */ `
         #include <common>
+        ${isSnow ? '#define BIOME_SNOW 1' : ''}
+        ${isDesert ? '#define BIOME_DESERT 1' : ''}
+        ${isGymkhana ? '#define BIOME_GYMKHANA 1' : ''}
+
         varying vec3 vWorldPosition;
         varying vec3 vWorldNormal;
         varying float vTrackMask;
@@ -105,33 +109,63 @@ export function createDetailedTerrainMaterial(options: TerrainMaterialOptions): 
       `,
     );
 
+    // Base ground and track sampling code generated at compile-time via JS interpolation
+    // (eliminates GLSL ES 1.0 #elif incompatibility on TBDR mobile GPUs)
+    const mobileBaseGroundCode = isSnow
+      ? 'baseGround = texture2D(u_snowTexture, uvMacro).rgb * 1.08;'
+      : isDesert
+      ? 'baseGround = texture2D(u_sandTexture, uvMacro).rgb;'
+      : isGymkhana
+      ? 'baseGround = texture2D(u_trackTexture, uvMacro).rgb * vec3(0.28, 0.29, 0.31);'
+      : 'baseGround = texture2D(u_grassTexture, uvMacro).rgb;';
+
+    const mobileTrackTexCode = isSnow
+      ? 'trackTex = texture2D(u_snowTrackTexture, uvTrackMacro).rgb * vec3(0.92, 0.95, 1.0);'
+      : isGymkhana
+      ? 'trackTex = texture2D(u_trackTexture, uvTrackMacro).rgb * vec3(0.35, 0.36, 0.38);'
+      : 'trackTex = texture2D(u_trackTexture, uvTrackMacro).rgb * vec3(0.95, 0.90, 0.85);';
+
+    const desktopBaseGroundCode = isSnow
+      ? `vec3 snowMacro = texture2D(u_snowTexture, uvMacro).rgb;
+        vec3 snowMicro = texture2D(u_snowTexture, uvMicro).rgb;
+        baseGround = mix(snowMacro, snowMicro, 0.5) * 1.08;`
+      : isDesert
+      ? `vec3 sandMacro = texture2D(u_sandTexture, uvMacro).rgb;
+        vec3 sandMicro = texture2D(u_sandTexture, uvMicro).rgb;
+        baseGround = mix(sandMacro, sandMicro, 0.5);`
+      : isGymkhana
+      ? `vec3 asphaltMacro = texture2D(u_trackTexture, uvMacro).rgb;
+        vec3 asphaltMicro = texture2D(u_trackTexture, uvMicro).rgb;
+        baseGround = mix(asphaltMacro, asphaltMicro, 0.5) * vec3(0.28, 0.29, 0.31);`
+      : `vec3 grassMacro = texture2D(u_grassTexture, uvMacro).rgb;
+        vec3 grassMicro = texture2D(u_grassTexture, uvMicro).rgb;
+        baseGround = mix(grassMacro, grassMicro, 0.5);`;
+
+    const desktopTrackTexCode = isSnow
+      ? `vec3 snowTrkMacro = texture2D(u_snowTrackTexture, uvTrackMacro).rgb;
+        vec3 snowTrkMicro = texture2D(u_snowTrackTexture, uvTrackMicro).rgb;
+        trackTex = mix(snowTrkMacro, snowTrkMicro, 0.5) * vec3(0.92, 0.95, 1.0);`
+      : isGymkhana
+      ? `vec3 trackMacro = texture2D(u_trackTexture, uvTrackMacro).rgb;
+        vec3 trackMicro = texture2D(u_trackTexture, uvTrackMacro).rgb;
+        trackTex = mix(trackMacro, trackMicro, 0.5) * vec3(0.35, 0.36, 0.38) * 1.15;`
+      : `vec3 trackMacro = texture2D(u_trackTexture, uvTrackMacro).rgb;
+        vec3 trackMicro = texture2D(u_trackTexture, uvTrackMicro).rgb;
+        trackTex = mix(trackMacro, trackMicro, 0.5) * vec3(0.95, 0.90, 0.85);`;
+
     // Apply texture splatting after diffuse color is computed
     const mobileFragmentChunk = /* glsl */ `
         #include <color_fragment>
 
-        // Mobile optimized fast ground sampling: 1 macro UV lookup for ground & track
+        // Mobile optimized fast ground sampling: 1 macro UV lookup for ground & track (compile-time specialized)
         vec2 uvMacro = vWorldPosition.xz * 0.055;
         vec3 baseGround;
-        if (u_isSnow > 0.5) {
-          baseGround = texture2D(u_snowTexture, uvMacro).rgb * 1.08;
-        } else if (u_isDesert > 0.5) {
-          baseGround = texture2D(u_sandTexture, uvMacro).rgb;
-        } else if (u_isGymkhana > 0.5) {
-          baseGround = texture2D(u_trackTexture, uvMacro).rgb * vec3(0.28, 0.29, 0.31);
-        } else {
-          baseGround = texture2D(u_grassTexture, uvMacro).rgb;
-        }
+        ${mobileBaseGroundCode}
 
         // Fast track lookup
         vec2 uvTrackMacro = vWorldPosition.xz * 0.08;
         vec3 trackTex;
-        if (u_isSnow > 0.5) {
-          trackTex = texture2D(u_snowTrackTexture, uvTrackMacro).rgb * vec3(0.92, 0.95, 1.0);
-        } else if (u_isGymkhana > 0.5) {
-          trackTex = texture2D(u_trackTexture, uvTrackMacro).rgb * vec3(0.35, 0.36, 0.38);
-        } else {
-          trackTex = texture2D(u_trackTexture, uvTrackMacro).rgb * vec3(0.95, 0.90, 0.85);
-        }
+        ${mobileTrackTexCode}
 
         // Blend base ground with track
         vec3 blendedAlbedo = mix(baseGround, trackTex, clamp(vTrackMask * 1.25, 0.0, 1.0));
@@ -141,9 +175,7 @@ export function createDetailedTerrainMaterial(options: TerrainMaterialOptions): 
         float rockFactor = smoothstep(0.30, 0.65, slope);
         if (rockFactor > 0.01) {
           vec3 rockTex = texture2D(u_rockTexture, vWorldPosition.xz * 0.22).rgb;
-          if (u_isSnow > 0.5) {
-            rockTex = mix(rockTex * 0.85, vec3(0.95, 0.98, 1.0), clamp(vWorldNormal.y * 0.6, 0.0, 0.6));
-          }
+          ${isSnow ? 'rockTex = mix(rockTex * 0.85, vec3(0.95, 0.98, 1.0), clamp(vWorldNormal.y * 0.6, 0.0, 0.6));' : ''}
           blendedAlbedo = mix(blendedAlbedo, rockTex, rockFactor);
         }
 
@@ -159,43 +191,15 @@ export function createDetailedTerrainMaterial(options: TerrainMaterialOptions): 
         vec2 uvMacro = vWorldPosition.xz * 0.055;
         vec2 uvMicro = mat2(0.866, -0.5, 0.5, 0.866) * (vWorldPosition.xz * 0.28);
 
-        // Base biome ground texture sampling
+        // Base biome ground texture sampling (compile-time specialized)
         vec3 baseGround;
-        if (u_isSnow > 0.5) {
-          vec3 snowMacro = texture2D(u_snowTexture, uvMacro).rgb;
-          vec3 snowMicro = texture2D(u_snowTexture, uvMicro).rgb;
-          baseGround = mix(snowMacro, snowMicro, 0.5) * 1.08;
-        } else if (u_isDesert > 0.5) {
-          vec3 sandMacro = texture2D(u_sandTexture, uvMacro).rgb;
-          vec3 sandMicro = texture2D(u_sandTexture, uvMicro).rgb;
-          baseGround = mix(sandMacro, sandMicro, 0.5);
-        } else if (u_isGymkhana > 0.5) {
-          vec3 asphaltMacro = texture2D(u_trackTexture, uvMacro).rgb;
-          vec3 asphaltMicro = texture2D(u_trackTexture, uvMicro).rgb;
-          baseGround = mix(asphaltMacro, asphaltMicro, 0.5) * vec3(0.28, 0.29, 0.31);
-        } else {
-          vec3 grassMacro = texture2D(u_grassTexture, uvMacro).rgb;
-          vec3 grassMicro = texture2D(u_grassTexture, uvMicro).rgb;
-          baseGround = mix(grassMacro, grassMicro, 0.5);
-        }
+        ${desktopBaseGroundCode}
 
         // Rally track dirt/mud/packed snow texture sampling with subtle color grading
         vec2 uvTrackMacro = vWorldPosition.xz * 0.08;
         vec2 uvTrackMicro = mat2(0.866, -0.5, 0.5, 0.866) * (vWorldPosition.xz * 0.35);
         vec3 trackTex;
-        if (u_isSnow > 0.5) {
-          vec3 snowTrkMacro = texture2D(u_snowTrackTexture, uvTrackMacro).rgb;
-          vec3 snowTrkMicro = texture2D(u_snowTrackTexture, uvTrackMicro).rgb;
-          trackTex = mix(snowTrkMacro, snowTrkMicro, 0.5) * vec3(0.92, 0.95, 1.0);
-        } else if (u_isGymkhana > 0.5) {
-          vec3 trackMacro = texture2D(u_trackTexture, uvTrackMacro).rgb;
-          vec3 trackMicro = texture2D(u_trackTexture, uvTrackMicro).rgb;
-          trackTex = mix(trackMacro, trackMicro, 0.5) * vec3(0.35, 0.36, 0.38) * 1.15;
-        } else {
-          vec3 trackMacro = texture2D(u_trackTexture, uvTrackMacro).rgb;
-          vec3 trackMicro = texture2D(u_trackTexture, uvTrackMicro).rgb;
-          trackTex = mix(trackMacro, trackMicro, 0.5) * vec3(0.95, 0.90, 0.85);
-        }
+        ${desktopTrackTexCode}
 
         // Blend base ground with track
         vec3 blendedAlbedo = mix(baseGround, trackTex, clamp(vTrackMask * 1.25, 0.0, 1.0));
@@ -210,9 +214,7 @@ export function createDetailedTerrainMaterial(options: TerrainMaterialOptions): 
         vec3 triplanarRock = rockTexX * normalWeights.x + rockTexY * normalWeights.y + rockTexZ * normalWeights.z;
 
         // In snow biome, cliff rocks have snow dusting on flatter micro-surfaces
-        if (u_isSnow > 0.5) {
-          triplanarRock = mix(triplanarRock * 0.85, vec3(0.95, 0.98, 1.0), clamp(vWorldNormal.y * 0.6, 0.0, 0.6));
-        }
+        ${isSnow ? 'triplanarRock = mix(triplanarRock * 0.85, vec3(0.95, 0.98, 1.0), clamp(vWorldNormal.y * 0.6, 0.0, 0.6));' : ''}
 
         // Slope calculation: 0 = flat plane, 1 = vertical cliff
         float slope = 1.0 - abs(vWorldNormal.y);
@@ -243,7 +245,7 @@ export function createDetailedTerrainMaterial(options: TerrainMaterialOptions): 
     );
 
     if (!isMobile) {
-      // Procedural micro-relief normal perturbation from texture luminance gradients
+      // Procedural micro-relief normal perturbation from texture luminance gradients without polygon face-normal artifacts
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <normal_fragment_maps>',
         /* glsl */ `
@@ -251,17 +253,12 @@ export function createDetailedTerrainMaterial(options: TerrainMaterialOptions): 
           float microLum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
           vec3 dPdx = dFdx(vWorldPosition);
           vec3 dPdy = dFdy(vWorldPosition);
-          vec3 normCross = cross(dPdx, dPdy);
-          float lenCross = length(normCross);
-          if (lenCross > 0.0001) {
-            vec3 surfNorm = normCross / lenCross;
-            float dhx = dFdx(microLum) * 0.35;
-            float dhy = dFdy(microLum) * 0.35;
-            vec3 grad = dPdx * dhx + dPdy * dhy;
-            vec3 bumpWorld = normalize(surfNorm - grad);
-            vec3 bumpView = normalize((viewMatrix * vec4(bumpWorld, 0.0)).xyz);
-            normal = normalize(mix(normal, bumpView, 0.32));
-          }
+          float dhx = dFdx(microLum) * 0.20;
+          float dhy = dFdy(microLum) * 0.20;
+          vec3 grad = dPdx * dhx + dPdy * dhy;
+          vec3 bumpWorld = normalize(vWorldNormal - grad);
+          vec3 bumpView = normalize((viewMatrix * vec4(bumpWorld, 0.0)).xyz);
+          normal = normalize(mix(normal, bumpView, 0.12));
         `,
       );
     }

@@ -109,11 +109,11 @@ export interface GamepadSample {
   gearUp: boolean;
   /** Edge-triggered: Shift gear down (PS5 Circle / Xbox B) */
   gearDown: boolean;
-  /** Edge-triggered: Camera toggle (Y / Triangle / LB / L1) pressed this frame */
+  /** Edge-triggered: Camera toggle (LB / L1) pressed this frame */
   cameraToggle: boolean;
-  /** Edge-triggered: Reset car (X / Square / View / Create) pressed this frame */
+  /** Edge-triggered: Reset car (Y / Triangle / View / Create) pressed this frame */
   resetToggle: boolean;
-  /** Whether reset button is currently held */
+  /** Whether reset button (Y / Triangle / View / Create) is currently held */
   resetHeld: boolean;
   /** Edge-triggered: Pause / Menu / Options button pressed this frame */
   pauseToggle: boolean;
@@ -142,6 +142,10 @@ export interface GamepadSample {
   /** UI Tab Navigation edge-triggered signals (LB / L1 for Left, RB / R1 for Right) */
   menuTabLeft: boolean;
   menuTabRight: boolean;
+  /** UI Special Action X (Square / X button, e.g. Delete Room) */
+  menuSpecialX: boolean;
+  /** UI Special Action Y (Triangle / Y button, e.g. Refresh Rooms) */
+  menuSpecialY: boolean;
 }
 
 
@@ -211,6 +215,8 @@ export const prevButtonStates: Record<string, boolean> = {
   menuBack: false,
   menuTabLeft: false,
   menuTabRight: false,
+  menuSpecialX: false,
+  menuSpecialY: false,
 };
 
 // Delayed Auto Shift (DAS) repeat timings for menu directional navigation
@@ -253,7 +259,10 @@ export function resetGamepadEdgeState(customGamepad?: Gamepad | null): void {
     const axes = gp.axes || [];
     const btnA = isButtonPressed(buttons[0]);
     const btnB = isButtonPressed(buttons[1]);
+    const btnSquare = isButtonPressed(buttons[2]);
     const btnY = isButtonPressed(buttons[3]);
+    const btnLB = isButtonPressed(buttons[4]);
+    const btnRB = isButtonPressed(buttons[5]);
     const btnView = isButtonPressed(buttons[8]);
     const btnMenu = isButtonPressed(buttons[9]);
     const dpadUp = isButtonPressed(buttons[12]);
@@ -282,17 +291,17 @@ export function resetGamepadEdgeState(customGamepad?: Gamepad | null): void {
       }
     }
 
-    const btnLB = isButtonPressed(buttons[4]);
-    const btnRB = isButtonPressed(buttons[5]);
     prevButtonStates.gearUp = btnA;
     prevButtonStates.gearDown = btnB;
     prevButtonStates.menuConfirm = btnA;
     prevButtonStates.menuBack = btnB;
     prevButtonStates.menuTabLeft = btnLB;
     prevButtonStates.menuTabRight = btnRB;
+    prevButtonStates.menuSpecialX = btnSquare;
+    prevButtonStates.menuSpecialY = btnY;
     prevButtonStates.pause = btnMenu;
-    prevButtonStates.camera = btnY;
-    prevButtonStates.reset = btnView;
+    prevButtonStates.camera = btnLB;
+    prevButtonStates.reset = btnY || btnView;
     prevButtonStates.menuUp = dpadUp || stickUp;
     prevButtonStates.menuDown = dpadDown || stickDown;
     prevButtonStates.menuLeft = dpadLeft || stickLeft;
@@ -373,6 +382,8 @@ export function sampleGamepad(sensitivity = 1.0, customGamepad?: Gamepad | null)
       menuBack: false,
       menuTabLeft: false,
       menuTabRight: false,
+      menuSpecialX: false,
+      menuSpecialY: false,
     };
   }
 
@@ -390,11 +401,31 @@ export function sampleGamepad(sensitivity = 1.0, customGamepad?: Gamepad | null)
   // Support D-Pad Left/Right as alternative digital steering
   const dpadLeft = isButtonPressed(buttons[XBOX_BUTTONS.DPAD_LEFT]);
   const dpadRight = isButtonPressed(buttons[XBOX_BUTTONS.DPAD_RIGHT]);
+  const isDpadSteering = (dpadLeft && !dpadRight) || (dpadRight && !dpadLeft);
   if (dpadLeft && !dpadRight) steerVal = 1;
   else if (dpadRight && !dpadLeft) steerVal = -1;
 
-  // Apply user sensitivity setting (clamped to [-1, 1])
-  const finalSteering = Math.max(-1, Math.min(1, steerVal * sensitivity));
+  // Apply user sensitivity setting (clamped to [-1, 1]):
+  // For digital D-Pad steering, scales target angle within [0.1, 1.0].
+  // For analog stick steering:
+  // - When sensitivity <= 1.0: Progressive curve (s * x + (1 - s) * x^3) scales down micro-corrections
+  //   at center (slope = sensitivity) while smoothly preserving full steering lock at full stick deflection.
+  // - When sensitivity > 1.0: Exponent curve (x^(1/s)) ramps up faster to full lock for ultra-responsive control.
+  let finalSteering: number;
+  if (isDpadSteering) {
+    finalSteering = steerVal * Math.min(1.0, Math.max(0.1, sensitivity));
+  } else {
+    const absSteer = Math.abs(steerVal);
+    const signSteer = Math.sign(steerVal);
+    if (absSteer === 0) {
+      finalSteering = 0;
+    } else if (sensitivity <= 1.0) {
+      const progressive = sensitivity * absSteer + (1 - sensitivity) * Math.pow(absSteer, 3);
+      finalSteering = signSteer * Math.min(1.0, Math.max(0, progressive));
+    } else {
+      finalSteering = signSteer * Math.min(1.0, Math.pow(absSteer, 1 / Math.max(0.1, sensitivity)));
+    }
+  }
 
   // 2. Throttle
   // Right Trigger (RT) is the primary analog throttle
@@ -431,16 +462,16 @@ export function sampleGamepad(sensitivity = 1.0, customGamepad?: Gamepad | null)
   const cameraLookX = applyScaledDeadzone(rawRightStickX, 0.08);
   const cameraLookY = applyScaledDeadzone(rawRightStickY, 0.08);
 
-  // 8. Camera Toggle (Triangle on PS5 / Y on Xbox or Left Bumper LB / L1) — Rising edge detection
-  const btnY = isButtonPressed(buttons[XBOX_BUTTONS.Y]);
+  // 8. Camera Toggle (Left Bumper LB / L1) — Rising edge detection
   const btnLB = isButtonPressed(buttons[XBOX_BUTTONS.LB]);
-  const camPressedNow = btnY || btnLB;
+  const camPressedNow = btnLB;
   const cameraToggle = camPressedNow && !prevButtonStates.camera;
   prevButtonStates.camera = camPressedNow;
 
-  // 9. Reset Car (View / Create button)
+  // 9. Reset Car (Triangle on PS5 / Y on Xbox, or View / Create button) — Rising edge + held detection
+  const btnY = isButtonPressed(buttons[XBOX_BUTTONS.Y]);
   const btnView = isButtonPressed(buttons[XBOX_BUTTONS.VIEW]);
-  const resetPressedNow = btnView;
+  const resetPressedNow = btnY || btnView;
   const resetToggle = resetPressedNow && !prevButtonStates.reset;
   prevButtonStates.reset = resetPressedNow;
 
@@ -520,6 +551,8 @@ export function sampleGamepad(sensitivity = 1.0, customGamepad?: Gamepad | null)
   const menuBack = btnB && !prevButtonStates.menuBack;
   const menuTabLeft = btnLB && !prevButtonStates.menuTabLeft;
   const menuTabRight = btnRB && !prevButtonStates.menuTabRight;
+  const menuSpecialX = btnSquare && !prevButtonStates.menuSpecialX;
+  const menuSpecialY = btnY && !prevButtonStates.menuSpecialY;
 
   prevButtonStates.menuUp = upPressed;
   prevButtonStates.menuDown = downPressed;
@@ -529,6 +562,8 @@ export function sampleGamepad(sensitivity = 1.0, customGamepad?: Gamepad | null)
   prevButtonStates.menuBack = btnB;
   prevButtonStates.menuTabLeft = btnLB;
   prevButtonStates.menuTabRight = btnRB;
+  prevButtonStates.menuSpecialX = btnSquare;
+  prevButtonStates.menuSpecialY = btnY;
 
   const gamepadType = detectGamepadType(gp.id);
 
@@ -562,5 +597,7 @@ export function sampleGamepad(sensitivity = 1.0, customGamepad?: Gamepad | null)
     menuBack,
     menuTabLeft,
     menuTabRight,
+    menuSpecialX,
+    menuSpecialY,
   };
 }

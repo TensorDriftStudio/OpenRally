@@ -188,11 +188,26 @@ canvas {
 /* === Responsive Mobile Landscape HUD Adaptations === */
 @media (max-height: 520px) and (orientation: landscape) {
   /* Scale minimap slightly on compact phone screens so track view remains prominent */
-  #hud .minimap-container,
-  #hud > div:has(canvas:not(#game-canvas)) {
+  #hud .minimap-container {
     transform: scale(0.85);
     transform-origin: top right;
   }
+}
+
+/* === Fullscreen Speed Effects & Peripheral Vignette (Edge-to-Edge Protection) === */
+#hud .speed-effects-overlay,
+.speed-effects-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  transform: none !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
 }
 
 /* === Responsive Mobile Landscape Menu & UI Redesign (Heights 360px–412px) === */

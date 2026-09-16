@@ -121,27 +121,36 @@ export function buildTerrainChunkGeometries(params: TerrainChunkBuildParams): Bu
     globalColors[idx + 2] = tempColor.b;
   }
 
-  // 2. Compute global analytical vertex normals via central differences on regular grid
+  // 2. Compute global analytical vertex normals via 8-neighbor Sobel operator on regular grid.
+  // Eliminates diagonal grid bias and yields smooth C1 continuous normal vectors.
   const stepX = width / (cols - 1);
   const stepZ = depth / (rows - 1);
 
   for (let r = 0; r < rows; r++) {
     const rPrev = Math.max(0, r - 1);
     const rNext = Math.min(rows - 1, r + 1);
-    const dz = (rNext - rPrev) * stepZ;
+    const scaleZ = (rNext - rPrev) * stepZ * 4.0;
 
     for (let c = 0; c < cols; c++) {
       const cPrev = Math.max(0, c - 1);
       const cNext = Math.min(cols - 1, c + 1);
-      const dx = (cNext - cPrev) * stepX;
+      const scaleX = (cNext - cPrev) * stepX * 4.0;
 
-      const hL = heights[r * cols + cPrev];
-      const hR = heights[r * cols + cNext];
-      const hD = heights[rPrev * cols + c];
-      const hU = heights[rNext * cols + c];
+      const hTL = heights[rNext * cols + cPrev];
+      const hTC = heights[rNext * cols + c];
+      const hTR = heights[rNext * cols + cNext];
 
-      const dhdx = (hR - hL) / dx;
-      const dhdz = (hU - hD) / dz;
+      const hML = heights[r * cols + cPrev];
+      const hMR = heights[r * cols + cNext];
+
+      const hBL = heights[rPrev * cols + cPrev];
+      const hBC = heights[rPrev * cols + c];
+      const hBR = heights[rPrev * cols + cNext];
+
+      // Sobel kernel: dx = (TR + 2*MR + BR) - (TL + 2*ML + BL)
+      const dhdx = ((hTR + 2.0 * hMR + hBR) - (hTL + 2.0 * hML + hBL)) / scaleX;
+      // dz = (TL + 2*TC + TR) - (BL + 2*BC + BR)
+      const dhdz = ((hTL + 2.0 * hTC + hTR) - (hBL + 2.0 * hBC + hBR)) / scaleZ;
 
       const nx = -dhdx;
       const ny = 1.0;
@@ -215,13 +224,35 @@ export function buildTerrainChunkGeometries(params: TerrainChunkBuildParams): Bu
           const v2 = (lr + 1) * chunkVertsX + lc;
           const v3 = v2 + 1;
 
-          indices[idxPtr++] = v0;
-          indices[idxPtr++] = v2;
-          indices[idxPtr++] = v1;
+          // Delaunay / minimal-ridge diagonal selection:
+          // Choose the diagonal with the smaller height delta to eliminate artificial 45-degree creases.
+          const y0 = positions[v0 * 3 + 1];
+          const y1 = positions[v1 * 3 + 1];
+          const y2 = positions[v2 * 3 + 1];
+          const y3 = positions[v3 * 3 + 1];
 
-          indices[idxPtr++] = v1;
-          indices[idxPtr++] = v2;
-          indices[idxPtr++] = v3;
+          const diff1 = Math.abs(y1 - y2); // diagonal v1 - v2
+          const diff2 = Math.abs(y0 - y3); // diagonal v0 - v3
+
+          if (diff2 < diff1) {
+            // Split along v0 - v3: triangles (v0, v2, v3) and (v0, v3, v1)
+            indices[idxPtr++] = v0;
+            indices[idxPtr++] = v2;
+            indices[idxPtr++] = v3;
+
+            indices[idxPtr++] = v0;
+            indices[idxPtr++] = v3;
+            indices[idxPtr++] = v1;
+          } else {
+            // Split along v1 - v2: triangles (v0, v2, v1) and (v1, v2, v3)
+            indices[idxPtr++] = v0;
+            indices[idxPtr++] = v2;
+            indices[idxPtr++] = v1;
+
+            indices[idxPtr++] = v1;
+            indices[idxPtr++] = v2;
+            indices[idxPtr++] = v3;
+          }
         }
       }
 

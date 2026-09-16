@@ -89,11 +89,8 @@ describe('assists physics', () => {
   });
 
   it('applies strong anti-wheelie restoring torque when throttle is applied with nose pitching up', () => {
-    // Car nose pointing upwards (e.g. pitch rotation around X) under full throttle
-    // Quaternion representing nose-up pitch (around X axis):
-    // rotating by -0.1 rad around X produces positive forwardVec.y
-    const q = { x: -0.05, y: 0, z: 0, w: 0.9987 };
-    const body = createMockBody({ rotation: q, angvel: { x: 0, y: 0, z: 0 } });
+    // Car dynamically pitching nose up (negative angular velocity around local X axis) under full throttle
+    const body = createMockBody({ angvel: { x: -0.6, y: 0, z: 0 } });
 
     applyAssists(body, DEFAULT_VEHICLE_CONFIG, { ...baseInput, throttle: 1 }, 10, 0.016);
 
@@ -102,5 +99,67 @@ describe('assists physics', () => {
     const sumPitch = pitchTorques.reduce((a, b) => a + b, 0);
     // Positive torque around X pulls the nose back down
     expect(sumPitch).toBeGreaterThan(0);
+  });
+
+  it('does not apply false anti-wheelie pitch torque when vehicle climbs an uphill slope with steady pitch', () => {
+    // Car resting or climbing a steep uphill slope (inclined orientation) with zero angular pitch velocity
+    const q = { x: -0.15, y: 0, z: 0, w: 0.988 };
+    const body = createMockBody({ rotation: q, angvel: { x: 0, y: 0, z: 0 } });
+
+    applyAssists(body, DEFAULT_VEHICLE_CONFIG, { ...baseInput, throttle: 1 }, 15, 0.016);
+
+    const pitchTorques = body.appliedTorques.map((t) => t.x);
+    const sumPitch = pitchTorques.reduce((a, b) => a + b, 0);
+    // Zero false pitch torque applied, preventing severe slope-induced oscillations and chatter
+    expect(sumPitch).toBe(0);
+  });
+
+  it('prevents snap-oversteer kicks when vehicle recovers from high yaw rotation in same direction as steering', () => {
+    // Car rotating right/clockwise (angvel.y = 1.2 rad/s) and driver steering right (+0.8)
+    // Anti-snap architecture suppresses artificial turnInTorque kick and applies damping
+    const body = createMockBody({ angvel: { x: 0, y: 1.2, z: 0 } });
+    applyAssists(body, DEFAULT_VEHICLE_CONFIG, { ...baseInput, steering: 0.8 }, 15, 0.016);
+
+    const yawTorques = body.appliedTorques.map((t) => t.y);
+    const sumYaw = yawTorques.reduce((a, b) => a + b, 0);
+    // Yaw torque opposes rotation (< 0) rather than kicking it further (> 0), eliminating tank-slappers
+    expect(sumYaw).toBeLessThan(0);
+  });
+
+  it('disables artificial yaw torque when ESP is disabled in settings', () => {
+    // Car spinning around Y axis with 0 steering input and 0 throttle
+    const bodyEspOff = createMockBody({ angvel: { x: 0, y: 2.0, z: 0 } });
+    const resultEspOff = applyAssists(
+      bodyEspOff,
+      DEFAULT_VEHICLE_CONFIG,
+      { ...baseInput, throttle: 0 },
+      20,
+      0.016,
+      undefined,
+      { espEnabled: false }
+    );
+
+    expect(resultEspOff.espActive).toBe(false);
+    const yawTorquesOff = bodyEspOff.appliedTorques.map((t) => t.y);
+    const sumYawOff = yawTorquesOff.reduce((a, b) => a + b, 0);
+    // When ESP is off, no yaw stabilization torque is applied at all
+    expect(sumYawOff).toBe(0);
+
+    const bodyEspOn = createMockBody({ angvel: { x: 0, y: 2.0, z: 0 } });
+    const resultEspOn = applyAssists(
+      bodyEspOn,
+      DEFAULT_VEHICLE_CONFIG,
+      { ...baseInput, throttle: 0 },
+      20,
+      0.016,
+      undefined,
+      { espEnabled: true }
+    );
+
+    expect(resultEspOn.espActive).toBe(true);
+    const yawTorquesOn = bodyEspOn.appliedTorques.map((t) => t.y);
+    const sumYawOn = yawTorquesOn.reduce((a, b) => a + b, 0);
+    // When ESP is on, stabilizing yaw torque opposes the spin
+    expect(sumYawOn).toBeLessThan(0);
   });
 });

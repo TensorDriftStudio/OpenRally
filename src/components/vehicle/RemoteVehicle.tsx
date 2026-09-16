@@ -1,7 +1,7 @@
-import { useRef, useState, useEffect, Suspense } from 'react';
+import { useRef, useState, useEffect, useMemo, Suspense } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useGLTF, Clone, Detailed, Html } from '@react-three/drei';
+import { useGLTF, Clone, Detailed } from '@react-three/drei';
 import { getVehiclePreset } from '@/config/vehicleRegistry';
 import { networkClient } from '@/network/networkClient';
 import { Wheel } from '@/components/vehicle/Wheel';
@@ -40,17 +40,19 @@ function RemoteVehicleVisualModel({
   chassisSize: [number, number, number];
 }) {
   const { scene } = useGLTF(modelPath);
+  const isMobile = isMobileDevice();
+  const lodDistances = useMemo(() => (isMobile ? [0, 45, 120] : [0, 70, 200]), [isMobile]);
 
   return (
-    <Detailed distances={[0, 250, 600]}>
+    <Detailed distances={lodDistances}>
       {/* LOD 0: GLB 3D Mesh */}
       <Clone
         object={scene}
         position={positionOffset}
         scale={scale}
         rotation={rotationOffset ?? [0, 0, 0]}
-        castShadow
-        receiveShadow
+        castShadow={!isMobile}
+        receiveShadow={!isMobile}
       />
       {/* LOD 1: Simplified Proxy Box */}
       <mesh position={[0, 0.8, 0]}>
@@ -63,6 +65,119 @@ function RemoteVehicleVisualModel({
         <meshBasicMaterial color="#2D3748" />
       </mesh>
     </Detailed>
+  );
+}
+
+function RemotePlayerNameplate({
+  nickname,
+  vehicleName,
+  isTagger,
+  yOffset,
+}: {
+  nickname: string;
+  vehicleName: string;
+  isTagger: boolean;
+  yOffset: number;
+}) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const texture = useMemo(() => {
+    if (typeof document === 'undefined') {
+      return new THREE.CanvasTexture({} as unknown as HTMLCanvasElement);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    canvasRef.current = canvas;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.anisotropy = 2;
+    return tex;
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, 512, 128);
+
+    // Dark pill badge
+    ctx.beginPath();
+    const r = 24;
+    const x = 12, y = 12, w = 488, h = 104;
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+
+    if (isTagger) {
+      ctx.fillStyle = 'rgba(220, 38, 38, 0.95)';
+      ctx.fill();
+      ctx.strokeStyle = '#EF4444';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+
+    // Status indicator dot
+    ctx.beginPath();
+    ctx.arc(52, 64, 14, 0, Math.PI * 2);
+    ctx.fillStyle = isTagger ? '#EF4444' : '#38BDF8';
+    ctx.fill();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Driver Nickname
+    ctx.font = 'bold 40px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(nickname, 86, 48);
+
+    // Vehicle model / tagger status badge
+    ctx.font = 'bold 24px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = isTagger ? '#FEE2E2' : '#94A3B8';
+    ctx.fillText(isTagger ? 'TAGGER' : vehicleName, 86, 88);
+
+    texture.needsUpdate = true;
+  }, [nickname, vehicleName, isTagger, texture]);
+
+  useEffect(() => {
+    return () => {
+      texture.dispose();
+    };
+  }, [texture]);
+
+  useFrame(({ camera }) => {
+    if (meshRef.current) {
+      meshRef.current.quaternion.copy(camera.quaternion);
+    }
+  });
+
+  return (
+    <mesh ref={meshRef} position={[0, yOffset, 0]}>
+      <planeGeometry args={[2.2, 0.55]} />
+      <meshBasicMaterial
+        map={texture}
+        transparent
+        depthTest={true}
+        depthWrite={false}
+      />
+    </mesh>
   );
 }
 
@@ -152,51 +267,14 @@ export function RemoteVehicle({ player }: RemoteVehicleProps) {
 
   return (
     <group ref={groupRef} visible={hasFirstSample}>
-      {/* Floating 3D Nameplate */}
+      {/* Floating 3D WebGL Billboard Nameplate */}
       {hasFirstSample && (
-        <Html
-          position={[0, chassisSize[1] + 1.2, 0]}
-          center
-          distanceFactor={18}
-          zIndexRange={[100, 0]}
-        >
-          <div
-            style={{
-              background: isTagger
-                ? 'linear-gradient(135deg, rgba(220, 38, 38, 0.95), rgba(153, 27, 27, 0.95))'
-                : 'rgba(15, 23, 42, 0.85)',
-              border: isTagger ? '2px solid #EF4444' : '1px solid rgba(56, 189, 248, 0.5)',
-              padding: isTagger ? '4px 10px' : '3px 8px',
-              borderRadius: '6px',
-              color: '#F8FAFC',
-              fontSize: '11px',
-              fontWeight: 700,
-              whiteSpace: 'nowrap',
-              pointerEvents: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: isTagger
-                ? '0 0 16px rgba(239, 68, 68, 0.85), 0 4px 12px rgba(0,0,0,0.6)'
-                : '0 4px 12px rgba(0,0,0,0.5)',
-              backdropFilter: 'blur(4px)',
-            }}
-          >
-            <span
-              style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: isTagger ? '#EF4444' : '#38BDF8',
-                boxShadow: isTagger ? '0 0 8px #FF0000' : '0 0 6px #38BDF8',
-              }}
-            />
-            <span>{player.nickname}</span>
-            <span style={{ fontSize: '9px', color: isTagger ? '#FCA5A5' : '#94A3B8' }}>
-              {preset.name}
-            </span>
-          </div>
-        </Html>
+        <RemotePlayerNameplate
+          nickname={player.nickname}
+          vehicleName={preset.name}
+          isTagger={isTagger}
+          yOffset={chassisSize[1] + 1.2}
+        />
       )}
 
       {/* Visual Chassis Model */}

@@ -10,6 +10,7 @@ import {
   type BufferGeometry,
 } from 'three';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { isMobileOrAndroid } from '@/utils/device';
 import type { CheckpointData } from '@/types/racing';
 
 interface CheckpointGateProps {
@@ -330,11 +331,30 @@ export const CheckpointGate = memo(function CheckpointGate({
 
   const spotlightMat = isTarget ? TARGET_SPOTLIGHT_LENS_MAT : INACTIVE_SPOTLIGHT_LENS_MAT;
 
+  const isMobile = isMobileOrAndroid();
+  const canShadow = !isMobile;
+
   // Exact collider heights matching terrain elevations
   const leftColliderHeight = Math.max(1.0, topBarY - leftOffset);
   const rightColliderHeight = Math.max(1.0, topBarY - rightOffset);
 
-  // ─── GEOMETRY BATCHING: Merge static sub-meshes sharing identical materials to cut Draw Calls ───
+  // ─── GEOMETRY BATCHING: Merge full steel truss structure into 1 single draw call ───
+  const fullSteelTrussGeo = useMemo(() => {
+    const parts: BufferGeometry[] = [];
+    if (headerTrussGeo) parts.push(headerTrussGeo.clone());
+    if (leftColumnGeo) {
+      const left = leftColumnGeo.clone();
+      left.translate(-halfWidth, leftOffset + 1.3, 0);
+      parts.push(left);
+    }
+    if (rightColumnGeo) {
+      const right = rightColumnGeo.clone();
+      right.translate(halfWidth, rightOffset + 1.3, 0);
+      parts.push(right);
+    }
+    return parts.length > 0 ? BufferGeometryUtils.mergeGeometries(parts, false) : null;
+  }, [headerTrussGeo, leftColumnGeo, rightColumnGeo, halfWidth, leftOffset, rightOffset]);
+
   const foundationsGeo = useMemo(() => {
     const left = FOUNDATION_CYL_GEO.clone();
     left.translate(-halfWidth, leftOffset, 0);
@@ -375,12 +395,13 @@ export const CheckpointGate = memo(function CheckpointGate({
   // Clean up merged geometries on unmount
   useEffect(() => {
     return () => {
+      fullSteelTrussGeo?.dispose();
       foundationsGeo?.dispose();
       crashPadsGeo?.dispose();
       statusLampsGeo?.dispose();
       spotlightLensesGeo?.dispose();
     };
-  }, [foundationsGeo, crashPadsGeo, statusLampsGeo, spotlightLensesGeo]);
+  }, [fullSteelTrussGeo, foundationsGeo, crashPadsGeo, statusLampsGeo, spotlightLensesGeo]);
 
   return (
     <group position={[x, y, z]} rotation={[0, data.rotationY, 0]}>
@@ -406,40 +427,49 @@ export const CheckpointGate = memo(function CheckpointGate({
         />
       </RigidBody>
 
-      {/* ─── 1. OVERHEAD HORIZONTAL TRUSS ARCHITECTURE ─── */}
-      <mesh geometry={headerTrussGeo} material={STEEL_TRUSS_MAT} castShadow />
+      {/* ─── VISUAL GATE MESHES (Distance-Culled beyond max visibility distance) ─── */}
+      <group>
+        {/* ─── 1. FULL STEEL TRUSS ARCHITECTURE (Batched header + columns: 1 draw call instead of 3) ─── */}
+        {fullSteelTrussGeo && (
+          <mesh geometry={fullSteelTrussGeo} material={STEEL_TRUSS_MAT} castShadow={canShadow} />
+        )}
 
-      {/* ─── 2. OVERHEAD RALLY TIMING BANNER ─── */}
-      <mesh
-        position={[0, bannerCenterY, 0]}
-        geometry={bannerGeo}
-        material={SHARED_BANNER_MATERIALS}
-        castShadow
-      />
+        {/* ─── 2. OVERHEAD RALLY TIMING BANNER ─── */}
+        <mesh
+          position={[0, bannerCenterY, 0]}
+          geometry={bannerGeo}
+          material={SHARED_BANNER_MATERIALS}
+          castShadow={canShadow}
+        />
 
-      {/* ─── 3. BATCHED SUBTERRANEAN FOUNDATIONS (1 draw call instead of 2) ─── */}
-      {foundationsGeo && (
-        <mesh geometry={foundationsGeo} material={FOUNDATION_MAT} />
-      )}
+        {/* Target checkpoint neon laser arch for instant long-range visibility */}
+        {isTarget && (
+          <mesh position={[0, bannerCenterY - 0.95, 0]}>
+            <planeGeometry args={[width * 0.96, 0.16]} />
+            <meshBasicMaterial color="#00e676" transparent opacity={0.88} side={DoubleSide} />
+          </mesh>
+        )}
 
-      {/* ─── 4. BATCHED CRASH PADS (1 draw call instead of 2) ─── */}
-      {crashPadsGeo && (
-        <mesh geometry={crashPadsGeo} material={CRASH_PAD_MAT} castShadow receiveShadow />
-      )}
+        {/* ─── 3. BATCHED SUBTERRANEAN FOUNDATIONS (1 draw call instead of 2) ─── */}
+        {foundationsGeo && (
+          <mesh geometry={foundationsGeo} material={FOUNDATION_MAT} />
+        )}
 
-      {/* ─── 5. VERTICAL STEEL TRUSS COLUMNS ─── */}
-      <mesh position={[-halfWidth, leftOffset + 1.3, 0]} geometry={leftColumnGeo} material={STEEL_TRUSS_MAT} castShadow />
-      <mesh position={[halfWidth, rightOffset + 1.3, 0]} geometry={rightColumnGeo} material={STEEL_TRUSS_MAT} castShadow />
+        {/* ─── 4. BATCHED CRASH PADS (1 draw call instead of 2) ─── */}
+        {crashPadsGeo && (
+          <mesh geometry={crashPadsGeo} material={CRASH_PAD_MAT} castShadow={canShadow} receiveShadow={canShadow} />
+        )}
 
-      {/* ─── 6. BATCHED STATUS INDICATOR LIGHT LENSES (1 draw call instead of 2) ─── */}
-      {statusLampsGeo && (
-        <mesh geometry={statusLampsGeo} material={statusLampMat} />
-      )}
+        {/* ─── 5. BATCHED STATUS INDICATOR LIGHT LENSES (1 draw call instead of 2) ─── */}
+        {statusLampsGeo && (
+          <mesh geometry={statusLampsGeo} material={statusLampMat} />
+        )}
 
-      {/* ─── 7. BATCHED SPOTLIGHT LENSES (1 draw call instead of 3) ─── */}
-      {spotlightLensesGeo && (
-        <mesh geometry={spotlightLensesGeo} material={spotlightMat} />
-      )}
+        {/* ─── 6. BATCHED SPOTLIGHT LENSES (1 draw call instead of 3) ─── */}
+        {spotlightLensesGeo && (
+          <mesh geometry={spotlightLensesGeo} material={spotlightMat} />
+        )}
+      </group>
     </group>
   );
 });

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useLayoutEffect, useEffect } from 'react';
+import { useMemo, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
 import {
   Color,
@@ -35,20 +35,24 @@ import {
   DESERT_GRASS_COLOR_LIGHT,
   DESERT_GRASS_COLOR_DARK,
   GRASS_CHUNKS,
+  GRASS_CHUNKS_MOBILE,
+  GRASS_FADE_RANGE,
 } from '@/config/grass';
 
 /**
- * Creates a volumetric 3D grass cluster geometry with 3 crossed, curved cards
- * and upward-biased smooth hemisphere normals for ambient light distribution.
+ * Creates a volumetric 3D grass cluster geometry with tapered cards
+ * and upward-biased smooth hemisphere normals for rich ambient light distribution.
+ *
+ * @param isMobile - When true, uses 2 crossed cards with optimized vertex budget for mobile TBDR GPUs.
  */
-export function createGrassTuftGeometry(): BufferGeometry {
+export function createGrassTuftGeometry(isMobile: boolean = false): BufferGeometry {
   const verts: number[] = [];
   const tips: number[] = [];
   const uvs: number[] = [];
   const normals: number[] = [];
 
-  const NUM_CARDS = 3;
-  const WIDTH = 0.55;
+  const NUM_CARDS = isMobile ? 2 : 3;
+  const WIDTH = isMobile ? 0.58 : 0.55;
   const HEIGHT = 0.52;
 
   for (let c = 0; c < NUM_CARDS; c++) {
@@ -64,45 +68,45 @@ export function createGrassTuftGeometry(): BufferGeometry {
     const leanX = cosA * lean;
     const leanZ = sinA * lean;
 
-    // Segment 0: Base (Y = 0)
+    // Segment 0: Base (Y = 0) - full width
     const bLX = -pX, bY = 0.0, bLZ = -pZ;
     const bRX = pX, bRZ = pZ;
 
-    // Segment 1: Mid (Y = HEIGHT * 0.5)
+    // Segment 1: Mid (Y = HEIGHT * 0.5) - tapered to 68%
     const midH = HEIGHT * 0.5;
-    const mLX = -pX * 0.9 + leanX * 0.3, mY = midH, mLZ = -pZ * 0.9 + leanZ * 0.3;
-    const mRX = pX * 0.9 + leanX * 0.3, mRZ = pZ * 0.9 + leanZ * 0.3;
+    const mLX = -pX * 0.68 + leanX * 0.3, mY = midH, mLZ = -pZ * 0.68 + leanZ * 0.3;
+    const mRX = pX * 0.68 + leanX * 0.3, mRZ = pZ * 0.68 + leanZ * 0.3;
 
-    // Segment 2: Tip (Y = HEIGHT)
-    const tLX = -pX * 0.75 + leanX, tY = HEIGHT, tLZ = -pZ * 0.75 + leanZ;
-    const tRX = pX * 0.75 + leanX, tRZ = pZ * 0.75 + leanZ;
+    // Segment 2: Tip (Y = HEIGHT) - naturally tapered aerodynamic blade tips (18% width)
+    const tLX = -pX * 0.18 + leanX, tY = HEIGHT, tLZ = -pZ * 0.18 + leanZ;
+    const tRX = pX * 0.18 + leanX, tRZ = pZ * 0.18 + leanZ;
 
-    // Upward-biased soft normal
-    const nX = cosA * 0.25;
-    const nY = 0.90;
-    const nZ = sinA * 0.25;
+    // Upward-biased soft hemisphere normal (all ny >= 0.85 for ambient distribution)
+    const nX_b = cosA * 0.15, nY_b = 0.88, nZ_b = sinA * 0.15;
+    const nX_m = cosA * 0.10, nY_m = 0.93, nZ_m = sinA * 0.10;
+    const nX_t = cosA * 0.05, nY_t = 0.98, nZ_t = sinA * 0.05;
 
     // Quad lower
     verts.push(bLX, bY, bLZ,  bRX, bY, bRZ,  mRX, mY, mRZ);
     tips.push(0.0, 0.0, 0.5);
-    uvs.push(0.0, 0.0,  1.0, 0.0,  1.0, 0.5);
-    normals.push(nX, nY, nZ,  nX, nY, nZ,  nX, nY, nZ);
+    uvs.push(0.0, 0.0,  1.0, 0.0,  0.84, 0.5);
+    normals.push(nX_b, nY_b, nZ_b,  nX_b, nY_b, nZ_b,  nX_m, nY_m, nZ_m);
 
     verts.push(bLX, bY, bLZ,  mRX, mY, mRZ,  mLX, mY, mLZ);
     tips.push(0.0, 0.5, 0.5);
-    uvs.push(0.0, 0.0,  1.0, 0.5,  0.0, 0.5);
-    normals.push(nX, nY, nZ,  nX, nY, nZ,  nX, nY, nZ);
+    uvs.push(0.0, 0.0,  0.84, 0.5,  0.16, 0.5);
+    normals.push(nX_b, nY_b, nZ_b,  nX_m, nY_m, nZ_m,  nX_m, nY_m, nZ_m);
 
     // Quad upper
     verts.push(mLX, mY, mLZ,  mRX, mY, mRZ,  tRX, tY, tRZ);
     tips.push(0.5, 0.5, 1.0);
-    uvs.push(0.0, 0.5,  1.0, 0.5,  1.0, 1.0);
-    normals.push(nX, nY, nZ,  nX, nY, nZ,  nX, nY, nZ);
+    uvs.push(0.16, 0.5,  0.84, 0.5,  0.59, 1.0);
+    normals.push(nX_m, nY_m, nZ_m,  nX_m, nY_m, nZ_m,  nX_t, nY_t, nZ_t);
 
     verts.push(mLX, mY, mLZ,  tRX, tY, tRZ,  tLX, tY, tLZ);
     tips.push(0.5, 1.0, 1.0);
-    uvs.push(0.0, 0.5,  1.0, 1.0,  0.0, 1.0);
-    normals.push(nX, nY, nZ,  nX, nY, nZ,  nX, nY, nZ);
+    uvs.push(0.16, 0.5,  0.59, 1.0,  0.41, 1.0);
+    normals.push(nX_m, nY_m, nZ_m,  nX_t, nY_t, nZ_t,  nX_t, nY_t, nZ_t);
   }
 
   const geo = new BufferGeometry();
@@ -133,16 +137,18 @@ interface GrassChunkData {
   matrices: number[][];
   colors: Color[];
   center: Vector3;
+  radiusXZ: number;
 }
 
 interface GrassChunkMeshProps {
+  index: number;
   geometry: BufferGeometry;
   material: MeshLambertMaterial;
   chunk: GrassChunkData;
-  onMeshRegister: (mesh: InstancedMesh | null) => void;
+  onMeshRegister: (index: number, mesh: InstancedMesh | null) => void;
 }
 
-function GrassChunkMesh({ geometry, material, chunk, onMeshRegister }: GrassChunkMeshProps) {
+function GrassChunkMesh({ index, geometry, material, chunk, onMeshRegister }: GrassChunkMeshProps) {
   const meshRef = useRef<InstancedMesh>(null);
   const count = chunk.matrices.length;
 
@@ -160,9 +166,9 @@ function GrassChunkMesh({ geometry, material, chunk, onMeshRegister }: GrassChun
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
 
-    onMeshRegister(mesh);
-    return () => onMeshRegister(null);
-  }, [chunk, count, onMeshRegister]);
+    onMeshRegister(index, mesh);
+    return () => onMeshRegister(index, null);
+  }, [chunk, count, index, onMeshRegister]);
 
   if (count === 0) return null;
 
@@ -170,7 +176,7 @@ function GrassChunkMesh({ geometry, material, chunk, onMeshRegister }: GrassChun
     <instancedMesh
       ref={meshRef}
       args={[geometry, material, count]}
-      frustumCulled={true}
+      frustumCulled
     />
   );
 }
@@ -221,9 +227,14 @@ function GrassFieldContent() {
 
   const frameCountRef = useRef(0);
   const lastCamPosRef = useRef(new Vector3(9999, 9999, 9999));
+  const lastDistRef = useRef(-1);
 
   // References to instanced meshes for LOD culling
   const meshRefs = useRef<(InstancedMesh | null)[]>([]);
+
+  const registerMesh = useCallback((index: number, mesh: InstancedMesh | null) => {
+    meshRefs.current[index] = mesh;
+  }, []);
 
   const { chunksData, geometry } = useMemo(() => {
     const { heights, trackMasks, rows, cols, minHeight, maxHeight } = heightmapData;
@@ -235,8 +246,11 @@ function GrassFieldContent() {
     const rng = getSeededRandomFn(999);
     const clumpNoise = createNoise2D(rng);
 
-    const chunkWidth = mapWidth / GRASS_CHUNKS;
-    const chunkDepth = mapDepth / GRASS_CHUNKS;
+    const isMobile = isMobileDevice();
+    const activeChunks = isMobile ? GRASS_CHUNKS_MOBILE : GRASS_CHUNKS;
+    const chunkWidth = mapWidth / activeChunks;
+    const chunkDepth = mapDepth / activeChunks;
+    const chunkRadiusXZ = Math.hypot(chunkWidth * 0.5, chunkDepth * 0.5);
 
     const isBritain = levelId.includes('britain') || levelId.includes('highland');
 
@@ -249,26 +263,26 @@ function GrassFieldContent() {
     const darkColor = isDesert ? DESERT_GRASS_COLOR_DARK : isBritain ? BRITAIN_GRASS_DARK : GRASS_COLOR_DARK;
     const lightColor = isDesert ? DESERT_GRASS_COLOR_LIGHT : isBritain ? BRITAIN_GRASS_LIGHT : GRASS_COLOR_LIGHT;
 
-    // Initialize chunks
-    const chunks: GrassChunkData[] = Array.from({ length: GRASS_CHUNKS * GRASS_CHUNKS }, () => ({
+    // Initialize chunks: 9 chunks (3x3, GRASS_CHUNKS_MOBILE) on mobile TBDR GPUs for low draw call overhead, 36 chunks (6x6, GRASS_CHUNKS) on desktop for fine-grained culling
+    const chunks: GrassChunkData[] = Array.from({ length: activeChunks * activeChunks }, () => ({
       matrices: [],
       colors: [],
       center: new Vector3(),
+      radiusXZ: chunkRadiusXZ,
     }));
 
     let placed = 0;
     let attempt = 0;
 
-    const isMobile = isMobileDevice();
     const baseCount =
       isSnow || graphicsQuality === 'low'
         ? 0
         : isMobile
         ? graphicsQuality === 'medium'
-          ? 3500
+          ? 3000
           : graphicsQuality === 'high'
-          ? 18000
-          : 32000
+          ? 3800
+          : 4800
         : graphicsQuality === 'medium'
         ? 36000
         : graphicsQuality === 'high'
@@ -304,7 +318,7 @@ function GrassFieldContent() {
       if (normalizedHeight > GRASS_MAX_TERRAIN_HEIGHT) continue;
       if (y < -5) continue;
 
-      const patchScale = mapRange(noiseVal, -0.18, 1.0, 0.7, 1.4);
+      const patchScale = mapRange(noiseVal, -0.18, 1.0, 0.7, 1.4) * (isMobile ? 1.25 : 1.0);
       const heightBonus = isBritain ? 1.25 : 1.0;
       const scaleY =
         (GRASS_HEIGHT_MIN + seededRandom(seed + 2) * (GRASS_HEIGHT_MAX - GRASS_HEIGHT_MIN)) *
@@ -336,29 +350,30 @@ function GrassFieldContent() {
       // Determine chunk
       let cx = Math.floor((x + mapWidth / 2) / chunkWidth);
       let cz = Math.floor((z + mapDepth / 2) / chunkDepth);
-      cx = Math.max(0, Math.min(GRASS_CHUNKS - 1, cx));
-      cz = Math.max(0, Math.min(GRASS_CHUNKS - 1, cz));
+      cx = Math.max(0, Math.min(activeChunks - 1, cx));
+      cz = Math.max(0, Math.min(activeChunks - 1, cz));
 
-      const chunkIdx = cz * GRASS_CHUNKS + cx;
+      const chunkIdx = cz * activeChunks + cx;
       chunks[chunkIdx].matrices.push(Array.from(dummy.matrix.elements));
       chunks[chunkIdx].colors.push(tempColor.clone());
 
       placed++;
     }
 
-    // Calculate chunk centers for distance-based culling
+    // Calculate chunk centers and conservative bounding radius for distance-based culling
     chunks.forEach((chunk, idx) => {
       if (chunk.matrices.length === 0) return;
-      const cz = Math.floor(idx / GRASS_CHUNKS);
-      const cx = idx % GRASS_CHUNKS;
+      const cz = Math.floor(idx / activeChunks);
+      const cx = idx % activeChunks;
       chunk.center.set(
         (cx + 0.5) * chunkWidth - mapWidth / 2,
         0,
         (cz + 0.5) * chunkDepth - mapDepth / 2,
       );
+      chunk.radiusXZ = chunkRadiusXZ;
     });
 
-    const geo = createGrassTuftGeometry();
+    const geo = createGrassTuftGeometry(isMobile);
 
     return { chunksData: chunks, geometry: geo };
   }, [heightmapData, levelData, graphicsQuality, isDesert, isSnow, levelId]);
@@ -373,18 +388,28 @@ function GrassFieldContent() {
     const mat = new MeshLambertMaterial({
       map: activeTexture,
       side: isMobile ? FrontSide : DoubleSide,
-      transparent: true,
+      transparent: false,
+      depthWrite: true,
+      alphaTest: isMobile ? 0 : 0.08,
       color: 0xffffff,
     });
+
+    mat.customProgramCacheKey = () => {
+      return `openrally-grass-${isDesert ? 'desert' : 'temperate'}-${isMobile ? 'mobile' : 'desktop'}`;
+    };
 
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.u_time = { value: 0 };
       shader.uniforms.u_windSpeed = { value: WIND_SPEED };
       shader.uniforms.u_windStrength = { value: WIND_STRENGTH };
       shader.uniforms.u_carPosition = { value: new Vector3(0, 0, 0) };
+      shader.uniforms.u_cameraPos = { value: new Vector3(0, 0, 0) };
+      shader.uniforms.u_drawDist = { value: 200.0 };
+      shader.uniforms.u_fadeRange = { value: GRASS_FADE_RANGE };
       shader.uniforms.u_activeTex = { value: activeTexture };
       shader.uniforms.u_flowerTex = { value: wildflowerTex };
       shader.uniforms.u_isDesert = { value: isDesert ? 1.0 : 0.0 };
+      shader.uniforms.u_isMobile = { value: isMobile ? 1.0 : 0.0 };
 
       shaderUniformsRef.current.push(shader.uniforms);
 
@@ -393,6 +418,9 @@ function GrassFieldContent() {
         uniform float u_windSpeed;
         uniform float u_windStrength;
         uniform vec3 u_carPosition;
+        uniform vec3 u_cameraPos;
+        uniform float u_drawDist;
+        uniform float u_fadeRange;
         
         attribute float bladeTip;
       ` + shader.vertexShader;
@@ -417,23 +445,27 @@ function GrassFieldContent() {
         vec4 worldPos = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
         vWorldGrassPos = worldPos.xyz;
         
+        // Smooth GPU distance fade: scale grass down seamlessly towards ground at draw distance edge
+        float distToCam = length(worldPos.xz - u_cameraPos.xz);
+        float fadeFactor = clamp((u_drawDist - distToCam) / u_fadeRange, 0.0, 1.0);
+        displaced.y *= fadeFactor;
+        displaced.xz *= mix(0.05, 1.0, fadeFactor);
+
         // Multi-frequency organic wind sway
         if (bladeTip > 0.25) {
           float wave1 = sin(u_time * u_windSpeed + worldPos.x * 0.14 + worldPos.z * 0.20);
           float wave2 = cos(u_time * (u_windSpeed * 0.65) + worldPos.x * 0.07 + worldPos.z * 0.11);
           float gust = sin(u_time * 0.85 + worldPos.x * 0.025) * 0.5 + 0.5;
 
-          displaced.x += (wave1 + wave2 * 0.5) * u_windStrength * (1.0 + gust) * bladeTip;
-          displaced.z += (wave2 - wave1 * 0.4) * u_windStrength * (1.0 + gust * 0.7) * bladeTip;
+          displaced.x += (wave1 + wave2 * 0.5) * u_windStrength * (1.0 + gust) * bladeTip * fadeFactor;
+          displaced.z += (wave2 - wave1 * 0.4) * u_windStrength * (1.0 + gust * 0.7) * bladeTip * fadeFactor;
         }
 
-        vec4 instanceWorldPos = instanceMatrix * vec4(displaced, 1.0);
-
-        // Real-time vehicle pushdown & deflection under wheels
-        float distToCar = distance(instanceWorldPos.xyz, u_carPosition);
+        // Real-time vehicle pushdown & deflection under wheels (sampled directly from tuft origin)
+        float distToCar = distance(worldPos.xyz, u_carPosition);
         float bendRadius = 2.5;
         if (distToCar < bendRadius && bladeTip > 0.05) {
-          vec3 pushDir = normalize(instanceWorldPos.xyz - u_carPosition);
+          vec3 pushDir = normalize(worldPos.xyz - u_carPosition);
           pushDir.y = 0.0;
           float pushStrength = 1.0 - (distToCar / bendRadius);
           pushStrength = pushStrength * pushStrength;
@@ -458,6 +490,7 @@ function GrassFieldContent() {
         uniform sampler2D u_activeTex;
         uniform sampler2D u_flowerTex;
         uniform float u_isDesert;
+        uniform float u_isMobile;
       ` + shader.fragmentShader;
 
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -465,32 +498,34 @@ function GrassFieldContent() {
         `
         #include <color_fragment>
 
-        // Sample texture with wildflower scattering on meadow
+        // Sample texture with wildflower scattering on meadow (compile-time specialized)
         vec4 grassTex;
-        if (u_isDesert > 0.5) {
-          grassTex = texture2D(u_activeTex, vMyUv);
+        ${isDesert || isMobile ? `
+        grassTex = texture2D(u_activeTex, vMyUv);
+        ` : `
+        // Organic meadow wildflower clusters on desktop
+        float flowerPattern = sin(vWorldGrassPos.x * 0.2) * cos(vWorldGrassPos.z * 0.2);
+        if (flowerPattern > 0.45) {
+          grassTex = texture2D(u_flowerTex, vMyUv);
         } else {
-          // Organic meadow wildflower clusters
-          float flowerPattern = sin(vWorldGrassPos.x * 0.2) * cos(vWorldGrassPos.z * 0.2);
-          if (flowerPattern > 0.45) {
-            grassTex = texture2D(u_flowerTex, vMyUv);
-          } else {
-            grassTex = texture2D(u_activeTex, vMyUv);
-          }
+          grassTex = texture2D(u_activeTex, vMyUv);
         }
+        `}
 
-        // Alpha discard for photorealistic blade cutout
+        ${!isMobile ? `
+        // Photorealistic blade cutout on desktop; on mobile, tapered geometry preserves Early-Z/HSR without discard
         float lum = max(grassTex.r, max(grassTex.g, grassTex.b));
         if (lum < 0.075) {
           discard;
         }
+        ` : ''}
 
-        // Natural gradient from dark moist root to sunlit golden tips
-        vec3 rootDarkening = diffuseColor.rgb * mix(0.42, 1.0, smoothstep(0.0, 0.4, vBladeTip));
-        vec3 bladeAlbedo = grassTex.rgb * rootDarkening * 1.35;
+        // Natural gradient from dark moist root to sunlit golden tips with enhanced subsurface scattering
+        vec3 rootDarkening = diffuseColor.rgb * mix(0.38, 1.05, smoothstep(0.0, 0.45, vBladeTip));
+        vec3 bladeAlbedo = grassTex.rgb * rootDarkening * 1.38;
 
-        // Subsurface scattering fake — sunlight filtering through blades
-        float sunTranslucency = mix(0.85, 1.28, vBladeTip);
+        // Subsurface scattering fake — sunlight filtering through blades with soft edge bounce
+        float sunTranslucency = mix(0.82, 1.32, vBladeTip);
         diffuseColor.rgb = bladeAlbedo * sunTranslucency;
         `,
       );
@@ -501,62 +536,79 @@ function GrassFieldContent() {
 
   useFrame((state) => {
     const time = state.clock.getElapsedTime();
+    const camPos = state.camera.position;
     const carPosArray = useGameStore.getState().position;
     carPosRef.current.set(carPosArray[0], carPosArray[1], carPosArray[2]);
+
+    const isMobile = isMobileDevice();
+    const drawDistance = useSettingsStore.getState().drawDistance ?? (isMobile ? 'medium' : 'far');
+    const drawDistMultiplier =
+      drawDistance === 'short'
+        ? 0.5
+        : drawDistance === 'medium'
+        ? 0.8
+        : drawDistance === 'far'
+        ? 1.0
+        : 1.35;
+
+    const baseDist =
+      isMobile
+        ? graphicsQuality === 'very_high'
+          ? 140
+          : graphicsQuality === 'high'
+          ? 120
+          : graphicsQuality === 'medium'
+          ? 100
+          : 75
+        : graphicsQuality === 'very_high'
+        ? 340
+        : graphicsQuality === 'high'
+        ? 240
+        : graphicsQuality === 'medium'
+        ? 180
+        : 120;
+
+    const effectiveDist = baseDist * drawDistMultiplier;
+    const fadeRange = Math.max(24, effectiveDist * 0.2);
 
     for (const uniforms of shaderUniformsRef.current) {
       if (uniforms.u_time) uniforms.u_time.value = time;
       if (uniforms.u_carPosition) uniforms.u_carPosition.value.copy(carPosRef.current);
+      if (uniforms.u_cameraPos) uniforms.u_cameraPos.value.copy(camPos);
+      if (uniforms.u_drawDist) uniforms.u_drawDist.value = effectiveDist;
+      if (uniforms.u_fadeRange) uniforms.u_fadeRange.value = fadeRange;
     }
 
-    // Throttled distance-based culling check every 4 frames
+    // Responsive distance-based culling check (runs every 2 frames, checks 1m movement or distance change)
     frameCountRef.current++;
-    if (frameCountRef.current % 4 === 0) {
-      const camPos = state.camera.position;
-      if (camPos.distanceToSquared(lastCamPosRef.current) > 1.0) {
+    if (frameCountRef.current % 2 === 0) {
+      const distChanged = Math.abs(effectiveDist - lastDistRef.current) > 1.0;
+      const camMoved = camPos.distanceToSquared(lastCamPosRef.current) > 1.0;
+      if (camMoved || distChanged) {
         lastCamPosRef.current.copy(camPos);
-        const isMobile = isMobileDevice();
-        const drawDistance = useSettingsStore.getState().drawDistance ?? (isMobile ? 'medium' : 'far');
-        const drawDistMultiplier =
-          drawDistance === 'short'
-            ? 0.5
-            : drawDistance === 'medium'
-            ? 0.8
-            : drawDistance === 'far'
-            ? 1.0
-            : 1.35;
-
-        const baseDist =
-          isMobile
-            ? graphicsQuality === 'very_high'
-              ? 200
-              : graphicsQuality === 'high'
-              ? 150
-              : graphicsQuality === 'medium'
-              ? 110
-              : 75
-            : graphicsQuality === 'very_high'
-            ? 340
-            : graphicsQuality === 'high'
-            ? 220
-            : graphicsQuality === 'medium'
-            ? 160
-            : 110;
-
-        const effectiveDist = baseDist * drawDistMultiplier;
-        const maxDistSq = effectiveDist * effectiveDist;
+        lastDistRef.current = effectiveDist;
 
         chunksData.forEach((chunk, idx) => {
           const mesh = meshRefs.current[idx];
           if (!mesh) return;
 
-          const distSq = chunk.center.distanceToSquared(camPos);
-          if (distSq > maxDistSq) {
-            mesh.count = 0;
-            mesh.visible = false;
-          } else {
-            mesh.count = chunk.matrices.length;
-            mesh.visible = chunk.matrices.length > 0;
+          // Conservative 2D XZ distance check:
+          // A chunk must remain visible as long as ANY point within the chunk
+          // is within effectiveDist from the camera.
+          const dx = chunk.center.x - camPos.x;
+          const dz = chunk.center.z - camPos.z;
+          const distXZSq = dx * dx + dz * dz;
+          const baseMaxDist = effectiveDist + chunk.radiusXZ;
+          // Spatial hysteresis: buffer of 35m prevents chunk flickering/popping at boundary
+          const HYSTERESIS_BUFFER = 35.0;
+          const isCurrentlyVisible = mesh.visible && mesh.count > 0;
+          const allowedThreshold = isCurrentlyVisible ? baseMaxDist + HYSTERESIS_BUFFER : baseMaxDist;
+          const shouldBeVisible = distXZSq <= allowedThreshold * allowedThreshold && chunk.matrices.length > 0;
+          const targetCount = shouldBeVisible ? chunk.matrices.length : 0;
+
+          if (mesh.visible !== shouldBeVisible || mesh.count !== targetCount) {
+            mesh.count = targetCount;
+            mesh.visible = shouldBeVisible;
           }
         });
       }
@@ -576,12 +628,11 @@ function GrassFieldContent() {
       {chunksData.map((chunk, index) => (
         <GrassChunkMesh
           key={index}
+          index={index}
           geometry={geometry}
           material={material}
           chunk={chunk}
-          onMeshRegister={(mesh) => {
-            meshRefs.current[index] = mesh;
-          }}
+          onMeshRegister={registerMesh}
         />
       ))}
     </group>

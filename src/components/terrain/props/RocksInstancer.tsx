@@ -4,8 +4,6 @@ import {
   Color,
   MeshStandardMaterial,
   type Texture,
-  Sphere,
-  Vector3,
 } from 'three';
 import {
   createRealisticRockGeometry,
@@ -120,19 +118,14 @@ export function RocksInstancer({
   // VRAM Upload per batch
   useLayoutEffect(() => {
     const uploadBatch = (mesh: InstancedMesh | null, items: PropItem[]) => {
-      if (!mesh) return;
+      if (!mesh || items.length === 0) return;
       for (let i = 0; i < items.length; i++) {
         mesh.setMatrixAt(i, items[i].matrix);
       }
       mesh.instanceMatrix.needsUpdate = true;
       mesh.count = items.length;
-      if (items.length > 0) {
-        mesh.visible = true;
-        mesh.computeBoundingSphere();
-      } else {
-        mesh.visible = false;
-        mesh.boundingSphere = new Sphere(new Vector3(0, 0, 0), -1);
-      }
+      mesh.visible = true;
+      mesh.computeBoundingSphere();
     };
 
     uploadBatch(rockRef.current, rocks);
@@ -168,40 +161,52 @@ export function RocksInstancer({
   return (
     <>
       {/* 1. Granite Boulders */}
-      <instancedMesh
-        ref={rockRef}
-        args={[rockGeo, rockMaterial, Math.max(1, rocks.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {rocks.length > 0 && (
+        <instancedMesh
+          ref={rockRef}
+          args={[rockGeo, rockMaterial, rocks.length]}
+          castShadow={canShadow}
+          receiveShadow={canShadow}
+          renderOrder={1}
+          frustumCulled
+        />
+      )}
 
       {/* 2. Sandstone Crags */}
-      <instancedMesh
-        ref={sandstoneRef}
-        args={[sandstoneGeo, sandstoneMaterial, Math.max(1, sandstoneRocks.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {sandstoneRocks.length > 0 && (
+        <instancedMesh
+          ref={sandstoneRef}
+          args={[sandstoneGeo, sandstoneMaterial, sandstoneRocks.length]}
+          castShadow={canShadow}
+          receiveShadow={canShadow}
+          renderOrder={1}
+          frustumCulled
+        />
+      )}
 
       {/* 3. Ancient Celtic Standing Stones */}
-      <instancedMesh
-        ref={standingStoneRef}
-        args={[standingStoneGeo, standingStoneMaterial, Math.max(1, standingStones.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {standingStones.length > 0 && (
+        <instancedMesh
+          ref={standingStoneRef}
+          args={[standingStoneGeo, standingStoneMaterial, standingStones.length]}
+          castShadow={canShadow}
+          receiveShadow={canShadow}
+          renderOrder={1}
+          frustumCulled
+        />
+      )}
 
       {/* 4. Highland Mountain Stone Cairns */}
-      <instancedMesh
-        ref={stoneCairnRef}
-        args={[stoneCairnGeo, stoneCairnMaterial, Math.max(1, stoneCairns.length)]}
-        castShadow={canShadow}
-        receiveShadow={canShadow}
-        frustumCulled
-      />
+      {stoneCairns.length > 0 && (
+        <instancedMesh
+          ref={stoneCairnRef}
+          args={[stoneCairnGeo, stoneCairnMaterial, stoneCairns.length]}
+          castShadow={canShadow}
+          receiveShadow={canShadow}
+          renderOrder={1}
+          frustumCulled
+        />
+      )}
     </>
   );
 }

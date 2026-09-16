@@ -31,7 +31,7 @@ export function HeroShowcase({
   onOpenGarage,
   onOpenTracks,
 }: HeroShowcaseProps) {
-  const stageBanner = STAGE_BANNERS[level.id] || STAGE_BANNERS.level1_island;
+  const stageBanner = level.bannerUrl || STAGE_BANNERS[level.id] || STAGE_BANNERS.level1_island;
 
   return (
     <div style={styles.container} className="hero-showcase-container">

@@ -91,7 +91,6 @@ export function Lights() {
 
       // Update the light target to ground focus point under the camera
       targetRef.current.position.set(camPos.x, Math.max(0, camPos.y - 3), camPos.z);
-      targetRef.current.updateMatrixWorld();
 
       // Rigid directional light offset maintains constant sun direction angle
       lightRef.current.position.set(
@@ -99,7 +98,6 @@ export function Lights() {
         camPos.y + sunPos[1],
         camPos.z + sunPos[2]
       );
-      lightRef.current.updateMatrixWorld();
 
       // Synchronize shadow camera frustum bounds and projection matrix
       const shadowCam = lightRef.current.shadow?.camera;

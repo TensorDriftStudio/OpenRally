@@ -1,7 +1,7 @@
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import type { RapierRigidBody } from '@react-three/rapier';
-import { InstancedMesh, Object3D, Color, Vector3, CanvasTexture, Quaternion } from 'three';
+import { InstancedMesh, Object3D, Color, Vector3, CanvasTexture, Quaternion, BufferAttribute } from 'three';
 import { isMobileDevice } from '@/utils/device';
 import { WATER_MAX_PARTICLES, WATER_MOBILE_MAX_PARTICLES } from '@/config/particles';
 import { useGameStore } from '@/store/gameStore';
@@ -41,7 +41,7 @@ const WATER_COLOR = new Color('#ffffff');
 const SPLASH_COLOR = new Color('#cceeff');
 const DRIVING_SPEED_THRESHOLD = 2; // km/h
 const WATER_LEVEL = -8.0; 
-const PARTICLE_LIFETIME = 0.6; // Szypko znikające kropelki
+const PARTICLE_LIFETIME = 0.6; // Rapidly dissipating droplets
 
 interface Particle {
   active: boolean;
@@ -132,12 +132,12 @@ export function WaterSplashes({ wheelsRef, chassisRef }: WaterSplashesProps) {
     const safeDelta = Number.isFinite(delta) && delta > 0 ? Math.min(delta, 0.1) : 1 / 60;
     timeAccumulator.current = Math.min(timeAccumulator.current + safeDelta, 0.15);
     
-    // Znacznie gęstsze rozbryzgi
+    // Dense water spray emission rate
     const EMIT_RATE = isDriving ? Math.max(0.005, 0.02 - (speed * 0.0005)) : 0.1; 
 
     if (isDriving && isNearWater) {
       let emissionsToDo = Math.floor(timeAccumulator.current / EMIT_RATE);
-      emissionsToDo = Math.min(emissionsToDo, 5); // limit per klatka
+      emissionsToDo = Math.min(emissionsToDo, 3); // limit per frame (prevents micro-stuttering)
 
       if (emissionsToDo > 0) {
         timeAccumulator.current -= emissionsToDo * EMIT_RATE;
@@ -147,10 +147,10 @@ export function WaterSplashes({ wheelsRef, chassisRef }: WaterSplashesProps) {
             const wheel = wheels[wheelIdx];
             if (!wheel) continue;
 
-            // Sprawdzamy pozycję w świecie, by ustalić czy koło jest w wodzie
+            // Check world position to determine if wheel is submerged
             wheel.getWorldPosition(dummy.position);
             
-            // Jeśli spód koła (zakładamy promień ~0.35) jest poniżej poziomu wody
+            // If bottom of wheel (radius ~0.35) is below water line
             if (dummy.position.y - 0.35 > WATER_LEVEL) continue;
 
             if (freeCountRef.current <= 0) break; // pool exhausted
@@ -160,18 +160,18 @@ export function WaterSplashes({ wheelsRef, chassisRef }: WaterSplashesProps) {
             p.active = true;
             p.position.copy(dummy.position);
             
-            // Rozbryzg lekko nad poziomem wody
+            // Water splash emitted just above water surface
             p.position.y = WATER_LEVEL + 0.1;
 
-            // Wystrzelenie kropel w górę i lekko na boki (rooster tail)
+            // Shoot droplets upward and outward (rooster tail)
             const speedFactor = speed * 0.15;
             p.velocity.set(
               (Math.random() - 0.5) * speedFactor * 0.8,
-              Math.random() * speedFactor + 3, // Mocno w górę
+              Math.random() * speedFactor + 3, // Strong upward trajectory
               (Math.random() - 0.5) * speedFactor * 0.8
             );
             
-            // Dodaj odrobinę wektora prędkości samochodu (krople zostają z tyłu)
+            // Add vehicle velocity vector (droplets trail behind)
             p.velocity.x += linvel.x * 0.3;
             p.velocity.z += linvel.z * 0.3;
 
@@ -205,17 +205,17 @@ export function WaterSplashes({ wheelsRef, chassisRef }: WaterSplashesProps) {
         continue;
       }
 
-      // Grawitacja ciągnie krople w dół silniej niż kurz
+      // Gravity pulls droplets down faster than smoke/dust
       p.velocity.y -= safeDelta * 15; 
       
-      // Opór powietrza w poziomie
+      // Horizontal aerodynamic drag
       p.velocity.x *= Math.pow(0.5, safeDelta); 
       p.velocity.z *= Math.pow(0.5, safeDelta);
 
       p.position.addScaledVector(p.velocity, safeDelta);
       p.rotationAngle += p.rotationSpeed * safeDelta;
       
-      // Jeśli kropelka spadnie poniżej wody, znika szybciej
+      // Droplets falling below water line dissipate rapidly
       if (p.position.y < WATER_LEVEL) {
         p.life += safeDelta * 2; 
       }
@@ -238,7 +238,7 @@ export function WaterSplashes({ wheelsRef, chassisRef }: WaterSplashesProps) {
         currentOpacity = 1;
       }
 
-      // Krople nie rosną drastycznie tak jak dym
+      // Droplets maintain tight radius compared to smoke
       const currentScale = p.scale * (1 + progress * 0.2);
 
       _q.setFromAxisAngle(_axisZ, p.rotationAngle);
@@ -259,12 +259,29 @@ export function WaterSplashes({ wheelsRef, chassisRef }: WaterSplashesProps) {
     meshRef.current.count = writeIdx;
 
     if (writeIdx > 0) {
-      meshRef.current.instanceMatrix.needsUpdate = true;
-      if (meshRef.current.instanceColor) {
-        meshRef.current.instanceColor.needsUpdate = true;
+      const matAttr = meshRef.current.instanceMatrix;
+      if (typeof matAttr.clearUpdateRanges === 'function') {
+        matAttr.clearUpdateRanges();
+        matAttr.addUpdateRange(0, writeIdx * 16);
       }
+      matAttr.needsUpdate = true;
+
+      if (meshRef.current.instanceColor) {
+        const colorAttr = meshRef.current.instanceColor;
+        if (typeof colorAttr.clearUpdateRanges === 'function') {
+          colorAttr.clearUpdateRanges();
+          colorAttr.addUpdateRange(0, writeIdx * 3);
+        }
+        colorAttr.needsUpdate = true;
+      }
+
       if (meshRef.current.geometry && meshRef.current.geometry.attributes.instanceOpacity) {
-        meshRef.current.geometry.attributes.instanceOpacity.needsUpdate = true;
+        const opAttr = meshRef.current.geometry.attributes.instanceOpacity;
+        if (opAttr instanceof BufferAttribute) {
+          opAttr.clearUpdateRanges();
+          opAttr.addUpdateRange(0, writeIdx);
+        }
+        opAttr.needsUpdate = true;
       }
       wasRenderingRef.current = true;
     } else if (wasRenderingRef.current) {
@@ -276,7 +293,7 @@ export function WaterSplashes({ wheelsRef, chassisRef }: WaterSplashesProps) {
   return (
     <instancedMesh ref={meshRef} args={[undefined, undefined, maxParticles]} frustumCulled={false}>
 
-      <planeGeometry args={[0.2, 0.2]}>
+      <planeGeometry args={[0.16, 0.16]}>
         <instancedBufferAttribute
           attach="attributes-instanceOpacity"
           args={[opacityArray, 1]}

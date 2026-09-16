@@ -35,6 +35,8 @@ export interface TrackConfig {
   readonly width: number;
   readonly falloff: number;
   readonly targetHeight: number;
+  /** Optional roadbed grading strength [0.0 - 1.0] to flatten cross-track tilt and smooth micro-bumps (default: undefined / 0) */
+  readonly roadGrading?: number;
 }
 
 /**

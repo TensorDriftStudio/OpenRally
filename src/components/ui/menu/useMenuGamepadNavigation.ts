@@ -5,6 +5,8 @@ import { sampleGamepad } from '@/utils/input/gamepad';
 import { isTextEditingActive } from '@/utils/input/textInput';
 import { getAvailableLevels, getLevelPreset } from '@/config/levelRegistry';
 import { getAvailableVehicles } from '@/config/vehicleRegistry';
+import { AVAILABLE_TIRE_TYPES } from '@/config/tireRegistry';
+import { MIN_STEERING_SENSITIVITY, MAX_STEERING_SENSITIVITY, STEERING_SENSITIVITY_STEP } from '@/config/input';
 import { unlockSharedAudioContext } from '@/utils/audio/audioContext';
 import { getMenuGamepadDelegate } from './menuGamepadRegistry';
 import type {
@@ -96,23 +98,18 @@ export function useMenuGamepadNavigation({
       return useGameStore.getState().gameState === 'paused' ? 4 : 4;
     }
     if (curView === 'tracks') return availableLevels.length + 1;
-    if (curView === 'start_mode') {
-      const selectedLevelId = useGameStore.getState().selectedLevelId;
-      const currentLevelPreset = getLevelPreset(selectedLevelId);
-      const modes = currentLevelPreset.supportedModes ?? ['freeroam', 'timeattack'];
-      return modes.length + 1;
-    }
-    if (curView === 'garage') return 2;
+    if (curView === 'start_mode') return 3;
+    if (curView === 'garage') return 3;
     if (curView === 'multiplayer') return 2;
     if (curView === 'options') {
       const cat = settingsCategoryRef.current;
-      if (cat === 'graphics') return 9; // 0: Tabs, 1: Quality, 2: FPS, 3: DrawDist, 4: AA, 5: Res, 6: Shadows, 7: PP, 8: Back
+      if (cat === 'graphics') return 10; // 0: Tabs, 1: Quality, 2: FPS, 3: DrawDist, 4: AA, 5: Res, 6: DynamicRes, 7: Shadows, 8: PP, 9: Back
       if (cat === 'audio') return 5; // 0: Tabs, 1: MenuMusic, 2: GameMusic, 3: SFX, 4: Back
       if (cat === 'controls') return 3; // 0: Tabs, 1: TabSelector, 2: Back
       if (cat === 'touch') return 7; // 0: Tabs, 1: OverlayMode, 2: Scheme, 3: Size, 4: Opacity, 5: Haptics, 6: Back
       if (cat === 'gameplay') {
         const isVib = useSettingsStore.getState().vibrationEnabled;
-        return isVib ? 7 : 6; // 0: Tabs, 1: Transmission, 2: Sens, 3: VibToggle, [4: VibInt], 4/5: Reset, 5/6: Back
+        return isVib ? 10 : 9; // 0: Tabs, 1: Transmission, 2: ABS, 3: TCS, 4: ESP, 5: Sens, 6: VibToggle, [7: VibInt], 7/8: Reset, 8/9: Back
       }
       return 2;
     }
@@ -179,6 +176,16 @@ export function useMenuGamepadNavigation({
       return;
     }
 
+    if (curView === 'start_mode') {
+      const curIdx = focusedIndexRef.current;
+      if (curIdx === 2) {
+        setFocusedIndex(0);
+      } else {
+        setFocusedIndex(2);
+      }
+      return;
+    }
+
     const count = getItemCount();
     const next = (focusedIndexRef.current - 1 + count) % count;
     setFocusedIndex(next);
@@ -189,6 +196,16 @@ export function useMenuGamepadNavigation({
     const delegate = getMenuGamepadDelegate(curView);
     if (delegate?.handleNavDown) {
       delegate.handleNavDown();
+      return;
+    }
+
+    if (curView === 'start_mode') {
+      const curIdx = focusedIndexRef.current;
+      if (curIdx === 0 || curIdx === 1) {
+        setFocusedIndex(2);
+      } else {
+        setFocusedIndex(0);
+      }
       return;
     }
 
@@ -208,11 +225,20 @@ export function useMenuGamepadNavigation({
     const curIdx = focusedIndexRef.current;
 
     if (curView === 'start_mode') {
-      setFocusedIndex(0);
+      if (curIdx === 1) {
+        setFocusedIndex(0);
+      }
     } else if (curView === 'garage') {
-      const currentIndex = availableVehicles.findIndex((v) => v.id === previewVehicleIdRef.current);
-      const nextIdx = (currentIndex - 1 + availableVehicles.length) % availableVehicles.length;
-      setPreviewVehicleId(availableVehicles[nextIdx].id);
+      if (curIdx === 0) {
+        const currentTire = useGameStore.getState().selectedTireType;
+        const tireIdx = AVAILABLE_TIRE_TYPES.indexOf(currentTire);
+        const prevTireIdx = (tireIdx - 1 + AVAILABLE_TIRE_TYPES.length) % AVAILABLE_TIRE_TYPES.length;
+        useGameStore.getState().setSelectedTireType(AVAILABLE_TIRE_TYPES[prevTireIdx]);
+      } else {
+        const currentIndex = availableVehicles.findIndex((v) => v.id === previewVehicleIdRef.current);
+        const nextIdx = (currentIndex - 1 + availableVehicles.length) % availableVehicles.length;
+        setPreviewVehicleId(availableVehicles[nextIdx].id);
+      }
     } else if (curView === 'controls') {
       handleTabLeft();
     } else if (curView === 'options') {
@@ -246,8 +272,10 @@ export function useMenuGamepadNavigation({
           const sIdx = scales.indexOf(settings.resolutionScale);
           if (sIdx > 0) settings.setResolutionScale(scales[sIdx - 1]);
         } else if (curIdx === 6) {
-          settings.toggleShadows();
+          settings.toggleDynamicResolution();
         } else if (curIdx === 7) {
+          settings.toggleShadows();
+        } else if (curIdx === 8) {
           settings.togglePostProcessing();
         }
       } else if (cat === 'audio') {
@@ -289,10 +317,16 @@ export function useMenuGamepadNavigation({
           const next: TransmissionMode = settings.transmissionMode === 'manual' ? 'automatic' : 'manual';
           settings.setTransmissionMode(next);
         } else if (curIdx === 2) {
-          settings.setSensitivity(Math.max(0.5, Math.min(2.0, Math.round((settings.sensitivity - 0.1) * 10) / 10)));
+          settings.toggleAbs();
         } else if (curIdx === 3) {
+          settings.toggleTcs();
+        } else if (curIdx === 4) {
+          settings.toggleEsp();
+        } else if (curIdx === 5) {
+          settings.setSensitivity(Math.max(MIN_STEERING_SENSITIVITY, Math.min(MAX_STEERING_SENSITIVITY, Math.round((settings.sensitivity - STEERING_SENSITIVITY_STEP) * 100) / 100)));
+        } else if (curIdx === 6) {
           settings.toggleVibration();
-        } else if (isVib && curIdx === 4) {
+        } else if (isVib && curIdx === 7) {
           settings.setVibrationIntensity(Math.max(0.1, Math.min(1.0, Math.round((settings.vibrationIntensity - 0.05) * 100) / 100)));
         }
       }
@@ -310,11 +344,20 @@ export function useMenuGamepadNavigation({
     const curIdx = focusedIndexRef.current;
 
     if (curView === 'start_mode') {
-      setFocusedIndex(1);
+      if (curIdx === 0) {
+        setFocusedIndex(1);
+      }
     } else if (curView === 'garage') {
-      const currentIndex = availableVehicles.findIndex((v) => v.id === previewVehicleIdRef.current);
-      const nextIdx = (currentIndex + 1) % availableVehicles.length;
-      setPreviewVehicleId(availableVehicles[nextIdx].id);
+      if (curIdx === 0) {
+        const currentTire = useGameStore.getState().selectedTireType;
+        const tireIdx = AVAILABLE_TIRE_TYPES.indexOf(currentTire);
+        const nextTireIdx = (tireIdx + 1) % AVAILABLE_TIRE_TYPES.length;
+        useGameStore.getState().setSelectedTireType(AVAILABLE_TIRE_TYPES[nextTireIdx]);
+      } else {
+        const currentIndex = availableVehicles.findIndex((v) => v.id === previewVehicleIdRef.current);
+        const nextIdx = (currentIndex + 1) % availableVehicles.length;
+        setPreviewVehicleId(availableVehicles[nextIdx].id);
+      }
     } else if (curView === 'controls') {
       handleTabRight();
     } else if (curView === 'options') {
@@ -348,8 +391,10 @@ export function useMenuGamepadNavigation({
           const sIdx = scales.indexOf(settings.resolutionScale);
           if (sIdx < scales.length - 1) settings.setResolutionScale(scales[sIdx + 1]);
         } else if (curIdx === 6) {
-          settings.toggleShadows();
+          settings.toggleDynamicResolution();
         } else if (curIdx === 7) {
+          settings.toggleShadows();
+        } else if (curIdx === 8) {
           settings.togglePostProcessing();
         }
       } else if (cat === 'audio') {
@@ -391,10 +436,16 @@ export function useMenuGamepadNavigation({
           const next: TransmissionMode = settings.transmissionMode === 'manual' ? 'automatic' : 'manual';
           settings.setTransmissionMode(next);
         } else if (curIdx === 2) {
-          settings.setSensitivity(Math.max(0.5, Math.min(2.0, Math.round((settings.sensitivity + 0.1) * 10) / 10)));
+          settings.toggleAbs();
         } else if (curIdx === 3) {
+          settings.toggleTcs();
+        } else if (curIdx === 4) {
+          settings.toggleEsp();
+        } else if (curIdx === 5) {
+          settings.setSensitivity(Math.max(MIN_STEERING_SENSITIVITY, Math.min(MAX_STEERING_SENSITIVITY, Math.round((settings.sensitivity + STEERING_SENSITIVITY_STEP) * 100) / 100)));
+        } else if (curIdx === 6) {
           settings.toggleVibration();
-        } else if (isVib && curIdx === 4) {
+        } else if (isVib && curIdx === 7) {
           settings.setVibrationIntensity(Math.max(0.1, Math.min(1.0, Math.round((settings.vibrationIntensity + 0.05) * 100) / 100)));
         }
       }
@@ -436,14 +487,23 @@ export function useMenuGamepadNavigation({
     } else if (curView === 'start_mode') {
       const selectedLevelId = useGameStore.getState().selectedLevelId;
       const currentLevelPreset = getLevelPreset(selectedLevelId);
-      const modes = currentLevelPreset.supportedModes ?? ['freeroam', 'timeattack'];
-      if (curIdx < modes.length) {
-        handleLaunchMode(modes[curIdx]);
+      const isGymkhana = currentLevelPreset.supportedModes?.includes('gymkhana_blitz') ?? false;
+
+      if (curIdx === 0) {
+        handleLaunchMode('freeroam');
+      } else if (curIdx === 1) {
+        handleLaunchMode(isGymkhana ? 'gymkhana_blitz' : 'timeattack');
       } else {
+        setFocusedIndex(0);
         setView('tracks');
       }
     } else if (curView === 'garage') {
       if (curIdx === 0) {
+        const currentTire = useGameStore.getState().selectedTireType;
+        const tireIdx = AVAILABLE_TIRE_TYPES.indexOf(currentTire);
+        const nextTireIdx = (tireIdx + 1) % AVAILABLE_TIRE_TYPES.length;
+        useGameStore.getState().setSelectedTireType(AVAILABLE_TIRE_TYPES[nextTireIdx]);
+      } else if (curIdx === 1) {
         if (handleStartRace) {
           handleStartRace(previewVehicleIdRef.current);
         } else {
@@ -453,7 +513,7 @@ export function useMenuGamepadNavigation({
           unlockSharedAudioContext().catch(() => {});
           setGameState('playing');
         }
-      } else if (curIdx === 1) {
+      } else if (curIdx === 2) {
         setView('start_mode');
       }
     } else if (curView === 'multiplayer') {
@@ -474,17 +534,24 @@ export function useMenuGamepadNavigation({
       }
 
       if (cat === 'graphics') {
-        if (curIdx === 6) useSettingsStore.getState().toggleShadows();
-        else if (curIdx === 7) useSettingsStore.getState().togglePostProcessing();
+        if (curIdx === 6) useSettingsStore.getState().toggleDynamicResolution();
+        else if (curIdx === 7) useSettingsStore.getState().toggleShadows();
+        else if (curIdx === 8) useSettingsStore.getState().togglePostProcessing();
       } else if (cat === 'touch') {
         if (curIdx === 5) useSettingsStore.getState().setTouchHaptics(!useSettingsStore.getState().touchHaptics);
       } else if (cat === 'gameplay') {
         const isVib = useSettingsStore.getState().vibrationEnabled;
-        const resetIdx = isVib ? 5 : 4;
+        const resetIdx = isVib ? 8 : 7;
         if (curIdx === 1) {
           const current = useSettingsStore.getState().transmissionMode;
           useSettingsStore.getState().setTransmissionMode(current === 'manual' ? 'automatic' : 'manual');
+        } else if (curIdx === 2) {
+          useSettingsStore.getState().toggleAbs();
         } else if (curIdx === 3) {
+          useSettingsStore.getState().toggleTcs();
+        } else if (curIdx === 4) {
+          useSettingsStore.getState().toggleEsp();
+        } else if (curIdx === 6) {
           useSettingsStore.getState().toggleVibration();
         } else if (curIdx === resetIdx) {
           handleResetRecordsAction();
@@ -494,7 +561,7 @@ export function useMenuGamepadNavigation({
       setView('main');
     } else if (curView === 'credits') {
       if (curIdx === 0) {
-        window.open('https://github.com/dawid10353/OpenRally', '_blank', 'noopener,noreferrer');
+        window.open('https://github.com/TensorDriftStudio/OpenRally', '_blank', 'noopener,noreferrer');
       } else {
         setView('main');
       }
@@ -529,6 +596,7 @@ export function useMenuGamepadNavigation({
     if (curView === 'garage') {
       setView('start_mode');
     } else if (curView === 'start_mode') {
+      setFocusedIndex(0);
       setView('tracks');
     } else if (curView !== 'main') {
       setView('main');
@@ -629,12 +697,9 @@ export function useMenuGamepadNavigation({
     if (gameState === 'playing') return;
 
     let animId: number;
-    let prevDpadLeft = false;
-    let prevDpadRight = false;
     const pollMenuGamepad = () => {
       const gp = sampleGamepad();
       if (gp.connected) {
-        const curView = viewRef.current;
         if (gp.menuConfirm) {
           actionsRef.current.handleConfirm();
         } else if (gp.menuBack) {
@@ -649,9 +714,9 @@ export function useMenuGamepadNavigation({
           actionsRef.current.handleTabRight();
         }
 
-        if (gp.resetToggle) {
+        if (gp.menuSpecialX) {
           actionsRef.current.handleSpecialX();
-        } else if (gp.cameraToggle) {
+        } else if (gp.menuSpecialY) {
           actionsRef.current.handleSpecialY();
         }
 
@@ -661,22 +726,11 @@ export function useMenuGamepadNavigation({
           actionsRef.current.handleNavDown();
         }
 
-        if (curView === 'garage') {
-          // In garage, D-Pad Left/Right and Bumpers switch vehicles, freeing analog sticks for 360° vehicle rotation
-          if (gp.dpadLeft && !prevDpadLeft) {
-            actionsRef.current.handleNavLeft();
-          } else if (gp.dpadRight && !prevDpadRight) {
-            actionsRef.current.handleNavRight();
-          }
-        } else {
-          if (gp.menuLeft) {
-            actionsRef.current.handleNavLeft();
-          } else if (gp.menuRight) {
-            actionsRef.current.handleNavRight();
-          }
+        if (gp.menuLeft) {
+          actionsRef.current.handleNavLeft();
+        } else if (gp.menuRight) {
+          actionsRef.current.handleNavRight();
         }
-        prevDpadLeft = gp.dpadLeft;
-        prevDpadRight = gp.dpadRight;
       }
       animId = requestAnimationFrame(pollMenuGamepad);
     };

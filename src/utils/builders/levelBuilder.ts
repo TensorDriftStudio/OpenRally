@@ -4,8 +4,11 @@ import type {
   TerrainBaseConfig,
   HeightmapModification,
   PropData,
+  TagSpawnPoint,
 } from '@/types/level';
+import type { GameMode } from '@/types/game';
 import type { TrackPoint, TrackConfig } from '@/types/terrain';
+import type { TireType } from '@/types/vehicle';
 
 /**
  * Environment archetypes with predefined procedural noise & atmosphere styles.
@@ -177,6 +180,8 @@ export interface CreateLevelOptions {
   readonly difficulty?: 'easy' | 'medium' | 'hard';
   /** Primary surface description for UI */
   readonly surfaceDescription?: string;
+  /** Recommended / default tire compound for this level */
+  readonly recommendedTire?: TireType;
   /** Environmental archetype */
   readonly archetype?: EnvironmentArchetype;
   /** Deterministic PRNG seed */
@@ -197,12 +202,45 @@ export interface CreateLevelOptions {
   readonly spawnPosition?: [number, number, number];
   /** Custom vehicle spawn heading rotation Y (defaults to track tangent) */
   readonly spawnRotationY?: number;
+  /** Allowed game modes for this level (defaults to ['freeroam', 'timeattack'] if omitted) */
+  readonly supportedModes?: readonly GameMode[];
+  /** Optional preview image / banner URL */
+  readonly bannerUrl?: string;
+  /** 12 Safe static spawn positions for Rally Tag mode (automatically generated along spline if omitted) */
+  readonly tagSpawnPoints?: readonly TagSpawnPoint[];
   /** Fall reset threshold Y (defaults to -10.0) */
   readonly fallResetY?: number;
   /** Environment overrides (sky, fog) */
   readonly environment?: EnvironmentAtmosphere;
   /** Specific terrain base overrides */
   readonly terrainOverrides?: Partial<TerrainBaseConfig>;
+}
+
+/**
+ * Generates 12 evenly-spaced spawn points along a track spline for Rally Tag mode.
+ */
+export function generateDefaultTagSpawns(
+  trackPoints: readonly TrackPoint[],
+  targetHeight = 0.0,
+): TagSpawnPoint[] {
+  if (trackPoints.length < 3) return [];
+  const spawns: TagSpawnPoint[] = [];
+  const count = 12;
+  const step = trackPoints.length / count;
+  for (let i = 0; i < count; i++) {
+    const idx = Math.floor(i * step) % trackPoints.length;
+    const nextIdx = (idx + 1) % trackPoints.length;
+    const p0 = trackPoints[idx];
+    const p1 = trackPoints[nextIdx];
+    const dx = p1.x - p0.x;
+    const dz = p1.z - p0.z;
+    const rotY = Math.atan2(dx, dz);
+    spawns.push({
+      position: [p0.x, targetHeight + 1.2, p0.z],
+      rotationY: rotY,
+    });
+  }
+  return spawns;
 }
 
 /**
@@ -251,15 +289,27 @@ export function createLevelPreset(options: CreateLevelOptions): LevelPreset {
 
   const fallResetY = options.fallResetY ?? -12.0;
 
+  const tagSpawnPoints =
+    options.tagSpawnPoints ??
+    (options.trackPoints.length >= 12
+      ? generateDefaultTagSpawns(options.trackPoints, options.targetHeight ?? 0.0)
+      : undefined);
+
   return {
     id: options.id,
     name: options.name,
     description: options.description,
     difficulty: options.difficulty ?? 'medium',
     surfaceDescription: options.surfaceDescription ?? archetypeSpec.defaultSurfaceDescription,
+    recommendedTire:
+      options.recommendedTire ??
+      (archetype === 'tundra' || archetype === 'alpine' ? 'snow' : 'gravel'),
+    supportedModes: options.supportedModes,
+    bannerUrl: options.bannerUrl,
     data,
     spawnPosition: spawnPos,
     spawnRotationY: spawnRot,
+    tagSpawnPoints,
     fallResetY,
     environment: {
       ...archetypeSpec.atmosphere,

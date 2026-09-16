@@ -15,6 +15,7 @@ import { GymkhanaController } from '@/components/environment/GymkhanaController'
 import { Vehicle } from '@/components/vehicle/Vehicle';
 import { RemoteVehicleManager } from '@/components/vehicle/RemoteVehicleManager';
 import { Lights } from '@/components/canvas/Lights';
+import { ShaderWarmUp } from '@/components/canvas/ShaderWarmUp';
 import { PostProcessingErrorBoundary } from '@/components/canvas/PostProcessingErrorBoundary';
 import { Environment, Sky, AdaptiveDpr, AdaptiveEvents } from '@react-three/drei';
 import { useSettingsStore, saveSettingsToStorage } from '@/store/settingsStore';
@@ -67,6 +68,8 @@ export function startFramePacingLoop({
   const interval = 1000 / targetFps;
   const jitterBufferMs = 1.5; // ~1.5ms jitter buffer for 120Hz vsync cadence
   let lastTime = performance.now();
+  let lastRafTime = lastTime;
+  let accumulator = 0;
 
   // Initial frame advance
   try {
@@ -78,14 +81,40 @@ export function startFramePacingLoop({
   const tick = (now: number) => {
     animId = requestAnimationFrame(tick);
     const elapsed = now - lastTime;
+    const rafInterval = now - lastRafTime;
+    lastRafTime = now;
 
-    if (shouldAdvanceFrame(now, lastTime, targetFps, jitterBufferMs)) {
+    // Detect native 60Hz vsync cadence: if incoming rAF ticks arrive at ~16.6ms intervals (>13.0ms)
+    // and target is 60 FPS, allow native vsync frames through without artificial frame-skipping judder
+    const isNative60HzCadence = targetFps === 60 && rafInterval > 13.0 && elapsed > 12.0;
+
+    // Detect 90Hz vsync cadence: incoming rAF ticks arrive at ~11.1ms intervals (9.5ms - 12.8ms)
+    const is90HzCadence = targetFps === 60 && rafInterval >= 9.5 && rafInterval <= 12.8;
+
+    let shouldAdvance = false;
+    if (isNative60HzCadence) {
+      shouldAdvance = true;
+      accumulator = 0;
+    } else if (is90HzCadence) {
+      // Accumulate 90Hz tick time to render 2 out of every 3 frames (smooth 60 FPS instead of 45 FPS judder)
+      accumulator += rafInterval;
+      if (accumulator >= interval - jitterBufferMs) {
+        shouldAdvance = true;
+        accumulator = Math.max(0, accumulator - interval);
+      }
+    } else if (shouldAdvanceFrame(now, lastTime, targetFps, jitterBufferMs)) {
+      shouldAdvance = true;
+      accumulator = 0;
+    }
+
+    if (shouldAdvance) {
       // Prevent large delta spike if resuming from tab backgrounding / app pause
       if (elapsed > 200 && clock) {
         clock.elapsedTime = (now - interval) / 1000;
         if ('oldTime' in clock) {
           (clock as { oldTime: number }).oldTime = now - interval;
         }
+        accumulator = 0;
       }
       lastTime = now;
       try {
@@ -137,6 +166,24 @@ export function MenuCinematicPacer({ enabled = true, targetFps = 60 }: { enabled
 }
 
 /**
+ * Reactively synchronizes the Three.js PerspectiveCamera far clipping plane
+ * and updates its projection matrix whenever draw distance settings change.
+ * Necessary because R3F's <Canvas camera={{ far }}> is only read at mount time.
+ */
+export function CameraFarController({ far }: { far: number }) {
+  const camera = useThree((s) => s.camera);
+
+  useEffect(() => {
+    if (camera.far !== far && Number.isFinite(far) && far > 0) {
+      camera.far = far;
+      camera.updateProjectionMatrix();
+    }
+  }, [camera, far]);
+
+  return null;
+}
+
+/**
  * Monitors instantaneous frame duration and signals <AdaptiveDpr /> to temporarily
  * step down resolution when frame time exceeds 20ms (< 50 FPS).
  */
@@ -180,6 +227,23 @@ export function getCanvasShadowsType(
 }
 
 /**
+ * Evaluates whether post-processing effects (Bloom, Vignette, ToneMapping) should be rendered.
+ * On desktop: active when postProcessingEnabled is true and graphics quality is not 'low'.
+ * On mobile TBDR GPUs: bypassed on 'low' and 'medium' (Balanced profile) to preserve 60 FPS and battery,
+ * but enabled on 'high' and 'very_high' when postProcessingEnabled is true for high-end mobile devices.
+ */
+export function shouldRenderPostProcessing(
+  postProcessingEnabled: boolean,
+  isMobile: boolean,
+  graphicsQuality: string,
+): boolean {
+  return (
+    postProcessingEnabled &&
+    (isMobile ? graphicsQuality === 'very_high' || graphicsQuality === 'high' : graphicsQuality !== 'low')
+  );
+}
+
+/**
  * Main game canvas — wraps the R3F Canvas with Physics, scene objects,
  * dynamic level environments, and post-processing effects.
  */
@@ -192,17 +256,21 @@ export function GameCanvas() {
   const graphicsQuality = useSettingsStore((s) => s.graphicsQuality);
   const antiAliasing = useSettingsStore((s) => s.antiAliasing);
   const resolutionScale = useSettingsStore((s) => s.resolutionScale);
+  const dynamicResolution = useSettingsStore((s) => s.dynamicResolution);
   const targetFps = useSettingsStore((s) => s.targetFps ?? 60);
   const drawDistance = useSettingsStore((s) => s.drawDistance ?? (isMobileDevice() ? 'medium' : 'far'));
   const gameState = useGameStore((s) => s.gameState);
   const selectedLevelId = useGameStore((s) => s.selectedLevelId);
   const isGarageOpen = useGameStore((s) => s.isGarageOpen);
+  const isSceneReady = useGameStore((s) => s.isSceneReady);
 
   const isMobile = isMobileOrAndroid();
 
-  // On low quality (performance mode), bypass EffectComposer to eliminate fill-rate overhead.
-  // On medium, high, and very_high, post-processing is active whenever enabled by user.
-  const shouldRenderPostProcessing = postProcessingEnabled && graphicsQuality !== 'low';
+  const canRenderPostProcessing = shouldRenderPostProcessing(
+    postProcessingEnabled,
+    isMobile,
+    graphicsQuality,
+  );
 
   const envResolution = isMobile ? (graphicsQuality === 'low' ? 64 : 128) : 256;
 
@@ -242,6 +310,7 @@ export function GameCanvas() {
   const { dprTuple } = calculateDprConfig({
     graphicsQuality,
     resolutionScale,
+    dynamicResolution,
   });
 
   const isGameplay = gameState === 'playing' || gameState === 'paused';
@@ -253,7 +322,7 @@ export function GameCanvas() {
       frameloop={frameloop}
       dpr={dprTuple}
       shadows={shouldEnableCanvasShadows(shadowsEnabled, graphicsQuality)}
-      camera={{ fov: 60, near: 0.1, far: cameraFar, position: [0, 10, -15] }}
+      camera={{ fov: 60, near: 0.35, far: cameraFar, position: [0, 10, -15] }}
       gl={{
         antialias: antiAliasing !== 'off',
         powerPreference: 'high-performance',
@@ -312,9 +381,13 @@ export function GameCanvas() {
       <MobileFramePacer targetFps={targetFps} enabled={isMobile && isGameplay} />
       <MenuCinematicPacer enabled={!isGameplay && !isGarageOpen} targetFps={isMobile ? 30 : 60} />
       <Suspense fallback={null}>
-        {!isMobile && <AdaptiveDpr />}
+        <ShaderWarmUp />
+        {dynamicResolution && <AdaptiveDpr />}
         <AdaptiveEvents />
-        {!isMobile && <AdaptivePerformanceTrigger />}
+        {dynamicResolution && <AdaptivePerformanceTrigger />}
+        {/* Reactive camera far plane synchronization */}
+        <CameraFarController far={cameraFar} />
+
         {/* Fog for atmosphere and distance culling */}
         <fog attach="fog" args={[fogColor, fogNear, fogFar]} />
 
@@ -356,7 +429,7 @@ export function GameCanvas() {
             gravity={[0, -9.81, 0]} 
             timeStep={1 / 60} 
             debug={debugPhysics} 
-            paused={gameState === 'paused'}
+            paused={gameState === 'paused' || (!isGameplay && isSceneReady)}
           >
             <Terrain />
             <PropsInstancer />
@@ -379,19 +452,20 @@ export function GameCanvas() {
         </TerrainProvider>
 
         {/* Post-processing effects */}
-        {shouldRenderPostProcessing && (
+        {canRenderPostProcessing && (
           <PostProcessingErrorBoundary>
             <EffectComposer
               multisampling={antiAliasing === 'msaa' && !isMobile ? 4 : 0}
-              frameBufferType={HalfFloatType}
+              frameBufferType={isMobile ? undefined : HalfFloatType}
             >
               {antiAliasing === 'smaa' && !isMobile ? <SMAA /> : <></>}
               <Bloom
                 luminanceThreshold={POSTPROCESSING_CONFIG.bloom.luminanceThreshold}
                 luminanceSmoothing={POSTPROCESSING_CONFIG.bloom.luminanceSmoothing}
                 mipmapBlur={!isMobile}
-                levels={isMobile ? 4 : 8}
-                intensity={isMobile ? 0.35 : POSTPROCESSING_CONFIG.bloom.intensity}
+                resolutionScale={isMobile ? 0.5 : 1.0}
+                levels={isMobile ? 2 : (graphicsQuality === 'very_high' ? 8 : 5)}
+                intensity={isMobile ? 0.25 : POSTPROCESSING_CONFIG.bloom.intensity}
               />
               {/* ToneMapping inside EffectComposer prevents severe HDR clipping blowout */}
               <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />

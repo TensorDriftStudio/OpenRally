@@ -230,6 +230,13 @@ export class NetworkClient {
   }
 
   /**
+   * Checks whether the network client is connected and ready to transmit a new telemetry frame.
+   */
+  public canSendTelemetry(now: number = performance.now()): boolean {
+    return !!this.ws && this.ws.readyState === WebSocket.OPEN && (now - this.lastTelemetrySendTime >= TELEMETRY_SEND_INTERVAL_MS);
+  }
+
+  /**
    * Throttled telemetry transmission called from useVehiclePhysics / useFrame (~30Hz).
    */
   public sendTelemetry(payload: Omit<VehicleTelemetryPayload, 'seq' | 'time'>): void {

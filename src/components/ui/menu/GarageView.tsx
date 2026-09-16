@@ -3,7 +3,10 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Environment } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { WebGLRenderer, PCFShadowMap } from 'three';
-import type { VehiclePreset, GameMode } from '@/types';
+import type { VehiclePreset, GameMode, TireType } from '@/types';
+import { getGameModeDefinition } from '@/config/gameModeRegistry';
+import { getLevelPreset, getRecommendedTireForLevel } from '@/config/levelRegistry';
+import { getTireDefinition, AVAILABLE_TIRE_TYPES } from '@/config/tireRegistry';
 import { useSettingsStore, saveSettingsToStorage } from '@/store/settingsStore';
 import { useGameStore } from '@/store/gameStore';
 import { getActiveGamepad, XBOX_AXES, XBOX_BUTTONS } from '@/utils/input/gamepad';
@@ -28,8 +31,8 @@ interface GarageGamepadTurntableProps {
 
 /**
  * 360° Gamepad Turntable Controller for the Garage 3D Canvas.
- * Supports smooth camera orbit via Right or Left analog stick,
- * analog zoom via LT / RT triggers, and camera reset via RSB / LSB stick click.
+ * Supports smooth camera orbit exclusively via Right analog stick,
+ * analog zoom via LT / RT triggers, and camera reset via RSB / R3 stick click.
  * Zero-allocation in useFrame to satisfy enterprise performance standards.
  */
 function GarageGamepadTurntable({ controlsRef }: GarageGamepadTurntableProps) {
@@ -45,24 +48,9 @@ function GarageGamepadTurntable({ controlsRef }: GarageGamepadTurntableProps) {
     const buttons = gp.buttons || [];
     const dt = Math.min(0.1, Math.max(0.001, delta));
 
-    // Right analog stick (Primary 360 camera orbit)
-    const rightX = applyTurntableDeadzone(axes[XBOX_AXES.RIGHT_STICK_X] ?? 0);
-    const rightY = applyTurntableDeadzone(axes[XBOX_AXES.RIGHT_STICK_Y] ?? 0);
-
-    // Left analog stick (Alternative rotation stick)
-    const leftX = applyTurntableDeadzone(axes[XBOX_AXES.LEFT_STICK_X] ?? 0);
-    const leftY = applyTurntableDeadzone(axes[XBOX_AXES.LEFT_STICK_Y] ?? 0);
-
-    let stickX = 0;
-    let stickY = 0;
-
-    if (Math.abs(rightX) > 0 || Math.abs(rightY) > 0) {
-      stickX = rightX;
-      stickY = rightY;
-    } else if (Math.abs(leftX) > 0 || Math.abs(leftY) > 0) {
-      stickX = leftX;
-      stickY = leftY;
-    }
+    // Right analog stick ONLY (Dedicated 360 camera orbit)
+    const stickX = applyTurntableDeadzone(axes[XBOX_AXES.RIGHT_STICK_X] ?? 0);
+    const stickY = applyTurntableDeadzone(axes[XBOX_AXES.RIGHT_STICK_Y] ?? 0);
 
     if (Math.abs(stickX) > 0) {
       const currentTheta = controls.getAzimuthalAngle();
@@ -91,7 +79,7 @@ function GarageGamepadTurntable({ controlsRef }: GarageGamepadTurntableProps) {
       controls.update();
     }
 
-    // Reset view: RSB (Right Stick Click), LSB (Left Stick Click)
+    // Reset view: RSB (Right Stick Click / R3) or LSB
     const btnRSB = buttons[XBOX_BUTTONS.RSB]?.pressed;
     const btnLSB = buttons[XBOX_BUTTONS.LSB]?.pressed;
     if (btnRSB || btnLSB) {
@@ -112,6 +100,8 @@ interface GarageViewProps {
   subtitleColor: string;
   currentLevelName?: string;
   gameMode?: GameMode;
+  selectedTireType?: TireType;
+  onSelectTireType?: (tireType: TireType) => void;
   onPointerMoveItem: (index: number, e: React.PointerEvent) => void;
   onSelectPreviewVehicle: (id: string) => void;
   onEquipVehicle: (id: string) => void;
@@ -216,6 +206,8 @@ export function GarageView({
   subtitleColor,
   currentLevelName,
   gameMode,
+  selectedTireType,
+  onSelectTireType,
   onPointerMoveItem,
   onSelectPreviewVehicle,
   onEquipVehicle,
@@ -229,6 +221,14 @@ export function GarageView({
   const storeGamepadType = useGameStore((s) => s.gamepadType);
   const gamepadConnected = useGameStore.getState().gamepadConnected ?? storeGamepadConnected;
   const gamepadType = useGameStore.getState().gamepadType ?? storeGamepadType;
+  const storeTireType = useGameStore((s) => s.selectedTireType);
+  const storeSetTireType = useGameStore((s) => s.setSelectedTireType);
+  const selectedLevelId = useGameStore((s) => s.selectedLevelId);
+  const currentLevelPreset = getLevelPreset(selectedLevelId);
+  const recommendedTire = getRecommendedTireForLevel(currentLevelPreset);
+  const activeTireType = selectedTireType ?? storeTireType;
+  const handleSelectTire = onSelectTireType ?? storeSetTireType;
+  const activeTireDef = getTireDefinition(activeTireType);
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const glRef = useRef<WebGLRenderer | null>(null);
   const activeCardRef = useRef<HTMLButtonElement | null>(null);
@@ -348,7 +348,7 @@ export function GarageView({
           )}
           {currentLevelName && gameMode && <span>•</span>}
           {gameMode && (
-            <span>MODE: <strong style={{ color: '#E31837' }}>{gameMode === 'timeattack' ? 'TIME ATTACK' : gameMode === 'gymkhana_blitz' ? 'GYMKHANA BLITZ' : 'FREE ROAM'}</strong></span>
+            <span>MODE: <strong style={{ color: getGameModeDefinition(gameMode).badgeColor }}>{getGameModeDefinition(gameMode).badgeLabel}</strong></span>
           )}
         </div>
       )}
@@ -488,8 +488,8 @@ export function GarageView({
           }}>
             {gamepadConnected
               ? (gamepadType === 'dualsense'
-                  ? '🎮 ANALOG: OBRÓT 360° • L2/R2: ZOOM • L3/R3: RESET'
-                  : '🎮 ANALOG: OBRÓT 360° • LT/RT: ZOOM • LSB/RSB: RESET')
+                  ? '🎮 RIGHT STICK: ROTATE 360° • L2/R2: ZOOM • R3: RESET'
+                  : '🎮 RIGHT STICK: ROTATE 360° • LT/RT: ZOOM • RSB: RESET')
               : 'DRAG TO ROTATE • SCROLL TO ZOOM'}
           </span>
         </div>
@@ -684,7 +684,129 @@ export function GarageView({
             <StatBar label="Offroad" value={previewPreset.stats.offroad} />
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', width: '100%', marginTop: '8px' }}>
+          {/* 3-Way Tire Compound Selection Widget */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              marginTop: '4px',
+              marginBottom: '2px',
+              background: 'rgba(15, 23, 42, 0.55)',
+              border: focusedIndex === 0
+                ? '1.5px solid #E31837'
+                : '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '10px',
+              padding: '6px 10px',
+              transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+              boxShadow: focusedIndex === 0 ? '0 0 12px rgba(227, 24, 55, 0.35)' : 'none',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '1px', color: '#CBD5E1', textTransform: 'uppercase' }}>
+                  TIRE COMPOUND
+                </span>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#FFFFFF' }}>
+                  • {activeTireDef.label}
+                </span>
+                {activeTireType === recommendedTire && (
+                  <span style={{ fontSize: '9px', fontWeight: 800, color: '#34D399', letterSpacing: '0.5px' }}>
+                    (STAGE DEFAULT)
+                  </span>
+                )}
+              </div>
+              <span
+                style={{
+                  fontSize: '9px',
+                  fontWeight: 800,
+                  letterSpacing: '0.8px',
+                  color: activeTireDef.color,
+                  background: activeTireDef.badgeBg,
+                  border: `1px solid ${activeTireDef.badgeBorder}`,
+                  padding: '1px 6px',
+                  borderRadius: '6px',
+                }}
+              >
+                {activeTireDef.badge}
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '6px',
+                width: '100%',
+              }}
+            >
+              {AVAILABLE_TIRE_TYPES.map((tType) => {
+                const tireDef = getTireDefinition(tType);
+                const isSelected = activeTireType === tType;
+                const isRecommended = tType === recommendedTire;
+
+                return (
+                  <button
+                    key={tType}
+                    type="button"
+                    style={{
+                      minHeight: '44px',
+                      minWidth: '44px',
+                      padding: '4px 6px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '2px',
+                      background: isSelected
+                        ? `linear-gradient(135deg, ${tireDef.badgeBg} 0%, rgba(15, 23, 42, 0.9) 100%)`
+                        : 'rgba(255, 255, 255, 0.04)',
+                      border: isSelected
+                        ? `1.5px solid ${tireDef.color}`
+                        : isRecommended
+                          ? '1px solid rgba(52, 211, 153, 0.4)'
+                          : '1px solid rgba(255, 255, 255, 0.12)',
+                      boxShadow: isSelected
+                        ? `0 0 10px ${tireDef.badgeBg}`
+                        : 'none',
+                      color: isSelected ? '#FFFFFF' : '#94A3B8',
+                      fontWeight: 700,
+                      fontSize: '11px',
+                      transition: 'all 0.15s ease',
+                      boxSizing: 'border-box',
+                      touchAction: 'manipulation',
+                    }}
+                    onPointerMove={(e) => onPointerMoveItem(0, e)}
+                    onClick={() => handleSelectTire(tType)}
+                  >
+                    <span style={{ fontSize: '14px' }}>{tireDef.icon}</span>
+                    <span style={{ letterSpacing: '0.4px', fontWeight: 800 }}>{tireDef.label}</span>
+                    {isRecommended && (
+                      <span
+                        style={{
+                          fontSize: '8px',
+                          fontWeight: 800,
+                          color: isSelected ? '#A7F3D0' : '#34D399',
+                          letterSpacing: '0.5px',
+                          lineHeight: 1,
+                        }}
+                      >
+                        RECOMMENDED
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <span style={{ fontSize: '10px', color: '#94A3B8', lineHeight: 1.25 }}>
+              {activeTireDef.description}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', width: '100%', marginTop: '6px' }}>
             <button
               style={{
                 ...menuStyles.button,
@@ -697,9 +819,9 @@ export function GarageView({
                 fontSize: '15px',
                 letterSpacing: '1px',
                 color: '#FFFFFF',
-                ...getFocusStyle(focusedIndex === 0),
+                ...getFocusStyle(focusedIndex === 1),
               }}
-              onPointerMove={(e) => onPointerMoveItem(0, e)}
+              onPointerMove={(e) => onPointerMoveItem(1, e)}
               onClick={() => {
                 if (onStartRace) {
                   onStartRace(previewVehicleId);
@@ -719,9 +841,9 @@ export function GarageView({
                 borderColor: 'rgba(255, 255, 255, 0.1)', 
                 width: '120px',
                 justifyContent: 'center',
-                ...getFocusStyle(focusedIndex === 1),
+                ...getFocusStyle(focusedIndex === 2),
               }} 
-              onPointerMove={(e) => onPointerMoveItem(1, e)}
+              onPointerMove={(e) => onPointerMoveItem(2, e)}
               onClick={() => onSelectView('start_mode')}
             >
               Back

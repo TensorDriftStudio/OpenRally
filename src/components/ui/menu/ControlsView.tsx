@@ -267,23 +267,29 @@ export function ControlsView({
             <strong style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={styles.psCross}>✕</span> Cross
             </strong>
-            <span style={{ color: '#38BDF8', fontWeight: 600 }}>Bieg wyższy (Shift UP)</span>
+            <span style={{ color: '#38BDF8', fontWeight: 600 }}>Gear Up (Shift UP)</span>
           </div>
           <div style={menuStyles.controlRow}>
             <strong style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={styles.psCircle}>●</span> Circle
             </strong>
-            <span style={{ color: '#F59E0B', fontWeight: 600 }}>Bieg niższy (Shift DOWN)</span>
+            <span style={{ color: '#F59E0B', fontWeight: 600 }}>Gear Down (Shift DOWN)</span>
           </div>
           <div style={menuStyles.controlRow}>
             <strong style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={styles.psSquare}>■</span> Square / R1
             </strong>
-            <span style={{ color: '#EF4444', fontWeight: 600 }}>Hamulec ręczny (Handbrake)</span>
+            <span style={{ color: '#EF4444', fontWeight: 600 }}>Handbrake</span>
           </div>
           <div style={menuStyles.controlRow}>
             <strong style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={styles.psTriangle}>▲</span> Triangle / L1
+              <span style={styles.psTriangle}>▲</span> Triangle
+            </strong>
+            <span style={{ color: '#94A3B8' }}>Reset Vehicle</span>
+          </div>
+          <div style={menuStyles.controlRow}>
+            <strong style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={styles.badge}>L1</span> Left Bumper
             </strong>
             <span style={{ color: '#94A3B8' }}>Cycle Camera</span>
           </div>
@@ -357,23 +363,29 @@ export function ControlsView({
             <strong style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={styles.xboxA}>A</span> Button
             </strong>
-            <span style={{ color: '#38BDF8', fontWeight: 600 }}>Bieg wyższy (Shift UP)</span>
+            <span style={{ color: '#38BDF8', fontWeight: 600 }}>Gear Up (Shift UP)</span>
           </div>
           <div style={menuStyles.controlRow}>
             <strong style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={styles.xboxB}>B</span> Button
             </strong>
-            <span style={{ color: '#F59E0B', fontWeight: 600 }}>Bieg niższy (Shift DOWN)</span>
+            <span style={{ color: '#F59E0B', fontWeight: 600 }}>Gear Down (Shift DOWN)</span>
           </div>
           <div style={menuStyles.controlRow}>
             <strong style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={styles.xboxX}>X</span> / RB
             </strong>
-            <span style={{ color: '#EF4444', fontWeight: 600 }}>Hamulec ręczny (Handbrake)</span>
+            <span style={{ color: '#EF4444', fontWeight: 600 }}>Handbrake</span>
           </div>
           <div style={menuStyles.controlRow}>
             <strong style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={styles.xboxY}>Y</span> / LB
+              <span style={styles.xboxY}>Y</span> Button
+            </strong>
+            <span style={{ color: '#94A3B8' }}>Reset Vehicle</span>
+          </div>
+          <div style={menuStyles.controlRow}>
+            <strong style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={styles.badge}>LB</span> Left Bumper
             </strong>
             <span style={{ color: '#94A3B8' }}>Cycle Camera</span>
           </div>
@@ -434,19 +446,19 @@ export function ControlsView({
             <strong style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <kbd style={styles.kbd}>E</kbd>
             </strong>
-            <span style={{ color: '#38BDF8', fontWeight: 600 }}>Bieg wyższy (Shift UP)</span>
+            <span style={{ color: '#38BDF8', fontWeight: 600 }}>Gear Up (Shift UP)</span>
           </div>
           <div style={menuStyles.controlRow}>
             <strong style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <kbd style={styles.kbd}>Q</kbd>
             </strong>
-            <span style={{ color: '#F59E0B', fontWeight: 600 }}>Bieg niższy (Shift DOWN)</span>
+            <span style={{ color: '#F59E0B', fontWeight: 600 }}>Gear Down (Shift DOWN)</span>
           </div>
           <div style={menuStyles.controlRow}>
             <strong style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <kbd style={styles.kbd}>SPACE</kbd>
             </strong>
-            <span style={{ color: '#EF4444', fontWeight: 600 }}>Hamulec ręczny (Handbrake / Drift)</span>
+            <span style={{ color: '#EF4444', fontWeight: 600 }}>Handbrake / Drift</span>
           </div>
           <div style={menuStyles.controlRow}>
             <strong style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

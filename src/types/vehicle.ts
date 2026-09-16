@@ -14,14 +14,20 @@ export interface WheelInfo {
   readonly suspensionTravel: number;
   /** Suspension stiffness coefficient */
   readonly suspensionStiffness: number;
-  /** Suspension damping coefficient */
+  /** Suspension damping coefficient (base reference) */
   readonly suspensionDamping: number;
+  /** Optional custom compression / bump damping coefficient */
+  readonly suspensionCompression?: number;
+  /** Optional custom relaxation / rebound damping coefficient */
+  readonly suspensionRelaxation?: number;
   /** Whether this wheel can steer */
   readonly steerable: boolean;
   /** Whether this wheel receives engine force */
   readonly powered: boolean;
   /** Maximum force the suspension spring can apply (N) */
   readonly maxSuspensionForce?: number;
+  /** Minimum suspension length (hard bump stop limit in meters). Prevents wheels from penetrating wheel arches under heavy landings. */
+  readonly minSuspensionLength?: number;
 }
 
 /**
@@ -67,6 +73,28 @@ export interface SuspensionConfig {
 }
 
 /**
+ * Visual & physical sprung mass dynamics (chassis body roll, pitch dive/squat, heave)
+ */
+export interface ChassisDynamicsConfig {
+  /** Maximum roll angle in radians during hard cornering (default ~0.085 rad / 4.9 deg) */
+  readonly maxRollAngle?: number;
+  /** Roll stiffness multiplier (higher = flatter cornering, lower = more body roll lean) */
+  readonly rollStiffness?: number;
+  /** Maximum pitch dive angle in radians under hard braking (default ~0.055 rad / 3.1 deg) */
+  readonly maxPitchDive?: number;
+  /** Maximum pitch squat angle in radians under hard launch (default ~0.045 rad / 2.6 deg) */
+  readonly maxPitchSquat?: number;
+  /** Pitch stiffness multiplier (higher = flatter under braking/acceleration) */
+  readonly pitchStiffness?: number;
+  /** Natural resonant frequency in rad/s of the sprung mass body roll (default ~11.0) */
+  readonly naturalFrequency?: number;
+  /** Damping ratio of the chassis suspension oscillations (0.7 - 0.9 = realistic rally damping) */
+  readonly dampingRatio?: number;
+  /** Heave displacement multiplier on bumps/crest landings (default ~0.5) */
+  readonly heaveMultiplier?: number;
+}
+
+/**
  * Physical mass distribution and engine placement configuration.
  */
 export interface WeightDistributionConfig {
@@ -91,6 +119,11 @@ export interface WeightDistributionConfig {
    * to provide realistic ~53/47 rally front-engine weight balance.
    */
   readonly centerOfMassZ?: number;
+  /**
+   * Vertical Y offset (in meters) of the overall vehicle center of mass relative to chassis origin.
+   * Typically negative (e.g. -0.38m to -0.42m) to reflect a low center of gravity (~0.35m above ground).
+   */
+  readonly centerOfMassY?: number;
 }
 
 /**
@@ -157,13 +190,81 @@ export interface VehicleConfig {
   readonly suspension: SuspensionConfig;
   readonly handling: HandlingConfig;
   readonly aerodynamics: AerodynamicsConfig;
+  readonly chassisDynamics?: ChassisDynamicsConfig;
   readonly wheels: readonly [WheelInfo, WheelInfo, WheelInfo, WheelInfo];
+  /**
+   * Optional per-vehicle balance overrides for fine-tuning specific handling archetypes
+   * (e.g. drift car with higher yaw ceiling, heavy 4x4 with boosted ARB).
+   * Safely merged with DRIVING_MODEL_BALANCE at runtime via resolveVehicleBalance().
+   */
+  readonly balanceOverrides?: VehicleBalanceOverrides;
+}
+
+/**
+ * Recursive partial type for nested configuration objects.
+ */
+export type DeepPartial<T> = {
+  readonly [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+};
+
+/**
+ * Strongly-typed balance overrides matching the sections of DrivingModelBalance.
+ */
+export interface VehicleBalanceOverrides {
+  readonly handbrake?: Partial<{
+    readonly minLockupBrakeForce: number;
+    readonly rearLockupImpulseMultiplier: number;
+    readonly frontSteerYieldMultiplier: number;
+    readonly disableAwdPropulsion: boolean;
+    readonly rollDampingBoost: number;
+    readonly maxYawRateCeiling: number;
+    readonly yawExcessDampingGain: number;
+  }>;
+  readonly suspension?: Partial<{
+    readonly antiRollBarMassScale: number;
+    readonly antiSquatMassScale: number;
+    readonly pitchDampingMassScale: number;
+    readonly maxRestoringPitchTorqueG: number;
+    readonly antiWheeliePitchMultiplier: number;
+  }>;
+  readonly drivetrain?: Partial<{
+    readonly launchRampEndSpeedMps: number;
+    readonly launchRampBaseFraction: number;
+    readonly gear2TorquePunch: number;
+    readonly driftBoostSteerWeight: number;
+    readonly driftBoostSlipWeight: number;
+    readonly frontUnweightedDampingThreshold: number;
+  }>;
+  readonly assists?: Partial<{
+    readonly turnInTorqueGain: number;
+    readonly countersteerDampingBase: number;
+    readonly rollDampingNormal: number;
+    readonly steerAssistDeadzone: number;
+    readonly pitchDampingThrottleUp: number;
+    readonly pitchDampingNormal: number;
+  }>;
+  readonly tires?: Partial<{
+    readonly minPowerSlideSlipAngle: number;
+    readonly wheelspinFrictionDropFront: number;
+    readonly wheelspinFrictionDropRear: number;
+    readonly looseSurfaceFrontWeight: number;
+    readonly looseSurfaceRearWeight: number;
+  }>;
 }
 
 /**
  * Surface types present on the terrain.
  */
 export type SurfaceType = 'tarmac' | 'mud' | 'grass' | 'sand' | 'snow' | 'gravel';
+
+/**
+ * Available tire compound types for vehicles in OpenRally.
+ * Restricted to exactly 3 distinct compounds:
+ * - 'asphalt': Tarmac-optimized high-grip compound
+ * - 'gravel': Deep-tread loose surface rally compound
+ * - 'snow': Siped winter compound for snow and ice
+ */
+export type TireType = 'asphalt' | 'gravel' | 'snow';
 
 /**
  * Display category for vehicle selection.
@@ -229,6 +330,11 @@ export interface IRapierVehicleController {
   wheelChassisConnectionPointCs(wheelIndex: number): { x: number; y: number; z: number } | null | undefined;
   wheelSteering(wheelIndex: number): number | null | undefined;
   wheelIsInContact?(wheelIndex: number): boolean | null | undefined;
+  setWheelMaxSuspensionTravel?(wheelIndex: number, travel: number): void;
+  setWheelSuspensionStiffness?(wheelIndex: number, stiffness: number): void;
+  setWheelSuspensionCompression?(wheelIndex: number, compression: number): void;
+  setWheelSuspensionRelaxation?(wheelIndex: number, relaxation: number): void;
+  setWheelMaxSuspensionForce?(wheelIndex: number, maxForce: number): void;
 }
 
 

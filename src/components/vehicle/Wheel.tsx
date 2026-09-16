@@ -25,10 +25,10 @@ export const Wheel = forwardRef<Object3D, WheelProps>(function Wheel(
   const useOptimized = isMobile || graphicsQuality !== 'very_high';
   const modelUrl = useOptimized ? '/models/vehicles/wheel_opt.glb' : '/models/vehicles/wheel.glb';
 
-  // Wczytujemy model koła (zoptymalizowany dla urządzeń mobilnych / balanced)
+  // Load wheel model (optimized for mobile / balanced profile)
   const { scene } = useGLTF(modelUrl);
 
-  // Dynamiczne skalowanie modelu dopasowane do proporcji koła (surowy promień w GLB to 0.0375m)
+  // Dynamic model scaling tailored to wheel radius (raw GLB radius is 0.0375m)
   const visualScale = radius / 0.0375;
 
   return (
@@ -36,22 +36,22 @@ export const Wheel = forwardRef<Object3D, WheelProps>(function Wheel(
       {/* Inner group for spin rotation */}
       <group>
         <Detailed distances={[0, 30, 80]}>
-          {/* LOD 0: Pełny model GLB */}
+          {/* LOD 0: Full GLB model */}
           <Clone
             object={scene}
             scale={visualScale}
-            // Wyśrodkowanie piasty na osi [0, 0, 0] oraz rotacja felgi na zewnątrz pojazdu
+            // Center wheel hub at origin [0, 0, 0] and orient rim facing outward
             position={[0, -radius, 0]}
             rotation={[0, isRightSide ? 0 : Math.PI, 0]}
-            castShadow
-            receiveShadow
+            castShadow={!isMobile}
+            receiveShadow={!isMobile}
           />
-          {/* LOD 1: Prosty cylinder (16 segmentów) */}
+          {/* LOD 1: Simplified cylinder (16 segments) */}
           <mesh rotation={[0, 0, Math.PI / 2]} scale={1}>
             <cylinderGeometry args={[radius, radius, 0.28, 16]} />
             <meshStandardMaterial color="#111" roughness={0.9} />
           </mesh>
-          {/* LOD 2: Bardzo uproszczony cylinder (8 segmentów, brak światłocieni) */}
+          {/* LOD 2: Highly simplified cylinder (8 segments, unlit basic material) */}
           <mesh rotation={[0, 0, Math.PI / 2]} scale={1}>
             <cylinderGeometry args={[radius, radius, 0.28, 8]} />
             <meshBasicMaterial color="#0a0a0a" />
@@ -62,6 +62,6 @@ export const Wheel = forwardRef<Object3D, WheelProps>(function Wheel(
   );
 });
 
-// Preload, aby zapobiec opóźnieniom w renderowaniu
+// Preload wheel assets to prevent frame drops upon initial render
 useGLTF.preload('/models/vehicles/wheel.glb');
 useGLTF.preload('/models/vehicles/wheel_opt.glb');

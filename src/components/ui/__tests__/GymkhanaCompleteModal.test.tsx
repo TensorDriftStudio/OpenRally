@@ -82,9 +82,9 @@ describe('GymkhanaCompleteModal - Gamepad & Keyboard Navigation', () => {
     useGameStore.setState({ gamepadConnected: true, gamepadType: 'dualsense' });
     const html = renderToString(<GymkhanaCompleteModal />);
 
-    expect(html).toContain('✕ Wybierz');
+    expect(html).toContain('✕ Select');
     expect(html).toContain('◯ Menu');
-    expect(html).toContain('▲▼ Nawigacja');
+    expect(html).toContain('▲▼ Navigate');
   });
 
   it('renders Xbox controller helper prompts when Xbox controller is connected', () => {
@@ -93,7 +93,7 @@ describe('GymkhanaCompleteModal - Gamepad & Keyboard Navigation', () => {
 
     expect(html).toContain('A Select');
     expect(html).toContain('B Menu');
-    expect(html).toContain('▲▼ Nawigacja');
+    expect(html).toContain('▲▼ Navigate');
   });
 
   it('renders keyboard helper prompts when no gamepad is connected', () => {

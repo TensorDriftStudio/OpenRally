@@ -106,4 +106,45 @@ describe('suspension physics (Anti-Roll & Pitch Stabilization)', () => {
     // Strong positive restoring torque applied to plant front axle
     expect(body.appliedTorques[0].x).toBeGreaterThan(10 * 0.016);
   });
+
+  it('clamps pitch restoring torque under extreme bump compression to prevent violent chassis bucking', () => {
+    // Extreme single-axle compression (e.g. 0.35m vs 0.10m = 0.25m delta)
+    const body = createMockBody({ angvel: { x: 0, y: 0, z: 0 } });
+    const controller = createMockController([0.10, 0.10, 0.35, 0.35]);
+
+    applyPitchStabilization(body, controller, WRC_VEHICLE_CONFIG, 0.016);
+
+    const mass = typeof body.mass === 'function' ? body.mass() : 150;
+    const maxAllowedTorqueImpulse = mass * 3.8 * 0.016;
+
+    expect(body.appliedTorques.length).toBeGreaterThan(0);
+    // Applied impulse must be safely clamped within the saturation ceiling
+    expect(Math.abs(body.appliedTorques[0].x)).toBeLessThanOrEqual(maxAllowedTorqueImpulse + 0.001);
+  });
+
+  it('provides robust angular pitch damping that opposes dynamic pitching motions', () => {
+    // Zero suspension compression delta, but high angular pitch-up velocity (-1.2 rad/s)
+    const body = createMockBody({ angvel: { x: -1.2, y: 0, z: 0 } });
+    const controller = createMockController([0.30, 0.30, 0.30, 0.30]);
+
+    applyPitchStabilization(body, controller, WRC_VEHICLE_CONFIG, 0.016);
+
+    expect(body.appliedTorques.length).toBeGreaterThan(0);
+    // Must produce positive torque impulse to damp the negative pitch rate
+    expect(body.appliedTorques[0].x).toBeGreaterThan(0);
+  });
+
+  it('maintains smooth anti-roll behavior on symmetric compression without injecting trampoline impulses', () => {
+    // Car landing with both front wheels equally compressed (0.20m)
+    const body = createMockBody();
+    body.linvel = () => ({ x: 0, y: -6.0, z: 0 });
+    const controller = createMockController([0.20, 0.20, 0.28, 0.28]);
+
+    applyAntiRollBars(body, controller, DEFAULT_VEHICLE_CONFIG, 0.016);
+
+    // Equal compression on left and right front wheels means zero anti-roll bar imbalance impulse
+    // appliedImpulses should be 0 because ARB only acts on asymmetric roll differences
+    expect(body.appliedImpulses.length).toBe(0);
+  });
 });
+
