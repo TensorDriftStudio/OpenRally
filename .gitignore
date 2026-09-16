@@ -25,6 +25,13 @@ pnpm-debug.log*
 *.env
 *.env.local
 
+# Android / Java Keystores & Signing Secrets
+*.jks
+*.keystore
+*.p12
+*.key
+*.pem
+
 # Scratch and Raw Media
 scratch/
 /OpenRally*.mp4
@@ -32,4 +39,5 @@ scratch/
 # Temporary preview agent workspaces
 .agents/*
 !.agents/AGENTS.md
+
 

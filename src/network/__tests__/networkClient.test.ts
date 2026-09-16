@@ -13,7 +13,7 @@ describe('NetworkClient', () => {
 
   it('resolves default ws endpoint as remote server URL by default', () => {
     const endpoint = getWebSocketEndpoint();
-    expect(endpoint).toBe('wss://vps-db5f427e.vps.ovh.net/ws');
+    expect(endpoint).toBe('wss://openrally.tensordrift.eu/ws');
   });
 
   function mockLocation(loc: Partial<Location>): () => void {
@@ -42,7 +42,7 @@ describe('NetworkClient', () => {
       host: 'localhost:5173',
       protocol: 'http:',
     });
-    expect(getWebSocketEndpoint()).toBe('wss://vps-db5f427e.vps.ovh.net/ws');
+    expect(getWebSocketEndpoint()).toBe('wss://openrally.tensordrift.eu/ws');
     restore();
   });
 
@@ -75,7 +75,7 @@ describe('NetworkClient', () => {
       host: 'localhost',
       protocol: 'https:',
     });
-    expect(getWebSocketEndpoint()).toBe('wss://vps-db5f427e.vps.ovh.net/ws');
+    expect(getWebSocketEndpoint()).toBe('wss://openrally.tensordrift.eu/ws');
     restore();
   });
 

@@ -15,7 +15,7 @@ export const TELEMETRY_SEND_INTERVAL_MS = 33; // ~30Hz
 const PING_INTERVAL_MS = 2000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
-export const DEFAULT_REMOTE_WS_URL = 'wss://vps-db5f427e.vps.ovh.net/ws';
+export const DEFAULT_REMOTE_WS_URL = 'wss://openrally.tensordrift.eu/ws';
 
 /**
  * Resolves the WebSocket URL depending on deployment environment, mobile platform, and query parameters.

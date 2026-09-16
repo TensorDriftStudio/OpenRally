@@ -54,9 +54,6 @@ function getRepoRoot(): string {
   if (fs.existsSync(path.join(process.cwd(), 'src'))) {
     return process.cwd();
   }
-  if (fs.existsSync('/home/dawid/OpenRally/src')) {
-    return '/home/dawid/OpenRally';
-  }
   return path.resolve(__dirname, '..');
 }
 

@@ -7,16 +7,16 @@ This document provides a comprehensive technical reference for AI agents working
 ## 1. Executive Summary & AI-First Design
 
 To make physics tuning predictable, safe, and effortless for AI agents:
-1. **Single Source of Truth**: All global handling balance constants are centralized in [`src/config/physicsBalance.ts`](file:///home/dawid/OpenRally/src/config/physicsBalance.ts) (`DRIVING_MODEL_BALANCE`).
-2. **Modular Subroutines**: Physics subroutines in [`src/utils/physics/`](file:///home/dawid/OpenRally/src/utils/physics/) consume `DRIVING_MODEL_BALANCE` without scattered magic numbers.
-3. **Fail-Fast Runtime Validation**: [`validateDrivingModelBalance()`](file:///home/dawid/OpenRally/src/utils/validation/physicsBalanceValidator.ts) automatically prevents `NaN`, `Infinity`, or unsafe out-of-bound values from crashing the simulation.
-4. **Automated Regression Diagnostics**: [`drivingDynamicsDiagnostics.test.ts`](file:///home/dawid/OpenRally/src/utils/physics/__tests__/drivingDynamicsDiagnostics.test.ts) verifies critical handling scenarios (handbrake under throttle, jump landings, launch ramps, anti-tipping) on every test run.
+1. **Single Source of Truth**: All global handling balance constants are centralized in [`src/config/physicsBalance.ts`](../src/config/physicsBalance.ts) (`DRIVING_MODEL_BALANCE`).
+2. **Modular Subroutines**: Physics subroutines in [`src/utils/physics/`](../src/utils/physics/) consume `DRIVING_MODEL_BALANCE` without scattered magic numbers.
+3. **Fail-Fast Runtime Validation**: [`validateDrivingModelBalance()`](../src/utils/validation/physicsBalanceValidator.ts) automatically prevents `NaN`, `Infinity`, or unsafe out-of-bound values from crashing the simulation.
+4. **Automated Regression Diagnostics**: [`drivingDynamicsDiagnostics.test.ts`](../src/utils/physics/__tests__/drivingDynamicsDiagnostics.test.ts) verifies critical handling scenarios (handbrake under throttle, jump landings, launch ramps, anti-tipping) on every test run.
 
 ---
 
 ## 2. Physics Execution Pipeline
 
-During each physics tick in [`src/hooks/useVehiclePhysics.ts`](file:///home/dawid/OpenRally/src/hooks/useVehiclePhysics.ts), subroutines execute in the following deterministic sequence:
+During each physics tick in [`src/hooks/useVehiclePhysics.ts`](../src/hooks/useVehiclePhysics.ts), subroutines execute in the following deterministic sequence:
 
 ```mermaid
 graph TD
@@ -60,7 +60,7 @@ graph TD
 
 ## 3. Centralized Balance Reference (`DRIVING_MODEL_BALANCE`)
 
-All parameters are declared in [`src/config/physicsBalance.ts`](file:///home/dawid/OpenRally/src/config/physicsBalance.ts). Modify these to adjust global behavior across all vehicles.
+All parameters are declared in [`src/config/physicsBalance.ts`](../src/config/physicsBalance.ts). Modify these to adjust global behavior across all vehicles.
 
 ### 3.1 Handbrake (`DRIVING_MODEL_BALANCE.handbrake`)
 
@@ -136,7 +136,7 @@ export const kodiakRaidConfig: VehicleConfig = {
 };
 ```
 
-The runtime resolves the active balance using [`resolveVehicleBalance(config)`](file:///home/dawid/OpenRally/src/config/physicsBalance.ts), which validates the merged configuration against schema guardrails and caches the result with zero per-frame allocation overhead.
+The runtime resolves the active balance using [`resolveVehicleBalance(config)`](../src/config/physicsBalance.ts), which validates the merged configuration against schema guardrails and caches the result with zero per-frame allocation overhead.
 
 ---
 
@@ -144,7 +144,7 @@ The runtime resolves the active balance using [`resolveVehicleBalance(config)`](
 
 OpenRally provides dedicated developer tools designed specifically for AI agents to make physics tuning, vehicle creation, and regression detection completely automated and error-free:
 
-### 4.1 Physical Suspension & Damping Formulas ([`tuningHelpers.ts`](file:///home/dawid/OpenRally/src/utils/physics/tuningHelpers.ts))
+### 4.1 Physical Suspension & Damping Formulas ([`tuningHelpers.ts`](../src/utils/physics/tuningHelpers.ts))
 
 Never guess suspension stiffness or damping numbers. Use mathematically calibrated engineering formulas:
 - `calculateCornerMasses(chassisMass, options)`: Computes front and rear corner masses based on weight distribution.
@@ -155,7 +155,7 @@ Never guess suspension stiffness or damping numbers. Use mathematically calibrat
 - `tuneBrakesForMass(brakes, chassisMass)`: Scales service brakes and handbrake locking torque proportionally with chassis weight.
 - `applyHandlingProfile(config, profile)`: Applies calibrated handling archetypes (`rally_gravel`, `track_asphalt`, `offroad_raid`, `drift_spec`).
 
-### 4.2 Automated Handling Diagnostics Auditor ([`vehicleDiagnostics.ts`](file:///home/dawid/OpenRally/src/utils/physics/vehicleDiagnostics.ts))
+### 4.2 Automated Handling Diagnostics Auditor ([`vehicleDiagnostics.ts`](../src/utils/physics/vehicleDiagnostics.ts))
 
 Run an automated static and dynamic audit on any vehicle configuration:
 
@@ -178,7 +178,7 @@ The diagnostic auditor inspects:
 - Handbrake locking torque capacity vs. mass
 - Center of mass height vs. track width (rollover propensity)
 
-### 4.3 Headless Simulator & Maneuver Benchmark Suite ([`headlessSimulator.ts`](file:///home/dawid/OpenRally/src/utils/physics/testing/headlessSimulator.ts))
+### 4.3 Headless Simulator & Maneuver Benchmark Suite ([`headlessSimulator.ts`](../src/utils/physics/testing/headlessSimulator.ts))
 
 Run standardized vehicle maneuvers without mounting WebGL or React:
 
@@ -198,9 +198,9 @@ Standardized tests include:
 3. `runSlalomBenchmark`: 75 km/h high-speed sine slalom, body roll angle, 2-wheel tipping check.
 4. `runHandbrakeFlickBenchmark`: 80 km/h handbrake turn, rear wheel lockup verification, yaw rate ceiling.
 
-### 4.4 Modular Physics Pipeline Architecture ([`vehiclePipeline.ts`](file:///home/dawid/OpenRally/src/utils/physics/vehiclePipeline.ts))
+### 4.4 Modular Physics Pipeline Architecture ([`vehiclePipeline.ts`](../src/utils/physics/vehiclePipeline.ts))
 
-The physics execution tick in [`src/hooks/useVehiclePhysics.ts`](file:///home/dawid/OpenRally/src/hooks/useVehiclePhysics.ts) is decomposed into zero-allocation, independently testable pure subroutines:
+The physics execution tick in [`src/hooks/useVehiclePhysics.ts`](../src/hooks/useVehiclePhysics.ts) is decomposed into zero-allocation, independently testable pure subroutines:
 - `calculateGroundContact`: Evaluates contact status, average normals, and wheel contact counts.
 - `updateRolloverDetection`: Tracks rollover thresholds with smooth time window confirmation.
 - `calculateRollingResistanceImpulse`: Evaluates rolling resistance forces based on surface properties.
