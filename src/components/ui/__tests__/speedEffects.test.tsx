@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { SpeedEffects } from '../SpeedEffects';
 import { Minimap } from '../Minimap';

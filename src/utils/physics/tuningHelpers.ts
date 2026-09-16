@@ -284,7 +284,7 @@ export function applyHandlingProfile(
         suspension: {
           frontAntiRollBarStiffness: arb.frontAntiRollBarStiffness * 0.75,
           rearAntiRollBarStiffness: arb.rearAntiRollBarStiffness * 0.75,
-          antiSquatStiffness: arb.antiSquatStiffness * 0.85,
+          antiSquatStiffness: (arb.antiSquatStiffness ?? mass * 0.24) * 0.85,
         },
         handling: {
           ...config.handling,
