@@ -20,6 +20,7 @@ export function applyAssists(
   dt: number,
   balance: DrivingModelBalance = DRIVING_MODEL_BALANCE,
   assists?: { espEnabled?: boolean },
+  prevSteering: number = 0,
 ): { espActive: boolean } {
   const angvel = body.angvel();
   const rot = body.rotation();
@@ -42,11 +43,19 @@ export function applyAssists(
 
   // 1. Agile Turn-In & Yaw Stability Assist (around local Y axis)
   // When handbrake is pressed, allow completely free rotation for handbrake slides.
-  // When ESP is disabled, zero artificial yaw torques are applied, giving raw physics yaw control.
+  // When ESP is disabled or vehicle is in reverse, zero artificial forward yaw torques are applied.
   if (espEnabled && !input.handbrake) {
+    const isMovingForward = forwardSpeed > 1.0;
     const absSpeed = Math.abs(forwardSpeed);
 
-    if (Math.abs(input.steering) > assistsBalance.steerAssistDeadzone && absSpeed > 1.5) {
+    // Dynamic Scandinavian flick attenuation:
+    // When the driver rapidly snaps the steering wheel, temporarily attenuate stabilizing yaw damping
+    // to allow swift turn-in or flick rotation into drift corners.
+    const steerVelocity = Math.abs(input.steering - prevSteering) / Math.max(0.001, dt);
+    const flickGain = assistsBalance.flickAttenuationGain ?? 0.25;
+    const flickAttenuation = clamp(1.0 - (steerVelocity / 4.0) * flickGain, 0.40, 1.0);
+
+    if (isMovingForward && Math.abs(input.steering) > assistsBalance.steerAssistDeadzone && absSpeed > 1.5) {
       const isCounterSteering =
         Math.sign(input.steering) !== Math.sign(_localAngVel.y) && Math.abs(_localAngVel.y) > 0.25;
 
@@ -74,17 +83,18 @@ export function applyAssists(
         const excessYaw = _localAngVel.y - targetYawRate;
 
         // Authoritative ESP yaw stabilization: damp over-rotation beyond target yaw rate to prevent spins
+        // Scaled by flickAttenuation so deliberate flicks aren't choked
         if (Math.sign(_localAngVel.y) === Math.sign(input.steering) && Math.abs(_localAngVel.y) > Math.abs(targetYawRate) + 0.15) {
-          localTorqueY -= excessYaw * Math.max(0.24, config.handling.assists.yawDamping * 2.2) * mass * dt * 2.5;
+          localTorqueY -= excessYaw * Math.max(0.24, config.handling.assists.yawDamping * 2.2) * mass * dt * 2.5 * flickAttenuation;
         }
 
         // Anti-snap yaw damping when rotating in the direction of steering at high yaw velocity (>= 0.65 rad/s)
         if (Math.abs(_localAngVel.y) >= 0.65 && Math.sign(_localAngVel.y) === Math.sign(input.steering)) {
           const excessAng = _localAngVel.y - Math.sign(_localAngVel.y) * 0.65;
-          localTorqueY -= excessAng * config.handling.assists.yawDamping * mass * dt * 1.2;
+          localTorqueY -= excessAng * config.handling.assists.yawDamping * mass * dt * 1.2 * flickAttenuation;
         }
       }
-    } else {
+    } else if (isMovingForward) {
       // Centered / neutral steering — active ESP straight-line stabilization
       const isPowerSliding = input.throttle > 0.15 && Math.abs(_localAngVel.y) < 1.8;
       if (!isPowerSliding && Math.abs(_localAngVel.y) > 0.2) {

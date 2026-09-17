@@ -25,6 +25,24 @@ describe('tire and surface physics', () => {
     props: [],
   };
 
+  const mockDesertLevel: LevelData = {
+    ...mockLevel,
+    id: 'level2_desert_canyon',
+    name: 'Desert Canyon',
+  };
+
+  const mockSwedenLevel: LevelData = {
+    ...mockLevel,
+    id: 'level3_sweden_snow',
+    name: 'Sweden Snow Rally',
+  };
+
+  const mockGymkhanaLevel: LevelData = {
+    ...mockLevel,
+    id: 'gymkhana_arena',
+    name: 'Gymkhana Arena',
+  };
+
   describe('getSurfaceAtPosition', () => {
     const mockHeightmap: HeightmapData = {
       heights: new Float32Array(9),
@@ -33,18 +51,6 @@ describe('tire and surface physics', () => {
       rows: 3,
       minHeight: 0,
       maxHeight: 10,
-    };
-
-    const mockDesertLevel: LevelData = {
-      ...mockLevel,
-      id: 'level2_desert_canyon',
-      name: 'Desert Canyon',
-    };
-
-    const mockSwedenLevel: LevelData = {
-      ...mockLevel,
-      id: 'level3_sweden_snow',
-      name: 'Sweden Snow Rally',
     };
 
     it('returns sand when off track and elevation is below sand threshold', () => {
@@ -110,19 +116,23 @@ describe('tire and surface physics', () => {
   });
 
   describe('applyTireFrictionAndBrakes', () => {
-    const createMockController = (): IRapierVehicleController & {
+    const createMockController = (options?: { suspensionLengths?: number[] }): IRapierVehicleController & {
       frictions: number[];
       brakes: number[];
       steerings: number[];
+      sideStiffnesses: number[];
     } => {
       const frictions: number[] = [0, 0, 0, 0];
       const brakes: number[] = [0, 0, 0, 0];
       const steerings: number[] = [0, 0, 0, 0];
+      const sideStiffnesses: number[] = [0, 0, 0, 0];
+      const suspensionLengths = options?.suspensionLengths;
 
       return {
         frictions,
         brakes,
         steerings,
+        sideStiffnesses,
         setWheelFrictionSlip: vi.fn((i, f) => {
           frictions[i] = f;
         }),
@@ -132,8 +142,11 @@ describe('tire and surface physics', () => {
         setWheelSteering: vi.fn((i, s) => {
           steerings[i] = s;
         }),
+        setWheelSideFrictionStiffness: vi.fn((i, s) => {
+          sideStiffnesses[i] = s;
+        }),
         setWheelEngineForce: vi.fn(),
-        wheelSuspensionLength: vi.fn(),
+        wheelSuspensionLength: vi.fn((i) => (suspensionLengths ? suspensionLengths[i] : undefined)),
         wheelChassisConnectionPointCs: vi.fn(),
         wheelSteering: vi.fn(),
       };
@@ -497,9 +510,9 @@ describe('tire and surface physics', () => {
       expect(absOffGrips[0]).toBeLessThan(resultAbsOn.grips[0]);
     });
 
-    it('reduces driven tire friction due to burnout wheelspin when TCS is disabled under heavy throttle', () => {
+    it('relaxes lateral side stiffness due to burnout wheelspin when TCS is disabled under heavy throttle', () => {
       const controllerTcsOff = createMockController();
-      const resultTcsOff = applyTireFrictionAndBrakes(
+      applyTireFrictionAndBrakes(
         controllerTcsOff,
         DEFAULT_VEHICLE_CONFIG,
         { brake: 0, handbrake: false, steering: 0, throttle: 1.0 },
@@ -514,10 +527,9 @@ describe('tire and surface physics', () => {
         undefined,
         { tcsEnabled: false }
       );
-      const tcsOffGrips = [...resultTcsOff.grips];
 
       const controllerTcsOn = createMockController();
-      const resultTcsOn = applyTireFrictionAndBrakes(
+      applyTireFrictionAndBrakes(
         controllerTcsOn,
         DEFAULT_VEHICLE_CONFIG,
         { brake: 0, handbrake: false, steering: 0, throttle: 1.0 },
@@ -533,7 +545,38 @@ describe('tire and surface physics', () => {
         { tcsEnabled: true }
       );
 
-      expect(tcsOffGrips[0]).toBeLessThan(resultTcsOn.grips[0]);
+      expect(controllerTcsOff.sideStiffnesses[0]).toBeLessThan(controllerTcsOn.sideStiffnesses[0]);
+    });
+
+    it('relaxes lateral side stiffness (Fy) under full throttle in a slide to enable effortless powersliding', () => {
+      const controllerCoasting = createMockController();
+      applyTireFrictionAndBrakes(
+        controllerCoasting,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        50,
+        13.8,
+        0,
+        5,
+        0,
+        0.35 // Slide angle ~20 deg
+      );
+
+      const controllerThrottle = createMockController();
+      applyTireFrictionAndBrakes(
+        controllerThrottle,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 1.0 },
+        50,
+        13.8,
+        0,
+        5,
+        0,
+        0.35 // Slide angle ~20 deg
+      );
+
+      // Under full throttle, rear wheel side stiffness decays substantially (Fy relaxation)
+      expect(controllerThrottle.sideStiffnesses[2]).toBeLessThan(controllerCoasting.sideStiffnesses[2] * 0.5);
     });
 
     it('continuously reduces grip on loose sand while moving even with zero throttle (continuous granular shear)', () => {
@@ -766,6 +809,194 @@ describe('tire and surface physics', () => {
       expect(calculateTireSurfaceGripMultiplier('asphalt', 'tarmac')).toBe(1.0);
       expect(calculateTireSurfaceGripMultiplier('gravel', 'gravel')).toBe(1.25);
       expect(calculateTireSurfaceGripMultiplier('snow', 'snow')).toBe(1.40);
+    });
+
+    it('applies surface-specific side friction stiffness to all wheels via setWheelSideFrictionStiffness', () => {
+      const ctrlTarmac = createMockController();
+      applyTireFrictionAndBrakes(
+        ctrlTarmac,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        50,
+        13.8,
+        0,
+        10, // Tarmac (plateau in gymkhana)
+        0,
+        0,
+        undefined,
+        mockGymkhanaLevel
+      );
+      // Tarmac should configure high side friction stiffness (1.05) for crisp bite
+      expect(ctrlTarmac.sideStiffnesses[0]).toBeCloseTo(1.05, 2);
+      expect(ctrlTarmac.sideStiffnesses[2]).toBeCloseTo(1.05, 2);
+
+      const ctrlSnow = createMockController();
+      applyTireFrictionAndBrakes(
+        ctrlSnow,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        50,
+        13.8,
+        0,
+        10,
+        0,
+        0,
+        undefined,
+        mockSwedenLevel
+      );
+      // Snow should configure low side friction stiffness (0.40) for compliant sliding
+      expect(ctrlSnow.sideStiffnesses[0]).toBeCloseTo(0.40, 2);
+      expect(ctrlSnow.sideStiffnesses[2]).toBeCloseTo(0.40, 2);
+    });
+
+    it('preserves friction floor on loose snow and gravel under high throttle to prevent spinouts', () => {
+      const ctrlCoasting = createMockController();
+      const coastingRes = applyTireFrictionAndBrakes(
+        ctrlCoasting,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        60,
+        16.6,
+        0,
+        10,
+        0,
+        0,
+        undefined,
+        mockSwedenLevel
+      );
+
+      const ctrlFullThrottle = createMockController();
+      const throttleRes = applyTireFrictionAndBrakes(
+        ctrlFullThrottle,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 1.0 },
+        60,
+        16.6,
+        0,
+        10,
+        0,
+        0,
+        undefined,
+        mockSwedenLevel
+      );
+
+      // Under full throttle on snow, friction must not collapse below 80% of coasting friction
+      const coastRearGrip = coastingRes.grips[2];
+      const throttleRearGrip = throttleRes.grips[2];
+      expect(throttleRearGrip).toBeGreaterThanOrEqual(coastRearGrip * 0.78);
+    });
+
+    it('assists partial countersteer alignment dynamically via virtual caster without overriding full rack lock', () => {
+      const ctrlPartial = createMockController();
+      // Partial countersteer (-0.3) during a 0.35 rad (~20 deg) slide to the right
+      const partialRes = applyTireFrictionAndBrakes(
+        ctrlPartial,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: -0.3, throttle: 1.0 },
+        70,
+        19.4,
+        0,
+        10,
+        0,
+        0.35
+      );
+
+      // Virtual caster should gently guide the partial countersteer deeper towards the slide angle
+      expect(Math.abs(partialRes.steerAngle)).toBeGreaterThan(0.3 * (Math.PI / 16));
+
+      const ctrlFull = createMockController();
+      // Full lock countersteer (-1.0)
+      const fullRes = applyTireFrictionAndBrakes(
+        ctrlFull,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: -1.0, throttle: 1.0 },
+        70,
+        19.4,
+        0,
+        10,
+        0,
+        0.35
+      );
+
+      // Full countersteer lock must reach maximum authority
+      expect(Math.abs(fullRes.steerAngle)).toBeCloseTo(DRIFT_MAX_STEER_LOCK, 1);
+    });
+
+    it('scales tire friction de-gressively under high suspension load (load sensitivity)', () => {
+      // Create controller with heavily compressed suspension (e.g. 0.05m remaining vs rest length 0.30m)
+      const ctrlLoaded = createMockController({
+        suspensionLengths: [0.05, 0.05, 0.05, 0.05],
+      });
+      // Normal suspension (0.22m remaining)
+      const ctrlNormal = createMockController({
+        suspensionLengths: [0.22, 0.22, 0.22, 0.22],
+      });
+
+      const loadedRes = applyTireFrictionAndBrakes(
+        ctrlLoaded,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0.5 },
+        50,
+        13.8,
+        0,
+        10,
+        0,
+        0.05,
+      );
+      const loadedGrip0 = loadedRes.grips[0];
+
+      const normalRes = applyTireFrictionAndBrakes(
+        ctrlNormal,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0.5 },
+        50,
+        13.8,
+        0,
+        10,
+        0,
+        0.05,
+      );
+      const normalGrip0 = normalRes.grips[0];
+
+      // De-gressive friction: friction coefficient on heavily loaded tire is reduced relative to unweighted tire
+      expect(ctrlLoaded.frictions[0]).toBeLessThan(ctrlNormal.frictions[0]);
+      expect(loadedGrip0).toBeLessThan(normalGrip0);
+    });
+
+    it('couples longitudinal and lateral forces via friction ellipse under heavy braking', () => {
+      const ctrlBraking = createMockController();
+      applyTireFrictionAndBrakes(
+        ctrlBraking,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 1.0, handbrake: false, steering: 0.5, throttle: 0 },
+        50,
+        13.8,
+        0,
+        10,
+        0,
+        0.10,
+      );
+
+      expect(ctrlBraking.setWheelSideFrictionStiffness).toHaveBeenCalled();
+    });
+
+    it('applies low-speed standstill restoring damping when stationary', () => {
+      const ctrlStopped = createMockController();
+      const stoppedRes = applyTireFrictionAndBrakes(
+        ctrlStopped,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 0 },
+        0.5, // 0.5 km/h ≈ 0.14 m/s
+        0.14,
+        0,
+        10,
+        0,
+        0,
+      );
+
+      // Standstill friction and grip are maintained at high stability to prevent slope creep
+      expect(stoppedRes.grips[0]).toBeGreaterThan(0);
+      expect(ctrlStopped.setWheelFrictionSlip).toHaveBeenCalled();
     });
   });
 });

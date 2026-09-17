@@ -231,6 +231,17 @@ describe('powertrain physics', () => {
         expect(sandRpm).toBeLessThanOrEqual(MAX_RPM);
       });
 
+      it('guarantees engine redline floor (minimum 7200 RPM) during active power slides under full throttle', () => {
+        // Vehicle sliding at 35 km/h in 2nd gear with full throttle (nominal gear RPM is only ~3000 RPM)
+        const driftRpm = calculateRPM(35, 2, { ...baseInput, throttle: 1 }, {
+          slipAngle: 0.35,
+        });
+
+        // High-RPM drift floor guarantees peak powerband screaming near redline
+        expect(driftRpm).toBeGreaterThanOrEqual(7200);
+        expect(driftRpm).toBeLessThanOrEqual(MAX_RPM);
+      });
+
       it('smoothly pulls down RPM under off-throttle engine braking when slowing down in gear', () => {
         // Driving in 3rd gear at 60 km/h with 0 throttle
         const coastingRpm = calculateRPM(60, 3, baseInput);

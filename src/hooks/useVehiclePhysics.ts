@@ -132,6 +132,8 @@ export function useVehiclePhysics(
   const latestEspActiveRef = useRef<boolean>(false);
   const latestEffectiveInputRef = useRef<InputState>(_frozenInput);
   const latestInputRef = useRef<InputState>(_frozenInput);
+  const prevSteeringInputRef = useRef<number>(0);
+  const filteredDriftIntensityRef = useRef<number>(0);
 
   // Safely dispose the active vehicle controller without throwing WASM errors
   const disposeController = () => {
@@ -220,6 +222,8 @@ export function useVehiclePhysics(
     latestEspActiveRef.current = false;
     latestEffectiveInputRef.current = _frozenInput;
     latestInputRef.current = _frozenInput;
+    prevSteeringInputRef.current = 0;
+    filteredDriftIntensityRef.current = 0;
 
     useGameStore.setState({
       isRolledOver: false,
@@ -347,22 +351,7 @@ export function useVehiclePhysics(
     const balance = balanceRef.current;
     const { absEnabled, tcsEnabled, espEnabled } = useSettingsStore.getState();
 
-    // --- 1. APPLY DRIVETRAIN (Engine, Reverse, Rev Limiter) ---
-    const powerMultiplier = (state.gameMode === 'tag' && tagState.isTagger) ? 1.5 : 1.0;
-    const { tcsActive } = applyDrivetrain(
-      controller,
-      config,
-      effectiveInput,
-      forwardSpeed,
-      currentGear,
-      slipAngle,
-      speedKmh,
-      powerMultiplier,
-      balance.drivetrain,
-      { tcsEnabled },
-    );
-
-    // --- 2. APPLY TIRE FRICTION & BRAKES ---
+    // --- 1. APPLY TIRE FRICTION & BRAKES ---
     const selectedTireType = useGameStore.getState().selectedTireType;
     const { grips: tireGrips, surface, steerAngle, absActive } = applyTireFrictionAndBrakes(
       controller,
@@ -381,8 +370,37 @@ export function useVehiclePhysics(
       selectedTireType,
     );
 
+    // --- 2. APPLY DRIVETRAIN (Engine, Reverse, Rev Limiter, Rally TCS, DCCD) ---
+    const powerMultiplier = (state.gameMode === 'tag' && tagState.isTagger) ? 1.5 : 1.0;
+    const { tcsActive, nextDriftIntensity } = applyDrivetrain(
+      controller,
+      config,
+      effectiveInput,
+      forwardSpeed,
+      currentGear,
+      slipAngle,
+      speedKmh,
+      powerMultiplier,
+      balance.drivetrain,
+      { tcsEnabled },
+      surface,
+      filteredDriftIntensityRef.current,
+      dt,
+    );
+    filteredDriftIntensityRef.current = nextDriftIntensity;
+
     // --- 3. APPLY ARCADE ASSISTS ---
-    const { espActive } = applyAssists(body, config, effectiveInput, forwardSpeed, dt, balance, { espEnabled });
+    const { espActive } = applyAssists(
+      body,
+      config,
+      effectiveInput,
+      forwardSpeed,
+      dt,
+      balance,
+      { espEnabled },
+      prevSteeringInputRef.current,
+    );
+    prevSteeringInputRef.current = effectiveInput.steering;
 
     // --- 3.5. APPLY SUSPENSION ARB & PITCH STABILIZATION ---
     applyAntiRollBars(body, controller, config, dt, balance.suspension);

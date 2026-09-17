@@ -135,7 +135,33 @@ export function applyTireFrictionAndBrakes(
   const effectiveSteerLimit = isCountersteer
     ? baseSteerLimit + (DRIFT_MAX_STEER_LOCK - baseSteerLimit) * driftExpansion
     : baseSteerLimit;
-  const steerAngle = input.steering * effectiveSteerLimit;
+  const rawSteerAngle = input.steering * effectiveSteerLimit;
+
+  // Virtual Caster & Dynamic Countersteer Assist:
+  // In real vehicles, mechanical caster and pneumatic trail naturally align the front wheels
+  // with the velocity vector when sliding. On keyboard and gamepad, the driver lacks physical force-feedback
+  // rack alignment. Virtual caster dynamically blends the steered angle toward the ground velocity vector
+  // (-slipAngle) during active slides, enabling smooth, intuitive throttle drifting without sudden spinouts.
+  const assistsBalance = balance.assists;
+  const isEspEnabled = assists?.espEnabled ?? true;
+  let steerAngle = rawSteerAngle;
+  if (Math.abs(input.steering) < 0.001) {
+    steerAngle = 0;
+  } else if (
+    isEspEnabled &&
+    forwardSpeed > 2.0 &&
+    isCountersteer &&
+    assistsBalance.virtualCasterAuthority > 0
+  ) {
+    const slideIntensity = Math.min(1.0, (Math.abs(slipAngle) - assistsBalance.virtualCasterMinSlipAngle) / 0.35);
+    const selfAlignSteer = Math.max(-DRIFT_MAX_STEER_LOCK, Math.min(DRIFT_MAX_STEER_LOCK, -slipAngle));
+
+    // Assist partial countersteer inputs towards the self-aligning angle;
+    // as the driver reaches full lock (|input.steering| -> 1.0), authority yields to full rack lock!
+    const partialInputFactor = Math.max(0, 1.0 - Math.abs(input.steering));
+    const assistBlend = assistsBalance.virtualCasterAuthority * slideIntensity * partialInputFactor;
+    steerAngle = rawSteerAngle * (1.0 - assistBlend) + selfAlignSteer * assistBlend;
+  }
 
   const hbBalance = balance.handbrake;
   const tireBalance = balance.tires;
@@ -147,6 +173,8 @@ export function applyTireFrictionAndBrakes(
   if (isBraking && isHeavyBrake && absEnabled) {
     absActive = true;
   }
+
+  const sideStiffness = surfaceDef.sideFrictionStiffness ?? 1.0;
 
   for (let i = 0; i < config.wheels.length; i++) {
     const wheel = config.wheels[i];
@@ -203,15 +231,15 @@ export function applyTireFrictionAndBrakes(
     if (surfaceDef.looseSurfaceTractionLoss && speedKmh > 1.0) {
       const speedRamp = Math.min(1.0, speedKmh / 20.0);
       const effectiveLooseLoss = surfaceDef.looseSurfaceTractionLoss * looseTractionMultiplier;
-      const continuousShear = effectiveLooseLoss * 0.35 * speedRamp;
+      const continuousShear = effectiveLooseLoss * tireBalance.looseSurfaceShearScale * speedRamp;
       const throttleChurn = (throttle > 0.10 && wheel.powered)
-        ? effectiveLooseLoss * 0.65 * throttle
+        ? effectiveLooseLoss * (1.0 - tireBalance.looseSurfaceShearScale) * throttle
         : 0;
       const totalLooseLoss = continuousShear + throttleChurn;
       const axleTractionLoss = wheel.steerable
         ? (totalLooseLoss * tireBalance.looseSurfaceFrontWeight)
         : (totalLooseLoss * tireBalance.looseSurfaceRearWeight);
-      currentFriction *= Math.max(0.40, 1.0 - axleTractionLoss);
+      currentFriction *= Math.max(tireBalance.looseSurfaceGripFloor, 1.0 - axleTractionLoss);
     }
 
     // Handbrake — drift assist grip multiplier and guaranteed rear mechanical lockup
@@ -228,30 +256,81 @@ export function applyTireFrictionAndBrakes(
       currentFriction *= hbBalance.frontSteerYieldMultiplier;
     }
 
-    // Dynamic power-slide wheelspin friction relaxation:
-    // When wheels are spinning under throttle during a slide, dynamic kinetic friction drops,
-    // allowing smooth, sustained, controllable drifts rather than violently bogging down.
-    if (throttle > 0.15 && Math.abs(slipAngle) > tireBalance.minPowerSlideSlipAngle && wheel.powered) {
-      const slideIntensity = Math.min(1.0, (Math.abs(slipAngle) - tireBalance.minPowerSlideSlipAngle) / 0.35);
-      const throttleSpin = throttle * slideIntensity;
-      // Front wheels retain directional bite, while rear wheels break away
-      const wheelspinFrictionDrop = wheel.steerable
-        ? (throttleSpin * tireBalance.wheelspinFrictionDropFront)
-        : (throttleSpin * tireBalance.wheelspinFrictionDropRear);
-      currentFriction *= Math.max(0.60, 1.0 - wheelspinFrictionDrop);
+    // Normal Load Sensitivity (De-gressive Friction with Vertical Load Fz):
+    // Heavily loaded outside tires during hard cornering experience a slightly reduced friction coefficient,
+    // creating authentic progressive breakaway, while inside unweighted tires gain relative grip.
+    if (tireBalance.loadSensitivityFactor > 0 && typeof controller.wheelSuspensionLength === 'function') {
+      const restLen = wheel.suspensionRestLength;
+      const currentLen = controller.wheelSuspensionLength(i) ?? restLen;
+      const compression = Math.max(0, restLen - currentLen);
+      const cornerMass = (config.chassisMass || 1250) / Math.max(1, config.wheels.length);
+      const nominalFz = cornerMass * 9.81;
+      const dynamicFz = nominalFz + compression * wheel.suspensionStiffness;
+      const loadDelta = (dynamicFz - nominalFz) / Math.max(1.0, nominalFz);
+      const muLoad = 1.0 - tireBalance.loadSensitivityFactor * loadDelta;
+      currentFriction *= Math.max(0.75, Math.min(1.25, muLoad));
     }
 
-    // TCS OFF Wheelspin: When Traction Control is disabled, flooring throttle at low-to-mid speeds
-    // causes driven wheels to spin aggressively (burnout / wheelspin slip), reducing tractive grip
-    // and letting the car fish-tail and power-slide freely.
+    // Rear Oversteer Lateral Bias during active throttle slides:
+    // Enhances controllable yaw rotation under throttle oversteer
+    if (!wheel.steerable && throttle > 0.15 && Math.abs(slipAngle) > 0.10) {
+      const rearOversteerBias = tireBalance.rearOversteerLateralBias ?? 0.94;
+      currentFriction *= rearOversteerBias;
+    }
+
+    let wheelSideStiffness = sideStiffness;
+
+    // Friction Ellipse Coupling:
+    // When a wheel delivers heavy braking or high-power wheelspin, its available lateral cornering stiffness
+    // reduces following the traction circle envelope.
+    if (tireBalance.frictionEllipseCoupling > 0) {
+      const maxBrake = config.brakes.maxForce || 1.0;
+      const brakeDemand = isBraking ? Math.min(1.0, brakeForce / maxBrake) : 0;
+      const throttleDemand = (throttle > 0.35 && wheel.powered && Math.abs(slipAngle) > 0.12)
+        ? Math.min(1.0, throttle * 1.1)
+        : 0;
+      const longDemand = Math.min(1.0, brakeDemand + throttleDemand);
+      if (longDemand > 0.10) {
+        const couplingFactor = tireBalance.frictionEllipseCoupling * longDemand;
+        const ellipseScale = Math.sqrt(Math.max(0.20, 1.0 - couplingFactor * couplingFactor));
+        wheelSideStiffness *= ellipseScale;
+      }
+    }
+
+    // Throttle Wheelspin Burns Away Lateral Resistance (Fy Relaxation / Kinetic Drift Melt):
+    // When wheels are burning rubber under throttle in a slide, kinetic friction causes lateral resistance (Fy)
+    // to collapse down to 22% - 28%! This eliminates the multi-thousand Newton lateral brake,
+    // allowing the vehicle to sustain or accelerate speed through endless powerslides!
+    if (throttle > 0.10 && wheel.powered) {
+      const slipAmount = Math.min(1.0, Math.abs(slipAngle) / 0.35);
+      const throttleSpin = throttle * (0.60 + 0.40 * slipAmount);
+      const lateralDecay = wheel.steerable
+        ? (1.0 - throttleSpin * 0.50)
+        : (1.0 - throttleSpin * 0.78);
+      wheelSideStiffness *= Math.max(wheel.steerable ? 0.35 : 0.22, lateralDecay);
+    }
+
+    // Low-Speed Standstill Restoring Damping:
+    // Below lowSpeedViscousBlend threshold when stationary without inputs,
+    // quells solver micro-jitter and prevents downhill creep on terrain slopes.
+    const speedAbs = Math.abs(forwardSpeed);
+    if (speedAbs < (tireBalance.lowSpeedViscousBlend ?? 1.2) && throttle < 0.05 && !input.handbrake) {
+      const stopBlend = 1.0 - (speedAbs / (tireBalance.lowSpeedViscousBlend ?? 1.2));
+      currentFriction = currentFriction * (1.0 - stopBlend * 0.30) + (effectiveBaseGrip * 1.20) * (stopBlend * 0.30);
+      wheelSideStiffness = Math.max(wheelSideStiffness, 1.0 + stopBlend * 0.35);
+    }
+
+    // TCS OFF Wheelspin Lateral Relaxation: When Traction Control is disabled, flooring throttle at low-to-mid speeds
+    // allows driven wheels to break away laterally and fish-tail freely, without reducing forward tractive grip (wheelFrictionSlip)
+    // so the car maintains driving power at ~75 km/h.
     if (!tcsEnabled && throttle > 0.45 && wheel.powered && speedKmh < 65) {
-      currentFriction *= 0.65;
+      wheelSideStiffness *= 0.72;
     }
 
     // ESP OFF Breakaway: When Stability Control is disabled, un-countersteered slides allow
-    // the rear tires to break away freely, enabling authentic oversteer spinouts (loops).
+    // the rear tires to break away laterally, enabling authentic oversteer spinouts (loops).
     if (!espEnabled && !wheel.steerable && Math.abs(slipAngle) > 0.18 && !isCountersteer) {
-      currentFriction *= 0.70;
+      wheelSideStiffness *= 0.75;
     }
 
     // Wheel lockup without ABS:
@@ -273,6 +352,10 @@ export function applyTireFrictionAndBrakes(
     controller.setWheelFrictionSlip(i, safeFriction);
     controller.setWheelBrake(i, safeBrake);
     _gripsBuffer[i] = safeFriction;
+
+    if (typeof controller.setWheelSideFrictionStiffness === 'function') {
+      controller.setWheelSideFrictionStiffness(i, wheelSideStiffness);
+    }
 
     // Steering
     if (wheel.steerable) {

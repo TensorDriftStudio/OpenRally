@@ -234,6 +234,13 @@ export interface VehicleBalanceOverrides {
     readonly driftBoostSteerWeight: number;
     readonly driftBoostSlipWeight: number;
     readonly frontUnweightedDampingThreshold: number;
+    readonly driftPropulsionMultiplier?: number;
+    readonly driftSteeredPullRatio?: number;
+    readonly driftTargetSpeedKmh?: number;
+    readonly dccdMinFrontBias?: number;
+    readonly dccdDriftFrontBias?: number;
+    readonly dccdIntensityDecayRate?: number;
+    readonly rearSpoolLockRatio?: number;
   }>;
   readonly assists?: Partial<{
     readonly turnInTorqueGain: number;
@@ -242,6 +249,10 @@ export interface VehicleBalanceOverrides {
     readonly steerAssistDeadzone: number;
     readonly pitchDampingThrottleUp: number;
     readonly pitchDampingNormal: number;
+    readonly virtualCasterAuthority?: number;
+    readonly virtualCasterMinSlipAngle?: number;
+    readonly flickAttenuationGain?: number;
+    readonly autoCounterSteerBias?: number;
   }>;
   readonly tires?: Partial<{
     readonly minPowerSlideSlipAngle: number;
@@ -249,6 +260,12 @@ export interface VehicleBalanceOverrides {
     readonly wheelspinFrictionDropRear: number;
     readonly looseSurfaceFrontWeight: number;
     readonly looseSurfaceRearWeight: number;
+    readonly looseSurfaceGripFloor?: number;
+    readonly looseSurfaceShearScale?: number;
+    readonly loadSensitivityFactor?: number;
+    readonly frictionEllipseCoupling?: number;
+    readonly rearOversteerLateralBias?: number;
+    readonly lowSpeedViscousBlend?: number;
   }>;
 }
 
@@ -335,6 +352,8 @@ export interface IRapierVehicleController {
   setWheelSuspensionCompression?(wheelIndex: number, compression: number): void;
   setWheelSuspensionRelaxation?(wheelIndex: number, relaxation: number): void;
   setWheelMaxSuspensionForce?(wheelIndex: number, maxForce: number): void;
+  setWheelSideFrictionStiffness?(wheelIndex: number, stiffness: number): void;
+  wheelSideFrictionStiffness?(wheelIndex: number): number | null | undefined;
 }
 
 

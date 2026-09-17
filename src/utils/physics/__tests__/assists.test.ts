@@ -162,4 +162,58 @@ describe('assists physics', () => {
     // When ESP is on, stabilizing yaw torque opposes the spin
     expect(sumYawOn).toBeLessThan(0);
   });
+
+  it('attenuates yaw damping when driver performs a rapid Scandinavian flick', () => {
+    // Car rotating in the direction of steering at high yaw velocity (e.g. 1.2 rad/s)
+    const bodySteady = createMockBody({ angvel: { x: 0, y: 1.2, z: 0 } });
+    // Steady steering (prevSteering = 0.8, current steering = 0.8) -> full damping
+    applyAssists(
+      bodySteady,
+      DEFAULT_VEHICLE_CONFIG,
+      { ...baseInput, steering: 0.8 },
+      15,
+      0.016,
+      undefined,
+      { espEnabled: true },
+      0.8,
+    );
+
+    const bodyFlick = createMockBody({ angvel: { x: 0, y: 1.2, z: 0 } });
+    // Rapid steering flick (prevSteering = 0, current steering = 0.8 in 0.016s) -> attenuated damping
+    applyAssists(
+      bodyFlick,
+      DEFAULT_VEHICLE_CONFIG,
+      { ...baseInput, steering: 0.8 },
+      15,
+      0.016,
+      undefined,
+      { espEnabled: true },
+      0,
+    );
+
+    const steadyYawTorque = Math.abs(bodySteady.appliedTorques.map((t) => t.y).reduce((a, b) => a + b, 0));
+    const flickYawTorque = Math.abs(bodyFlick.appliedTorques.map((t) => t.y).reduce((a, b) => a + b, 0));
+
+    // Rapid flick attenuates damping torque so driver can initiate rotation into the turn
+    expect(flickYawTorque).toBeLessThan(steadyYawTorque);
+  });
+
+  it('prohibits forward turn-in yaw assistance when vehicle is reversing', () => {
+    const bodyReverse = createMockBody({ angvel: { x: 0, y: 0, z: 0 } });
+    applyAssists(
+      bodyReverse,
+      DEFAULT_VEHICLE_CONFIG,
+      { ...baseInput, steering: 0.8 },
+      -5.0, // Moving in reverse at -5 m/s
+      0.016,
+      undefined,
+      { espEnabled: true },
+      0,
+    );
+
+    // No forward turn-in impulse should be applied
+    const yawTorques = bodyReverse.appliedTorques.map((t) => t.y);
+    const sumYaw = yawTorques.reduce((a, b) => a + b, 0);
+    expect(sumYaw).toBe(0);
+  });
 });

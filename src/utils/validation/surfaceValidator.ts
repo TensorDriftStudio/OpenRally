@@ -68,6 +68,9 @@ export function validateSurfaceDefinition(surface: SurfaceDefinition): Validatio
   if (surface.looseSurfaceTractionLoss !== undefined && (surface.looseSurfaceTractionLoss < 0 || surface.looseSurfaceTractionLoss > 1)) {
     errors.push(`surface.looseSurfaceTractionLoss must be between [0, 1] (currently: ${surface.looseSurfaceTractionLoss}).`);
   }
+  if (surface.sideFrictionStiffness !== undefined && (surface.sideFrictionStiffness <= 0 || surface.sideFrictionStiffness > 2.5)) {
+    errors.push(`surface.sideFrictionStiffness must be between (0, 2.5] (currently: ${surface.sideFrictionStiffness}).`);
+  }
 
   return {
     valid: errors.length === 0,

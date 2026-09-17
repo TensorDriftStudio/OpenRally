@@ -1,4 +1,4 @@
-import type { VehicleConfig, IRapierVehicleController } from '@/types/vehicle';
+import type { VehicleConfig, IRapierVehicleController, SurfaceType } from '@/types/vehicle';
 import type { InputState } from '@/types/game';
 import type { RapierRigidBody } from '@react-three/rapier';
 import { Vector3 } from 'three';
@@ -12,7 +12,6 @@ import {
 import { DRIVING_MODEL_BALANCE, type DrivetrainBalanceConfig, type DrivingModelBalance } from '@/config/physicsBalance';
 
 const _thrustImpulse = new Vector3();
-const _steeredThrust = new Vector3();
 
 /**
  * Calculates and applies engine forces, AWD torque distribution, launch ramping,
@@ -29,7 +28,10 @@ export function applyDrivetrain(
   powerMultiplier: number = 1.0,
   balance: DrivetrainBalanceConfig = DRIVING_MODEL_BALANCE.drivetrain,
   assists?: { tcsEnabled?: boolean },
-): { tcsActive: boolean } {
+  surface?: SurfaceType,
+  filteredDriftIntensity?: number,
+  dt: number = 1 / 60,
+): { tcsActive: boolean; nextDriftIntensity: number } {
   const dtBalance = balance;
   const gearRatio = currentGear > 0 && currentGear < GEAR_RATIOS.length ? GEAR_RATIOS[currentGear] : 1;
   const steerAmount = input.steering ? Math.abs(input.steering) : 0;
@@ -39,6 +41,16 @@ export function applyDrivetrain(
   const isDriftingOrSpinning = absSlip > 0.10;
   const tcsEnabled = assists?.tcsEnabled ?? false;
   let tcsActive = false;
+
+  // DCCD Chassis Drift Intensity with Smooth Hold Buffer:
+  // Evaluates smoothstep drift engagement and decays smoothly between transitions
+  const rawDriftIntensity = absSlip > 0.15
+    ? Math.min(1.0, Math.max(0, (absSlip - 0.15) / 0.30))
+    : 0;
+  const smoothedDriftIntensity = rawDriftIntensity * rawDriftIntensity * (3.0 - 2.0 * rawDriftIntensity);
+  const decayRate = dtBalance.dccdIntensityDecayRate ?? 4.0;
+  const currentIntensity = filteredDriftIntensity ?? 0;
+  const nextDriftIntensity = Math.max(smoothedDriftIntensity, currentIntensity - decayRate * dt);
 
   // Mechanical Rev Limiter & Speed Governor per gear:
   // In straight-line driving without slip (e.g. manual mode redline or top speed test),
@@ -104,6 +116,15 @@ export function applyDrivetrain(
     }
   }
 
+  // DCCD Dynamic Torque Split:
+  // Baseline front bias in straight line / grip driving (35% front / 65% rear for sharp oversteer initiation),
+  // transferring power forward (up to 48% front) during throttle drift to pull the car through the turn.
+  const baseFrontBias = dtBalance.dccdMinFrontBias ?? config.drivetrain.frontBias;
+  const driftFrontBias = dtBalance.dccdDriftFrontBias ?? 0.48;
+  const throttleInput = input.throttle ?? 0;
+  const activeFrontBias = baseFrontBias + (driftFrontBias - baseFrontBias) * (nextDriftIntensity * Math.min(1.0, throttleInput * 1.2));
+  const activeRearBias = 1.0 - activeFrontBias;
+
   for (let i = 0; i < config.wheels.length; i++) {
     const wheel = config.wheels[i];
     if (wheel.powered) {
@@ -118,14 +139,17 @@ export function applyDrivetrain(
 
       let engineForce = 0;
       
-      const frontBias = config.drivetrain.frontBias;
-      const rearBias = 1.0 - frontBias;
       // Front steerable wheels deliver balanced front-wheel drive traction under handbrake
-      const baseTorqueMultiplier = wheel.steerable ? (frontBias * 2) : (rearBias * 2);
+      const baseTorqueMultiplier = wheel.steerable ? (activeFrontBias * 2) : (activeRearBias * 2);
+
+      // Rear spool lock: equalize rear wheel torque delivery during throttle slides to prevent inside-wheel spin
+      const rearSpoolFactor = (!wheel.steerable && nextDriftIntensity > 0.10 && throttleInput > 0.10)
+        ? (dtBalance.rearSpoolLockRatio ?? 0.85)
+        : 1.0;
 
       const torqueMultiplier = wheel.steerable
         ? baseTorqueMultiplier
-        : (baseTorqueMultiplier * (1.0 - frontUnweightedRatio * 0.70));
+        : (baseTorqueMultiplier * (1.0 - frontUnweightedRatio * 0.70) * rearSpoolFactor);
 
       let tcsMultiplier = 1.0;
       if (tcsEnabled && !isHandbrakeActive && input.throttle > 0.20) {
@@ -135,11 +159,18 @@ export function applyDrivetrain(
           tcsMultiplier = 0.72;
           tcsActive = true;
         } else if (absSlip > 0.12) {
-          // 2. Cornering / lateral wheelspin cut:
-          // In turns, cuts engine power by up to 65% to stop the driven wheels breaking traction
+          // 2. Cornering / lateral wheelspin regulation:
+          // In turns, cuts engine power to stop driven wheels breaking traction.
+          // In rally mode on loose surfaces (snow, gravel, sand, mud), continuous wheelspin is essential
+          // to maintain tractive momentum, so TCS only moderates power slightly (down to 85%) rather than choking engine to 35%.
+          const isLoose = surface === 'snow' || surface === 'gravel' || surface === 'sand' || surface === 'mud';
           const excessSlip = Math.min(1.0, (absSlip - 0.10) / 0.25);
-          tcsMultiplier = Math.max(0.35, 1.0 - excessSlip * 0.65);
-          tcsActive = true;
+          if (isLoose) {
+            tcsMultiplier = Math.max(0.85, 1.0 - excessSlip * 0.15);
+          } else {
+            tcsMultiplier = Math.max(0.35, 1.0 - excessSlip * 0.65);
+          }
+          tcsActive = tcsMultiplier < 0.98;
         }
       }
 
@@ -168,7 +199,7 @@ export function applyDrivetrain(
     }
   }
 
-  return { tcsActive };
+  return { tcsActive, nextDriftIntensity };
 }
 
 /**
@@ -186,39 +217,36 @@ export function applyAwdDriftPropulsion(
   groundedRatio: number,
   dt: number,
   currentGear: number = 1,
-  rightVector?: Vector3,
-  steerAngle: number = 0,
+  _rightVector?: Vector3,
+  _steerAngle: number = 0,
   balance: DrivingModelBalance = DRIVING_MODEL_BALANCE,
-  assists?: { espEnabled?: boolean },
+  _assists?: { espEnabled?: boolean },
 ): void {
-  // Do not engage AWD body propulsion while handbrake is actively locked
-  if ((input.handbrake && balance.handbrake.disableAwdPropulsion) || input.throttle <= 0.05 || groundedRatio <= 0) return;
-
-  const espEnabled = assists?.espEnabled ?? true;
-  const isCountersteer = input.steering !== undefined && (input.steering * slipAngle < -0.005);
-
-  // When ESP is disabled: only engage forward AWD propulsion if the driver is actively countersteering.
-  // If the driver throws the car into a slide without countersteering, do not artificially push the car forward
-  // or straighten it out — let physical yaw momentum take over and spin out naturally!
-  if (!espEnabled && !isCountersteer) return;
+  // Do not engage AWD body propulsion while handbrake is actively locked, off throttle, or airborne
+  if ((input.handbrake && balance.handbrake.disableAwdPropulsion) || input.throttle <= 0.05 || groundedRatio <= 0.3) return;
 
   const absSlip = Math.abs(slipAngle);
-  // Only engage during an actual drift (slip angle > 12.6 deg), never in regular clean cornering
-  if (absSlip < 0.22) return;
+  // Only engage during an active drift slide (slip angle > 7.5 deg), never in regular clean cornering
+  if (absSlip < 0.13) return;
+
+  const dtBalance = balance.drivetrain;
+  const targetDriftSpeed = dtBalance.driftTargetSpeedKmh ?? 75;
+
+  // Slip engagement factor: smoothly ramps up as vehicle enters drift
+  const slipFactor = Math.min(1.0, (absSlip - 0.10) / 0.20);
+
+  // Speed equilibrium governor:
+  // At speeds below targetDriftSpeed (~75 km/h), delivers full tractive support so the car sustains drift speed.
+  // At speeds above targetDriftSpeed (75–95 km/h), smoothly fades to 0, allowing natural tire scrub
+  // to realistically bleed speed down towards the ~75 km/h equilibrium.
+  let speedGovernor = 1.0;
+  if (speedKmh > targetDriftSpeed) {
+    speedGovernor = Math.max(0, 1.0 - (speedKmh - targetDriftSpeed) / 20.0);
+  }
 
   const gearRatio = currentGear > 0 && currentGear < GEAR_RATIOS.length ? GEAR_RATIOS[currentGear] : 1.0;
-  // Speed headroom: scale governor relative to vehicle max speed rather than per-gear ratio limit
-  // to ensure continuous AWD tractive pull throughout mid-speed and high-speed drifts
-  const maxVehicleSpeed = config.engine.maxSpeed || 240;
-  const speedGovernor = Math.max(0, 1.0 - speedKmh / (maxVehicleSpeed * 1.05));
+  const driftPropulsionMultiplier = dtBalance.driftPropulsionMultiplier ?? 1.15;
 
-  // Slip engagement factor: ramps up as vehicle enters drift
-  const slipFactor = Math.min(1.0, (absSlip - 0.20) / 0.25);
-  
-  // AWD directional propulsion impulse:
-  // Delivers balanced forward throttle thrust to counteract lateral tire scrub friction,
-  // sustaining drift momentum so the vehicle maintains speed without sliding uncontrollably.
-  const driftPropulsionMultiplier = 0.85;
   const thrustMagnitude =
     config.engine.maxForce *
     driftPropulsionMultiplier *
@@ -230,27 +258,14 @@ export function applyAwdDriftPropulsion(
     dt;
 
   if (Number.isFinite(thrustMagnitude) && thrustMagnitude > 0) {
-    if (rightVector && Math.abs(steerAngle) > 0.001) {
-      // Decompose AWD propulsion:
-      // When countersteering to power out of a drift (input.steering opposes slipAngle),
-      // allocate 38% of thrust along steered front wheels to pull the vehicle out of the slide.
-      // When drifting neutrally or turning into the corner, allocate 18% along steered wheels.
-      const isCountersteer = input.steering !== undefined && (input.steering * slipAngle < -0.005);
-      const steerThrustRatio = isCountersteer ? 0.38 : 0.18;
-      const forwardThrustRatio = 1.0 - steerThrustRatio;
-
-      // In Three.js vehicle coordinates: steerAngle < 0 steers right (+X).
-      const cosSteer = Math.cos(steerAngle);
-      const sinSteer = Math.sin(steerAngle);
-      _steeredThrust
-        .copy(forwardVector)
-        .multiplyScalar(cosSteer)
-        .addScaledVector(rightVector, -sinSteer);
-
-      _thrustImpulse
-        .copy(forwardVector)
-        .multiplyScalar(thrustMagnitude * forwardThrustRatio)
-        .addScaledVector(_steeredThrust, thrustMagnitude * steerThrustRatio);
+    const steeredRatio = Math.max(0, Math.min(1.0, dtBalance.driftSteeredPullRatio ?? 0));
+    if (steeredRatio > 0 && _rightVector) {
+      // Steered front axle pull: vectors tractive thrust through steered front wheels towards exit
+      const cosS = Math.cos(_steerAngle);
+      const sinS = Math.sin(_steerAngle);
+      _thrustImpulse.copy(forwardVector).multiplyScalar((1.0 - steeredRatio) * thrustMagnitude);
+      _thrustImpulse.addScaledVector(forwardVector, steeredRatio * thrustMagnitude * cosS);
+      _thrustImpulse.addScaledVector(_rightVector, steeredRatio * thrustMagnitude * sinS);
     } else {
       _thrustImpulse.copy(forwardVector).multiplyScalar(thrustMagnitude);
     }

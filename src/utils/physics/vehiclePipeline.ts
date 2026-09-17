@@ -107,7 +107,7 @@ export function calculateRollingResistanceImpulse(
   }
 
   const isDriftingUnderPower = Math.abs(slipAngle) > 0.18 && throttle > 0.15;
-  const driftDragReduction = isDriftingUnderPower ? 0.20 : 1.0;
+  const driftDragReduction = isDriftingUnderPower ? 0.05 : 1.0;
   const rollingResistance = (surfaceDef.rollingResistance ?? 0.005) * driftDragReduction;
   const dragImpulseMagnitude = rollingResistance * bodyMass * 9.81 * groundedRatio * dt;
   const clampedDrag = Math.min(dragImpulseMagnitude, Math.abs(forwardSpeed) * bodyMass);

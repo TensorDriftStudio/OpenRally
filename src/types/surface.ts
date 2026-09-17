@@ -47,4 +47,6 @@ export interface SurfaceDefinition {
   readonly rollingResistance?: number;
   /** Traction loss factor on high throttle for loose surface power slides (0.0 = none, 0.4 = high slip) */
   readonly looseSurfaceTractionLoss?: number;
+  /** Multiplier of lateral side friction stiffness for cornering relaxation (1.0 = sharp bite, 0.5 = loose slide) */
+  readonly sideFrictionStiffness?: number;
 }

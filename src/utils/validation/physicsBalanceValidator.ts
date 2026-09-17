@@ -90,6 +90,27 @@ export function validateDrivingModelBalance(balance: DrivingModelBalance): Valid
     if (!isFiniteNumber(dt.frontUnweightedDampingThreshold) || dt.frontUnweightedDampingThreshold <= 0) {
       errors.push(`drivetrain.frontUnweightedDampingThreshold must be > 0 (got: ${dt.frontUnweightedDampingThreshold}).`);
     }
+    if (!isFiniteNumber(dt.driftPropulsionMultiplier) || dt.driftPropulsionMultiplier <= 0) {
+      errors.push(`drivetrain.driftPropulsionMultiplier must be > 0 (got: ${dt.driftPropulsionMultiplier}).`);
+    }
+    if (!isFiniteNumber(dt.driftSteeredPullRatio) || dt.driftSteeredPullRatio < 0 || dt.driftSteeredPullRatio > 1.0) {
+      errors.push(`drivetrain.driftSteeredPullRatio must be between [0, 1.0] (got: ${dt.driftSteeredPullRatio}).`);
+    }
+    if (!isFiniteNumber(dt.driftTargetSpeedKmh) || dt.driftTargetSpeedKmh < 30 || dt.driftTargetSpeedKmh > 180) {
+      errors.push(`drivetrain.driftTargetSpeedKmh must be between [30, 180] (got: ${dt.driftTargetSpeedKmh}).`);
+    }
+    if (!isFiniteNumber(dt.dccdMinFrontBias) || dt.dccdMinFrontBias < 0.10 || dt.dccdMinFrontBias > 0.90) {
+      errors.push(`drivetrain.dccdMinFrontBias must be between [0.10, 0.90] (got: ${dt.dccdMinFrontBias}).`);
+    }
+    if (!isFiniteNumber(dt.dccdDriftFrontBias) || dt.dccdDriftFrontBias < 0.10 || dt.dccdDriftFrontBias > 0.90) {
+      errors.push(`drivetrain.dccdDriftFrontBias must be between [0.10, 0.90] (got: ${dt.dccdDriftFrontBias}).`);
+    }
+    if (!isFiniteNumber(dt.dccdIntensityDecayRate) || dt.dccdIntensityDecayRate <= 0) {
+      errors.push(`drivetrain.dccdIntensityDecayRate must be > 0 (got: ${dt.dccdIntensityDecayRate}).`);
+    }
+    if (!isFiniteNumber(dt.rearSpoolLockRatio) || dt.rearSpoolLockRatio < 0 || dt.rearSpoolLockRatio > 1.0) {
+      errors.push(`drivetrain.rearSpoolLockRatio must be between [0, 1.0] (got: ${dt.rearSpoolLockRatio}).`);
+    }
   }
 
   // --- 4. Assists ---
@@ -115,6 +136,18 @@ export function validateDrivingModelBalance(balance: DrivingModelBalance): Valid
     if (!isFiniteNumber(ast.pitchDampingNormal) || ast.pitchDampingNormal < 0) {
       errors.push(`assists.pitchDampingNormal must be >= 0 (got: ${ast.pitchDampingNormal}).`);
     }
+    if (!isFiniteNumber(ast.virtualCasterAuthority) || ast.virtualCasterAuthority < 0 || ast.virtualCasterAuthority > 1.0) {
+      errors.push(`assists.virtualCasterAuthority must be between [0, 1.0] (got: ${ast.virtualCasterAuthority}).`);
+    }
+    if (!isFiniteNumber(ast.virtualCasterMinSlipAngle) || ast.virtualCasterMinSlipAngle <= 0 || ast.virtualCasterMinSlipAngle > Math.PI / 4) {
+      errors.push(`assists.virtualCasterMinSlipAngle must be between (0, PI/4] (got: ${ast.virtualCasterMinSlipAngle}).`);
+    }
+    if (!isFiniteNumber(ast.flickAttenuationGain) || ast.flickAttenuationGain < 0 || ast.flickAttenuationGain > 1.0) {
+      errors.push(`assists.flickAttenuationGain must be between [0, 1.0] (got: ${ast.flickAttenuationGain}).`);
+    }
+    if (!isFiniteNumber(ast.autoCounterSteerBias) || ast.autoCounterSteerBias < 0 || ast.autoCounterSteerBias > 1.0) {
+      errors.push(`assists.autoCounterSteerBias must be between [0, 1.0] (got: ${ast.autoCounterSteerBias}).`);
+    }
   }
 
   // --- 5. Tires ---
@@ -136,6 +169,24 @@ export function validateDrivingModelBalance(balance: DrivingModelBalance): Valid
     }
     if (!isFiniteNumber(tr.looseSurfaceRearWeight) || tr.looseSurfaceRearWeight < 0) {
       errors.push(`tires.looseSurfaceRearWeight must be >= 0 (got: ${tr.looseSurfaceRearWeight}).`);
+    }
+    if (!isFiniteNumber(tr.looseSurfaceGripFloor) || tr.looseSurfaceGripFloor <= 0 || tr.looseSurfaceGripFloor > 1.0) {
+      errors.push(`tires.looseSurfaceGripFloor must be between (0, 1.0] (got: ${tr.looseSurfaceGripFloor}).`);
+    }
+    if (!isFiniteNumber(tr.looseSurfaceShearScale) || tr.looseSurfaceShearScale < 0 || tr.looseSurfaceShearScale > 1.0) {
+      errors.push(`tires.looseSurfaceShearScale must be between [0, 1.0] (got: ${tr.looseSurfaceShearScale}).`);
+    }
+    if (!isFiniteNumber(tr.loadSensitivityFactor) || tr.loadSensitivityFactor < 0 || tr.loadSensitivityFactor > 0.50) {
+      errors.push(`tires.loadSensitivityFactor must be between [0, 0.50] (got: ${tr.loadSensitivityFactor}).`);
+    }
+    if (!isFiniteNumber(tr.frictionEllipseCoupling) || tr.frictionEllipseCoupling < 0 || tr.frictionEllipseCoupling > 1.0) {
+      errors.push(`tires.frictionEllipseCoupling must be between [0, 1.0] (got: ${tr.frictionEllipseCoupling}).`);
+    }
+    if (!isFiniteNumber(tr.rearOversteerLateralBias) || tr.rearOversteerLateralBias <= 0 || tr.rearOversteerLateralBias > 1.5) {
+      errors.push(`tires.rearOversteerLateralBias must be between (0, 1.5] (got: ${tr.rearOversteerLateralBias}).`);
+    }
+    if (!isFiniteNumber(tr.lowSpeedViscousBlend) || tr.lowSpeedViscousBlend <= 0 || tr.lowSpeedViscousBlend > 10.0) {
+      errors.push(`tires.lowSpeedViscousBlend must be between (0, 10.0] (got: ${tr.lowSpeedViscousBlend}).`);
     }
   }
 

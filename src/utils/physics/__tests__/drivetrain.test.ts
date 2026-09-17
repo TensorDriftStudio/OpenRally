@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { Vector3 } from 'three';
 import { applyDrivetrain, applyAwdDriftPropulsion } from '../drivetrain';
 import { DEFAULT_VEHICLE_CONFIG } from '@/config/vehicle';
+import { DRIVING_MODEL_BALANCE } from '@/config/physicsBalance';
 import type { IRapierVehicleController } from '@/types/vehicle';
 import type { RapierRigidBody } from '@react-three/rapier';
 
@@ -242,7 +243,7 @@ describe('drivetrain physics', () => {
       expect(mockBody.applyImpulse).not.toHaveBeenCalled();
     });
 
-    it('applies steered vector pull along front wheels when rightVector and steerAngle are provided', () => {
+    it('applies pure forward tractive impulse along vehicle heading without artificial sideways shove', () => {
       const appliedImpulses: { x: number; y: number; z: number }[] = [];
       const mockBody = {
         mass: () => 150,
@@ -253,8 +254,7 @@ describe('drivetrain physics', () => {
 
       const forwardVec = new Vector3(0, 0, 1);
       const rightVec = new Vector3(1, 0, 0);
-      // Countersteering right: steerAngle < 0 (points along +X)
-      const steerAngle = -Math.PI / 6; // -30 deg
+      const steerAngle = -Math.PI / 6; // -30 deg countersteer
       applyAwdDriftPropulsion(
         mockBody,
         DEFAULT_VEHICLE_CONFIG,
@@ -273,8 +273,84 @@ describe('drivetrain physics', () => {
       expect(appliedImpulses.length).toBe(1);
       // Forward thrust present
       expect(appliedImpulses[0].z).toBeGreaterThan(0);
-      // Steered front axle pull present along +X (countersteer direction)
-      expect(appliedImpulses[0].x).toBeGreaterThan(0);
+      // Zero lateral push: ensures vehicle drifts naturally without external sideways shoving
+      expect(appliedImpulses[0].x).toBe(0);
+    });
+
+    it('vectors front tractive pull through steered wheels when driftSteeredPullRatio is configured', () => {
+      const appliedImpulses: { x: number; y: number; z: number }[] = [];
+      const mockBody = {
+        mass: () => 150,
+        applyImpulse: vi.fn((impulse: { x: number; y: number; z: number }) => {
+          appliedImpulses.push({ ...impulse });
+        }),
+      } as unknown as RapierRigidBody;
+
+      const forwardVec = new Vector3(0, 0, 1);
+      const rightVec = new Vector3(1, 0, 0);
+      const steerAngle = -Math.PI / 6; // -30 deg countersteer
+      const steeredBalance = {
+        ...DRIVING_MODEL_BALANCE,
+        drivetrain: {
+          ...DRIVING_MODEL_BALANCE.drivetrain,
+          driftSteeredPullRatio: 0.45,
+        },
+      };
+
+      applyAwdDriftPropulsion(
+        mockBody,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, steering: -1.0 },
+        forwardVec,
+        50,
+        Math.PI / 6,
+        1.0,
+        0.016,
+        2,
+        rightVec,
+        steerAngle,
+        steeredBalance
+      );
+
+      expect(mockBody.applyImpulse).toHaveBeenCalled();
+      expect(appliedImpulses.length).toBe(1);
+      expect(appliedImpulses[0].z).toBeGreaterThan(0);
+      // Steered pull vectors negative X (towards countersteer direction)
+      expect(appliedImpulses[0].x).toBeLessThan(0);
+    });
+
+    it('governs drift propulsion around target equilibrium speed (75 km/h) allowing realistic high-speed speed bleed', () => {
+      const slowBody = { mass: () => 150, applyImpulse: vi.fn() } as unknown as RapierRigidBody;
+      const forwardVec = new Vector3(0, 0, 1);
+
+      // At 60 km/h (below 75 km/h target): full AWD propulsion is delivered to sustain drift
+      applyAwdDriftPropulsion(
+        slowBody,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, steering: 0.5 },
+        forwardVec,
+        60,
+        Math.PI / 6,
+        1.0,
+        0.016,
+        2
+      );
+      expect(slowBody.applyImpulse).toHaveBeenCalled();
+
+      // At 100 km/h (above 95 km/h cutoff): propulsion drops to 0 to let tire scrub realistically bleed speed
+      const fastBody = { mass: () => 150, applyImpulse: vi.fn() } as unknown as RapierRigidBody;
+      applyAwdDriftPropulsion(
+        fastBody,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, steering: 0.5 },
+        forwardVec,
+        100,
+        Math.PI / 6,
+        1.0,
+        0.016,
+        2
+      );
+      expect(fastBody.applyImpulse).not.toHaveBeenCalled();
     });
 
     it('cuts engine force when hitting mechanical gear speed limits (rev limiter)', () => {
@@ -425,6 +501,41 @@ describe('drivetrain physics', () => {
       expect(controllerTcsOn.forces[0]).toBeLessThan(controllerTcsOff.forces[0]);
     });
 
+    it('preserves rally momentum on loose surfaces (snow, gravel) by moderating TCS cut', () => {
+      const tarmacController = createMockController();
+      applyDrivetrain(
+        tarmacController,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, brake: 0 },
+        20,
+        2,
+        Math.PI / 4, // 45 degrees slide
+        60,
+        1.0,
+        undefined,
+        { tcsEnabled: true },
+        'tarmac',
+      );
+
+      const snowController = createMockController();
+      applyDrivetrain(
+        snowController,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, brake: 0 },
+        20,
+        2,
+        Math.PI / 4,
+        60,
+        1.0,
+        undefined,
+        { tcsEnabled: true },
+        'snow',
+      );
+
+      // Snow TCS keeps at least 85% power, while tarmac TCS cuts down to 35%
+      expect(snowController.forces[0]).toBeGreaterThan(tarmacController.forces[0] * 1.5);
+    });
+
     it('unleashes 100% full launch torque when TCS is disabled from standing start', () => {
       const controllerTcsOn = createMockController();
       applyDrivetrain(
@@ -456,6 +567,67 @@ describe('drivetrain physics', () => {
 
       // With TCS OFF, full unattenuated 100% torque is delivered at launch (burnout)
       expect(controllerTcsOff.forces[0]).toBeGreaterThan(controllerTcsOn.forces[0]);
+    });
+  });
+
+  describe('DCCD Active Torque Split & Rear Spool Lock', () => {
+    it('modulates torque distribution to front wheels (up to 48%) when entering a throttle drift to pull car forward', () => {
+      const straightController = createMockController();
+      // Straight-line driving (slip = 0)
+      const resStraight = applyDrivetrain(
+        straightController,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, brake: 0 },
+        15,
+        2,
+        0, // No slip
+        54,
+        1.0,
+      );
+
+      const driftController = createMockController();
+      // Drift power slide (slip = 0.40 rad)
+      const resDrift = applyDrivetrain(
+        driftController,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, brake: 0 },
+        15,
+        2,
+        0.40, // High slip
+        54,
+        1.0,
+      );
+
+      // In straight-line, front bias is 35%. In drift, front bias increases towards 48% to pull car out of the turn
+      const straightFrontRatio = straightController.forces[0] / (straightController.forces[0] + straightController.forces[2]);
+      const driftFrontRatio = driftController.forces[0] / (driftController.forces[0] + driftController.forces[2]);
+
+      expect(driftFrontRatio).toBeGreaterThan(straightFrontRatio);
+      expect(resDrift.nextDriftIntensity).toBeGreaterThan(resStraight.nextDriftIntensity);
+    });
+
+    it('smoothly decays drift intensity over time via hold buffer when exiting slide', () => {
+      const controller = createMockController();
+      // Previous frame had high filtered drift intensity = 0.90, but slip dropped to 0
+      const res = applyDrivetrain(
+        controller,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, brake: 0 },
+        15,
+        2,
+        0, // Slip stopped
+        54,
+        1.0,
+        undefined,
+        undefined,
+        undefined,
+        0.90, // filteredDriftIntensity
+        0.016, // dt
+      );
+
+      // Decays progressively rather than dropping immediately to 0
+      expect(res.nextDriftIntensity).toBeLessThan(0.90);
+      expect(res.nextDriftIntensity).toBeGreaterThan(0.70);
     });
   });
 });

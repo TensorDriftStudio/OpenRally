@@ -135,6 +135,51 @@ export interface DrivetrainBalanceConfig {
    * Safe Range: 0.02 to 0.08 m (default: 0.045 m)
    */
   readonly frontUnweightedDampingThreshold: number;
+
+  /**
+   * AWD tractive drift propulsion multiplier to compensate for lateral tire scrub drag during slides.
+   * Allows throttle to sustain or increase vehicle velocity while sliding rather than bleeding all momentum.
+   * Safe Range: 0.5 to 3.0 (default: 1.15)
+   */
+  readonly driftPropulsionMultiplier: number;
+
+  /**
+   * Fraction of AWD drift tractive propulsion directed through steered front wheels during countersteer.
+   * Safe Range: 0.0 to 0.70 (default: 0.0 for pure natural forward chassis propulsion)
+   */
+  readonly driftSteeredPullRatio: number;
+
+  /**
+   * Target equilibrium drift speed (km/h) sustained under full throttle during power slides.
+   * At speeds below this target, full tractive support maintains drift momentum; at higher speeds,
+   * natural tire scrub realistically bleeds speed down to this equilibrium.
+   * Safe Range: 50 to 100 km/h (default: 75 km/h)
+   */
+  readonly driftTargetSpeedKmh: number;
+
+  /**
+   * DCCD baseline front torque distribution during straight-line driving and grip cornering.
+   * Safe Range: 0.30 to 0.55 (default: 0.45 = 45% front / 55% rear)
+   */
+  readonly dccdMinFrontBias: number;
+
+  /**
+   * DCCD active front torque distribution during high-angle throttle power-slides.
+   * Safe Range: 0.25 to 0.50 (default: 0.36 = 36% front / 64% rear)
+   */
+  readonly dccdDriftFrontBias: number;
+
+  /**
+   * Rate (1/s) at which the filtered drift intensity decays when exiting a drift (~0.25s hold buffer).
+   * Safe Range: 1.0 to 10.0 (default: 4.0)
+   */
+  readonly dccdIntensityDecayRate: number;
+
+  /**
+   * Mechanical spool lock ratio across rear driven wheels under throttle during a slide.
+   * Safe Range: 0.50 to 1.0 (default: 0.85)
+   */
+  readonly rearSpoolLockRatio: number;
 }
 
 export interface AssistsBalanceConfig {
@@ -177,6 +222,30 @@ export interface AssistsBalanceConfig {
    * Safe Range: 1.5 to 5.0 (default: 3.0)
    */
   readonly pitchDampingNormal: number;
+
+  /**
+   * Virtual caster steering assist authority (blends steered wheel angle towards velocity vector during slide).
+   * Safe Range: 0.0 to 0.70 (default: 0.35)
+   */
+  readonly virtualCasterAuthority: number;
+
+  /**
+   * Minimum slip angle (radians) before virtual caster steering assist engages.
+   * Safe Range: 0.02 to 0.12 (default: 0.05 rad ≈ 2.9 degrees)
+   */
+  readonly virtualCasterMinSlipAngle: number;
+
+  /**
+   * Gain attenuating yaw damping during high-velocity driver steering flicks (Scandinavian flick / turn-in).
+   * Safe Range: 0.0 to 0.60 (default: 0.25)
+   */
+  readonly flickAttenuationGain: number;
+
+  /**
+   * Proportional counter-steer assist bias blended during steady high-angle slides.
+   * Safe Range: 0.0 to 0.60 (default: 0.38)
+   */
+  readonly autoCounterSteerBias: number;
 }
 
 export interface TiresBalanceConfig {
@@ -210,6 +279,43 @@ export interface TiresBalanceConfig {
    * Safe Range: 0.60 to 0.90 (default: 0.78)
    */
   readonly looseSurfaceRearWeight: number;
+
+  /**
+   * Minimum friction retention floor on loose surfaces under throttle churn.
+   * Prevents friction slip from collapsing and keeps residual lateral drift grip.
+   * Safe Range: 0.65 to 0.90 (default: 0.80)
+   */
+  readonly looseSurfaceGripFloor: number;
+
+  /**
+   * Multiplier scaling the loose surface continuous particle shearing loss.
+   * Safe Range: 0.10 to 0.50 (default: 0.25)
+   */
+  readonly looseSurfaceShearScale: number;
+
+  /**
+   * Normal load sensitivity coefficient scaling de-gressive tire friction with vertical load Fz.
+   * Safe Range: 0.0 to 0.30 (default: 0.12)
+   */
+  readonly loadSensitivityFactor: number;
+
+  /**
+   * Friction ellipse coupling factor moderating lateral grip compliance during heavy drive/brake slip.
+   * Safe Range: 0.0 to 1.0 (default: 0.85)
+   */
+  readonly frictionEllipseCoupling: number;
+
+  /**
+   * Lateral grip scalar on rear driven wheels during high-throttle power slides to promote controllable oversteer.
+   * Safe Range: 0.85 to 1.0 (default: 0.94)
+   */
+  readonly rearOversteerLateralBias: number;
+
+  /**
+   * Forward ground speed threshold (m/s) below which low-speed restoring viscous damping stabilizes the vehicle.
+   * Safe Range: 0.5 to 3.0 (default: 1.2 m/s)
+   */
+  readonly lowSpeedViscousBlend: number;
 }
 
 export interface DrivingModelBalance {
@@ -249,6 +355,13 @@ export const DRIVING_MODEL_BALANCE: DrivingModelBalance = {
     driftBoostSteerWeight: 0.35,
     driftBoostSlipWeight: 0.75,
     frontUnweightedDampingThreshold: 0.045,
+    driftPropulsionMultiplier: 1.15,
+    driftSteeredPullRatio: 0.0,
+    driftTargetSpeedKmh: 75,
+    dccdMinFrontBias: 0.35,
+    dccdDriftFrontBias: 0.48,
+    dccdIntensityDecayRate: 4.0,
+    rearSpoolLockRatio: 0.90,
   },
   assists: {
     turnInTorqueGain: 0.22,
@@ -257,6 +370,10 @@ export const DRIVING_MODEL_BALANCE: DrivingModelBalance = {
     steerAssistDeadzone: 0.02,
     pitchDampingThrottleUp: 5.5,
     pitchDampingNormal: 3.0,
+    virtualCasterAuthority: 0.35,
+    virtualCasterMinSlipAngle: 0.05,
+    flickAttenuationGain: 0.25,
+    autoCounterSteerBias: 0.38,
   },
   tires: {
     minPowerSlideSlipAngle: 0.25,
@@ -264,6 +381,12 @@ export const DRIVING_MODEL_BALANCE: DrivingModelBalance = {
     wheelspinFrictionDropRear: 0.05,
     looseSurfaceFrontWeight: 0.56,
     looseSurfaceRearWeight: 0.60,
+    looseSurfaceGripFloor: 0.80,
+    looseSurfaceShearScale: 0.25,
+    loadSensitivityFactor: 0.12,
+    frictionEllipseCoupling: 0.85,
+    rearOversteerLateralBias: 0.88,
+    lowSpeedViscousBlend: 1.2,
   },
 };
 

@@ -214,7 +214,14 @@ export function calculateRPM(
       // Standstill launch rev boost
       const launchBoost = safeSpeed < 10 ? throttle * 2200 * (1.0 - safeSpeed / 10) : 0;
 
-      targetRpmGround = Math.max(mechanicalRpm, powerbandFloor) + wheelspinBoost + launchBoost;
+      // High-RPM Redline Floor under throttle drift (minimum 6,500 – 7,400 RPM floor):
+      // When pinning throttle during a power slide, keeps engine screaming near redline
+      // guaranteeing continuous high wheelspin regardless of current chassis speed!
+      const highRpmDriftFloor = (throttle > 0.60 && slipAngle > 0.12)
+        ? (6200 + throttle * 1200)
+        : 0;
+
+      targetRpmGround = Math.max(mechanicalRpm, powerbandFloor, highRpmDriftFloor) + wheelspinBoost + launchBoost;
 
       // Rev limiter flutter at top of gear band
       if (safeSpeed >= maxSpeedForGear * 0.95) {
