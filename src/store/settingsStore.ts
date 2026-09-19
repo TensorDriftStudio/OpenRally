@@ -227,6 +227,8 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   ...defaultSettings,
   ...initialSaved,
   shadowsEnabled: isMobileOrAndroid() ? false : (initialSaved.shadowsEnabled ?? defaultSettings.shadowsEnabled),
+  postProcessingEnabled: isMobileOrAndroid() ? false : (initialSaved.postProcessingEnabled ?? defaultSettings.postProcessingEnabled),
+  antiAliasing: isMobileOrAndroid() ? 'off' : (initialSaved.antiAliasing ?? defaultSettings.antiAliasing),
 
   setGraphicsQuality: (graphicsQuality) => {
     let appliedUpdates: Partial<SettingsStore> = {};
@@ -272,8 +274,9 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     saveSettingsToStorage({ drawDistance, graphicsConfiguredByUser: true });
   },
   setAntiAliasing: (antiAliasing) => {
-    set({ antiAliasing, graphicsConfiguredByUser: true });
-    saveSettingsToStorage({ antiAliasing, graphicsConfiguredByUser: true });
+    const effectiveAA = isMobileOrAndroid() ? 'off' : antiAliasing;
+    set({ antiAliasing: effectiveAA, graphicsConfiguredByUser: true });
+    saveSettingsToStorage({ antiAliasing: effectiveAA, graphicsConfiguredByUser: true });
   },
   setResolutionScale: (resolutionScale) => {
     set({ resolutionScale, graphicsConfiguredByUser: true });
@@ -300,6 +303,9 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     }),
   togglePostProcessing: () =>
     set((s) => {
+      if (isMobileOrAndroid()) {
+        return { postProcessingEnabled: false };
+      }
       const next = !s.postProcessingEnabled;
       saveSettingsToStorage({ postProcessingEnabled: next, graphicsConfiguredByUser: true });
       return { postProcessingEnabled: next, graphicsConfiguredByUser: true };

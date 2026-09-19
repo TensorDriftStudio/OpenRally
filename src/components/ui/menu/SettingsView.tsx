@@ -374,11 +374,19 @@ export function SettingsView({
               style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 8) }}
               onPointerMove={(e) => onPointerMoveItem(8, e)}
             >
-              <span>Post Processing</span>
-              <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '48px', minHeight: '44px', cursor: 'pointer' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span>Post Processing</span>
+                {isMobileOrAndroid() && (
+                  <span style={{ fontSize: '11px', color: '#94A3B8', padding: '2px 8px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)' }}>
+                    PC Only (Performance Guard)
+                  </span>
+                )}
+              </div>
+              <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '48px', minHeight: '44px', cursor: isMobileOrAndroid() ? 'not-allowed' : 'pointer', opacity: isMobileOrAndroid() ? 0.5 : 1 }}>
                 <input
                   type="checkbox"
-                  checked={postProcessingEnabled}
+                  checked={!isMobileOrAndroid() && postProcessingEnabled}
+                  disabled={isMobileOrAndroid()}
                   onChange={onTogglePostProcessing}
                   style={menuStyles.checkbox}
                 />

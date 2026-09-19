@@ -50,8 +50,12 @@ function OceanContent() {
   const waterRef = useRef<Mesh>(null);
   const { heightmapData, levelData } = useTerrainData();
   const graphicsQuality = useSettingsStore((s) => s.graphicsQuality);
+  const levelId = levelData.id.toLowerCase();
+  const isSnow = levelId.includes('sweden') || levelId.includes('snow') || levelId.includes('winter');
 
-  const [iceTexture] = useTexture(['/textures/terrain/ice_lake.jpg']);
+  // Lightweight 68-byte placeholder texture to substitute unneeded ice texture on temperate/desert stages
+  const icePath = isSnow ? '/textures/terrain/ice_lake.jpg' : '/textures/placeholder.png';
+  const [iceTexture] = useTexture([icePath]);
 
   useMemo(() => {
     const isMobile = isMobileDevice();
@@ -61,9 +65,6 @@ function OceanContent() {
     iceTexture.anisotropy = getClampedAnisotropy(8, isMobile);
     iceTexture.needsUpdate = true;
   }, [iceTexture]);
-
-  const levelId = levelData.id.toLowerCase();
-  const isSnow = levelId.includes('sweden') || levelId.includes('snow') || levelId.includes('winter');
 
   const segmentsCount = graphicsQuality === 'low' ? 64 : graphicsQuality === 'medium' ? 128 : WATER_SEGMENTS;
 

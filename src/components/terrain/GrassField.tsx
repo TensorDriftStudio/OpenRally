@@ -198,12 +198,22 @@ export function GrassField() {
 function GrassFieldContent() {
   const { heightmapData, levelData } = useTerrainData();
   const graphicsQuality = useSettingsStore((s) => s.graphicsQuality);
+  const levelId = levelData.id.toLowerCase();
+  const isDesert = levelId.includes('desert');
+  const isSnow = levelId.includes('sweden') || levelId.includes('snow') || levelId.includes('winter');
 
-  // Load photorealistic foliage textures
+  // Lightweight 68-byte placeholder texture to substitute unneeded foliage textures per biome,
+  // saving over 8MB VRAM and eliminating redundant image decoding spikes on mobile devices.
+  const BLANK = '/textures/placeholder.png';
+  const grassTuftPath = !isDesert ? '/textures/foliage/grass_tuft.jpg' : BLANK;
+  const wildflowerPath = (!isDesert && !isSnow) ? '/textures/foliage/wildflower_tuft.jpg' : BLANK;
+  const desertTuftPath = isDesert ? '/textures/foliage/desert_tuft.jpg' : BLANK;
+
+  // Load photorealistic foliage textures (biome-tailored to eliminate unnecessary VRAM consumption)
   const [grassTuftTex, wildflowerTex, desertTuftTex] = useTexture([
-    '/textures/foliage/grass_tuft.jpg',
-    '/textures/foliage/wildflower_tuft.jpg',
-    '/textures/foliage/desert_tuft.jpg',
+    grassTuftPath,
+    wildflowerPath,
+    desertTuftPath,
   ]);
 
   useMemo(() => {
@@ -217,10 +227,6 @@ function GrassFieldContent() {
       tex.needsUpdate = true;
     });
   }, [grassTuftTex, wildflowerTex, desertTuftTex]);
-
-  const levelId = levelData.id.toLowerCase();
-  const isDesert = levelId.includes('desert');
-  const isSnow = levelId.includes('sweden') || levelId.includes('snow') || levelId.includes('winter');
 
   const shaderUniformsRef = useRef<Record<string, IUniform>[]>([]);
   const carPosRef = useRef(new Vector3(0, 0, 0));
