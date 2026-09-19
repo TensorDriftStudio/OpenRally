@@ -482,7 +482,14 @@ export function SettingsView({
               style={{ ...menuStyles.optionRow, minHeight: '44px', ...getFocusStyle(focusedIndex === 2) }}
               onPointerMove={(e) => onPointerMoveItem(2, e)}
             >
-              <span>Steering Scheme</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'left' }}>
+                <span>Steering Scheme</span>
+                {touchSteeringScheme === 'tilt' && (
+                  <span style={{ fontSize: '11px', color: '#00d4ff', fontWeight: 600 }}>
+                    Tilt phone sideways to steer. Calibration &amp; touch override enabled.
+                  </span>
+                )}
+              </div>
               <select
                 value={touchSteeringScheme}
                 onChange={(e) => setTouchSteeringScheme(e.target.value as TouchSteeringScheme)}
@@ -490,6 +497,7 @@ export function SettingsView({
               >
                 <option value="joystick">Floating Analog Joystick</option>
                 <option value="buttons">Digital Buttons (L / R)</option>
+                <option value="tilt">Motion Sensor (Tilt / Gyro)</option>
               </select>
             </div>
 

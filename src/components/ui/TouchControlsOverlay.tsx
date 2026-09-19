@@ -13,6 +13,15 @@ import {
   JOYSTICK_DEADZONE_RATIO,
   type InputType,
 } from '@/utils/input/touch';
+import {
+  startTiltSensorListener,
+  calibrateTiltCenter,
+  getLiveTiltAngle,
+  isIosMotionPermissionRequired,
+  getTiltPermissionState,
+  requestTiltPermission,
+  setTiltTouchOverride,
+} from '@/utils/input/tilt';
 
 import type {
   TouchControlMode,
@@ -83,6 +92,85 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
   const [throttlePressed, setThrottlePressed] = useState(false);
   const [brakePressed, setBrakePressed] = useState(false);
   const [handbrakePressed, setHandbrakePressed] = useState(false);
+
+  // Tilt state & refs
+  const tiltIndicatorRef = useRef<HTMLDivElement>(null);
+  const tiltAngleLabelRef = useRef<HTMLSpanElement>(null);
+  const [calibratedToast, setCalibratedToast] = useState(false);
+  const [iosPermissionNeeded, setIosPermissionNeeded] = useState(false);
+  const [permissionGranted, setPermissionGranted] = useState(() => getTiltPermissionState() === 'granted');
+
+  // Start tilt listener when tilt steering is selected
+  useEffect(() => {
+    if (touchSteeringScheme !== 'tilt') return;
+
+    if (isIosMotionPermissionRequired() && getTiltPermissionState() !== 'granted') {
+      setIosPermissionNeeded(true);
+    }
+
+    const cleanup = startTiltSensorListener();
+    return () => {
+      cleanup();
+      setTiltTouchOverride(false);
+    };
+  }, [touchSteeringScheme]);
+
+  // Zero-GC 60fps visual update loop for tilt gauge
+  useEffect(() => {
+    if (touchSteeringScheme !== 'tilt') return;
+    let animId: number;
+
+    const updateVisual = () => {
+      const angle = getLiveTiltAngle();
+      if (tiltIndicatorRef.current) {
+        // Clamped between -30 and +30 deg -> translate -42px to +42px
+        const clamped = Math.max(-30, Math.min(30, angle));
+        // OpenRally: +angle is Left (translate left: negative px)
+        const offsetPx = -(clamped / 30) * 42;
+        tiltIndicatorRef.current.style.transform = `translate3d(${offsetPx}px, 0, 0)`;
+      }
+      if (tiltAngleLabelRef.current) {
+        tiltAngleLabelRef.current.textContent = `${angle > 0 ? '+' : ''}${Math.round(angle)}°`;
+      }
+      animId = requestAnimationFrame(updateVisual);
+    };
+
+    animId = requestAnimationFrame(updateVisual);
+    return () => {
+      cancelAnimationFrame(animId);
+    };
+  }, [touchSteeringScheme]);
+
+  const handleCalibrateCenter = useCallback(() => {
+    calibrateTiltCenter();
+    if (touchHaptics) triggerHapticFeedback(15);
+    setCalibratedToast(true);
+    setTimeout(() => setCalibratedToast(false), 1200);
+  }, [touchHaptics]);
+
+  const handleRequestIosPermission = useCallback(async () => {
+    const res = await requestTiltPermission();
+    if (res === 'granted') {
+      setPermissionGranted(true);
+      setIosPermissionNeeded(false);
+      if (touchHaptics) triggerHapticFeedback(20);
+    }
+  }, [touchHaptics]);
+
+  const handleTiltOverrideDown = useCallback((e: React.PointerEvent) => {
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+    setTiltTouchOverride(true);
+  }, []);
+
+  const handleTiltOverrideUp = useCallback((e: React.PointerEvent) => {
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+    setTiltTouchOverride(false);
+    setTouchInput({ steering: 0 });
+  }, []);
 
   // Listen to input type switches across window
   useEffect(() => {
@@ -446,6 +534,27 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
         >
           <span style={{ fontSize: '16px' }}>📷</span>
         </button>
+
+        {/* Calibrate Neutral Tilt Button */}
+        {touchSteeringScheme === 'tilt' && (
+          <button
+            type="button"
+            data-testid="touch-btn-tilt-calibrate"
+            aria-label="Calibrate Neutral Tilt"
+            onClick={handleCalibrateCenter}
+            style={{
+              ...utilityBtnStyle,
+              width: `${Math.max(44, Math.round(44 * sizeMultiplier))}px`,
+              height: `${Math.max(44, Math.round(44 * sizeMultiplier))}px`,
+              background: calibratedToast ? 'rgba(16, 185, 129, 0.65)' : 'rgba(15, 23, 42, 0.75)',
+              borderColor: calibratedToast ? '#10b981' : 'rgba(0, 212, 255, 0.5)',
+              color: calibratedToast ? '#ffffff' : '#67e8f9',
+            }}
+            title="Calibrate Neutral Steering"
+          >
+            <span style={{ fontSize: '15px' }}>⌖</span>
+          </button>
+        )}
       </div>
 
       {/* -------------------------------------------------------------------- */}
@@ -527,7 +636,7 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
             </div>
           )}
         </div>
-      ) : (
+      ) : touchSteeringScheme === 'buttons' ? (
         /* Digital Left / Right Steering Buttons */
         <div
           style={{
@@ -584,6 +693,118 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
             <span style={{ fontSize: '24px' }}>►</span>
             <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.5px' }}>RIGHT</span>
           </button>
+        </div>
+      ) : (
+        /* Tilt Motion Steering Zone with Visual Horizon Meter & Safety Touch Area */
+        <div
+          data-testid="touch-tilt-zone"
+          onPointerDown={handleTiltOverrideDown}
+          onPointerUp={handleTiltOverrideUp}
+          onPointerCancel={handleTiltOverrideUp}
+          style={{
+            position: 'absolute',
+            left: 'calc(24px + var(--sal, 0px))',
+            bottom: 'calc(24px + var(--sab, 0px))',
+            width: `${Math.round(180 * sizeMultiplier)}px`,
+            height: `${Math.round(84 * sizeMultiplier)}px`,
+            pointerEvents: 'auto',
+            touchAction: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            borderRadius: '16px',
+            border: '1px solid rgba(0, 212, 255, 0.4)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+            padding: '8px 12px',
+            gap: '6px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <span style={{ fontSize: '10px', fontWeight: 800, color: '#67e8f9', letterSpacing: '0.5px' }}>
+              TILT STEER
+            </span>
+            <span
+              ref={tiltAngleLabelRef}
+              style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', fontVariantNumeric: 'tabular-nums' }}
+            >
+              0°
+            </span>
+          </div>
+
+          {/* Horizon Spirit Level Bar */}
+          <div
+            style={{
+              position: 'relative',
+              width: '100%',
+              height: '14px',
+              borderRadius: '7px',
+              background: 'rgba(30, 41, 59, 0.9)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Center zero line */}
+            <div
+              style={{
+                position: 'absolute',
+                width: '2px',
+                height: '100%',
+                background: 'rgba(255, 255, 255, 0.4)',
+              }}
+            />
+            {/* Deadzone region marker */}
+            <div
+              style={{
+                position: 'absolute',
+                width: '12px',
+                height: '100%',
+                background: 'rgba(16, 185, 129, 0.15)',
+                borderLeft: '1px solid rgba(16, 185, 129, 0.3)',
+                borderRight: '1px solid rgba(16, 185, 129, 0.3)',
+              }}
+            />
+            {/* Dynamic Tilt Indicator Pip */}
+            <div
+              ref={tiltIndicatorRef}
+              data-testid="touch-tilt-indicator"
+              style={{
+                width: '12px',
+                height: '12px',
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #00d4ff 0%, #0070d1 100%)',
+                boxShadow: '0 0 8px rgba(0, 212, 255, 0.9)',
+                willChange: 'transform',
+              }}
+            />
+          </div>
+
+          {/* iOS Permission Trigger Banner if required */}
+          {iosPermissionNeeded && !permissionGranted && (
+            <button
+              type="button"
+              onClick={handleRequestIosPermission}
+              style={{
+                width: '100%',
+                padding: '4px 6px',
+                background: '#0284c7',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '10px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Tap to Enable Sensors
+            </button>
+          )}
         </div>
       )}
 

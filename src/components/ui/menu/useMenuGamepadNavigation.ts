@@ -294,7 +294,7 @@ export function useMenuGamepadNavigation({
         }
       } else if (cat === 'touch') {
         const modes: TouchControlMode[] = ['auto', 'always', 'off'];
-        const schemes: TouchSteeringScheme[] = ['joystick', 'buttons'];
+        const schemes: TouchSteeringScheme[] = ['joystick', 'buttons', 'tilt'];
         const sizes: TouchButtonSize[] = ['small', 'medium', 'large'];
 
         if (curIdx === 1) {
@@ -413,7 +413,7 @@ export function useMenuGamepadNavigation({
         }
       } else if (cat === 'touch') {
         const modes: TouchControlMode[] = ['auto', 'always', 'off'];
-        const schemes: TouchSteeringScheme[] = ['joystick', 'buttons'];
+        const schemes: TouchSteeringScheme[] = ['joystick', 'buttons', 'tilt'];
         const sizes: TouchButtonSize[] = ['small', 'medium', 'large'];
 
         if (curIdx === 1) {

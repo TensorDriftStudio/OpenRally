@@ -19,6 +19,7 @@ import {
   setLastInputType,
   type TouchInputState,
 } from '@/utils/input/touch';
+import { sampleTiltSteering } from '@/utils/input/tilt';
 
 export const activeKeys = new Set<string>();
 
@@ -403,6 +404,26 @@ export function useInputUpdater(): (dt: number) => InputState {
     const kbGearDown = isQ && !keyGearDownHeldRef.current;
     keyGearUpHeldRef.current = isE;
     keyGearDownHeldRef.current = isQ;
+
+    const touchScheme = useSettingsStore.getState().touchSteeringScheme;
+    if (touchScheme === 'tilt') {
+      const tiltSens = useSettingsStore.getState().tiltSensitivity;
+      const tiltDeadzone = useSettingsStore.getState().tiltDeadzone;
+      const tiltMaxAngle = useSettingsStore.getState().tiltMaxAngle;
+      const tiltInvert = useSettingsStore.getState().tiltInvert;
+
+      const sampledTilt = sampleTiltSteering(dt, {
+        sensitivity: tiltSens,
+        deadzoneDeg: tiltDeadzone,
+        maxAngleDeg: tiltMaxAngle,
+        invert: tiltInvert,
+      });
+
+      if (sampledTilt !== null) {
+        setTouchInput({ steering: sampledTilt });
+        touch.steering = sampledTilt;
+      }
+    }
 
     const merged = blendInputs({
       dt,

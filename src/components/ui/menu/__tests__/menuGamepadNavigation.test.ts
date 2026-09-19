@@ -208,6 +208,9 @@ describe('Settings & Menu Gamepad Navigation Invariants', () => {
       store.setTouchSteeringScheme('buttons');
       expect(useSettingsStore.getState().touchSteeringScheme).toBe('buttons');
 
+      store.setTouchSteeringScheme('tilt');
+      expect(useSettingsStore.getState().touchSteeringScheme).toBe('tilt');
+
       store.setTouchButtonSize('large');
       expect(useSettingsStore.getState().touchButtonSize).toBe('large');
     });

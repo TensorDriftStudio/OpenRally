@@ -68,8 +68,20 @@ export function loadSettingsFromStorage(isAndroidDevice: boolean = isMobileOrAnd
     if (['auto', 'always', 'off'].includes(parsed.touchControlMode)) {
       validated.touchControlMode = parsed.touchControlMode as TouchControlMode;
     }
-    if (['joystick', 'buttons'].includes(parsed.touchSteeringScheme)) {
+    if (['joystick', 'buttons', 'tilt'].includes(parsed.touchSteeringScheme)) {
       validated.touchSteeringScheme = parsed.touchSteeringScheme as TouchSteeringScheme;
+    }
+    if (typeof parsed.tiltSensitivity === 'number' && Number.isFinite(parsed.tiltSensitivity)) {
+      validated.tiltSensitivity = Math.max(0.2, Math.min(3.0, parsed.tiltSensitivity));
+    }
+    if (typeof parsed.tiltDeadzone === 'number' && Number.isFinite(parsed.tiltDeadzone)) {
+      validated.tiltDeadzone = Math.max(0.0, Math.min(10.0, parsed.tiltDeadzone));
+    }
+    if (typeof parsed.tiltMaxAngle === 'number' && Number.isFinite(parsed.tiltMaxAngle)) {
+      validated.tiltMaxAngle = Math.max(10.0, Math.min(60.0, parsed.tiltMaxAngle));
+    }
+    if (typeof parsed.tiltInvert === 'boolean') {
+      validated.tiltInvert = parsed.tiltInvert;
     }
     if (typeof parsed.touchOpacity === 'number' && Number.isFinite(parsed.touchOpacity)) {
       validated.touchOpacity = Math.max(0.2, Math.min(1.0, parsed.touchOpacity));
@@ -218,6 +230,10 @@ export interface SettingsStore extends GameSettings {
   setTouchOpacity: (opacity: number) => void;
   setTouchButtonSize: (size: TouchButtonSize) => void;
   setTouchHaptics: (enabled: boolean) => void;
+  setTiltSensitivity: (sensitivity: number) => void;
+  setTiltDeadzone: (deadzone: number) => void;
+  setTiltMaxAngle: (maxAngle: number) => void;
+  setTiltInvert: (invert: boolean) => void;
 }
 
 const defaultSettings = getDefaultSettings();
@@ -408,5 +424,25 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     const enabled = Boolean(touchHaptics);
     set({ touchHaptics: enabled });
     saveSettingsToStorage({ touchHaptics: enabled });
+  },
+  setTiltSensitivity: (tiltSensitivity) => {
+    const val = Number.isFinite(tiltSensitivity) ? Math.max(0.2, Math.min(3.0, tiltSensitivity)) : 1.0;
+    set({ tiltSensitivity: val });
+    saveSettingsToStorage({ tiltSensitivity: val });
+  },
+  setTiltDeadzone: (tiltDeadzone) => {
+    const val = Number.isFinite(tiltDeadzone) ? Math.max(0.0, Math.min(10.0, tiltDeadzone)) : 2.5;
+    set({ tiltDeadzone: val });
+    saveSettingsToStorage({ tiltDeadzone: val });
+  },
+  setTiltMaxAngle: (tiltMaxAngle) => {
+    const val = Number.isFinite(tiltMaxAngle) ? Math.max(10.0, Math.min(60.0, tiltMaxAngle)) : 28.0;
+    set({ tiltMaxAngle: val });
+    saveSettingsToStorage({ tiltMaxAngle: val });
+  },
+  setTiltInvert: (tiltInvert) => {
+    const enabled = Boolean(tiltInvert);
+    set({ tiltInvert: enabled });
+    saveSettingsToStorage({ tiltInvert: enabled });
   },
 }));

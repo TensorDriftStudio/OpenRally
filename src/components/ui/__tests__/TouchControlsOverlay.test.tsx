@@ -75,6 +75,20 @@ describe('TouchControlsOverlay Component', () => {
       expect(htmlButtons).not.toContain('data-testid="touch-joystick-zone"');
       expect(htmlButtons).toContain('data-testid="touch-btn-steer-left"');
       expect(htmlButtons).toContain('data-testid="touch-btn-steer-right"');
+
+      // Tilt scheme
+      const htmlTilt = renderToString(
+        <TouchControlsOverlay touchControlMode="always" touchSteeringScheme="tilt" />
+      );
+      expect(htmlTilt).toContain('data-testid="touch-tilt-zone"');
+      expect(htmlTilt).toContain('data-testid="touch-tilt-indicator"');
+      expect(htmlTilt).toContain('data-testid="touch-btn-tilt-calibrate"');
+      expect(htmlTilt).not.toContain('data-testid="touch-joystick-zone"');
+      expect(htmlTilt).not.toContain('data-testid="touch-btn-steer-left"');
+      expect(htmlTilt).not.toContain('data-testid="touch-btn-steer-right"');
+      expect(htmlTilt).toContain('data-testid="touch-pedal-throttle"');
+      expect(htmlTilt).toContain('data-testid="touch-pedal-brake"');
+      expect(htmlTilt).toContain('data-testid="touch-btn-handbrake"');
     });
 
     it('applies configured touchOpacity and safe-area padding variables', () => {

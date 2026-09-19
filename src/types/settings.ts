@@ -1,7 +1,7 @@
 import type { GraphicsQuality, AntiAliasingMode } from './game';
 
 export type TouchControlMode = 'auto' | 'always' | 'off';
-export type TouchSteeringScheme = 'joystick' | 'buttons';
+export type TouchSteeringScheme = 'joystick' | 'buttons' | 'tilt';
 export type TouchButtonSize = 'small' | 'medium' | 'large';
 
 export interface TouchSettings {
@@ -10,6 +10,10 @@ export interface TouchSettings {
   touchOpacity: number; // 0.2 to 1.0 (default 0.7)
   touchButtonSize: TouchButtonSize;
   touchHaptics: boolean;
+  tiltSensitivity: number; // 0.5 to 2.0 (default 1.0)
+  tiltDeadzone: number; // degrees, e.g. 1.0 to 5.0 (default 2.5)
+  tiltMaxAngle: number; // degrees, e.g. 15.0 to 45.0 (default 28.0)
+  tiltInvert: boolean; // default false
 }
 
 export const DEFAULT_TOUCH_SETTINGS: TouchSettings = {
@@ -18,6 +22,10 @@ export const DEFAULT_TOUCH_SETTINGS: TouchSettings = {
   touchOpacity: 0.7,
   touchButtonSize: 'medium',
   touchHaptics: true,
+  tiltSensitivity: 1.0,
+  tiltDeadzone: 2.5,
+  tiltMaxAngle: 28.0,
+  tiltInvert: false,
 };
 
 export type TargetFps = 30 | 60 | 120;

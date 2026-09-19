@@ -71,8 +71,37 @@ describe('Touch Settings Store & Persistence', () => {
     const stored = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}');
     expect(stored.touchSteeringScheme).toBe('buttons');
 
+    setTouchSteeringScheme('tilt');
+    expect(useSettingsStore.getState().touchSteeringScheme).toBe('tilt');
+
+    const storedTilt = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}');
+    expect(storedTilt.touchSteeringScheme).toBe('tilt');
+
     setTouchSteeringScheme('joystick');
     expect(useSettingsStore.getState().touchSteeringScheme).toBe('joystick');
+  });
+
+  it('updates tilt options and persists them to localStorage', () => {
+    const { setTiltSensitivity, setTiltDeadzone, setTiltMaxAngle, setTiltInvert } =
+      useSettingsStore.getState();
+
+    setTiltSensitivity(1.5);
+    expect(useSettingsStore.getState().tiltSensitivity).toBe(1.5);
+
+    setTiltDeadzone(3.0);
+    expect(useSettingsStore.getState().tiltDeadzone).toBe(3.0);
+
+    setTiltMaxAngle(35.0);
+    expect(useSettingsStore.getState().tiltMaxAngle).toBe(35.0);
+
+    setTiltInvert(true);
+    expect(useSettingsStore.getState().tiltInvert).toBe(true);
+
+    const stored = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}');
+    expect(stored.tiltSensitivity).toBe(1.5);
+    expect(stored.tiltDeadzone).toBe(3.0);
+    expect(stored.tiltMaxAngle).toBe(35.0);
+    expect(stored.tiltInvert).toBe(true);
   });
 
   it('updates touchOpacity, clamps between 0.2 and 1.0, and persists', () => {
@@ -134,19 +163,27 @@ describe('Touch Settings Store & Persistence', () => {
       SETTINGS_STORAGE_KEY,
       JSON.stringify({
         touchControlMode: 'always',
-        touchSteeringScheme: 'buttons',
+        touchSteeringScheme: 'tilt',
         touchOpacity: 0.9,
         touchButtonSize: 'large',
         touchHaptics: false,
+        tiltSensitivity: 1.8,
+        tiltDeadzone: 3.5,
+        tiltMaxAngle: 32.0,
+        tiltInvert: true,
       })
     );
 
     const loaded = loadSettingsFromStorage();
     expect(loaded.touchControlMode).toBe('always');
-    expect(loaded.touchSteeringScheme).toBe('buttons');
+    expect(loaded.touchSteeringScheme).toBe('tilt');
     expect(loaded.touchOpacity).toBe(0.9);
     expect(loaded.touchButtonSize).toBe('large');
     expect(loaded.touchHaptics).toBe(false);
+    expect(loaded.tiltSensitivity).toBe(1.8);
+    expect(loaded.tiltDeadzone).toBe(3.5);
+    expect(loaded.tiltMaxAngle).toBe(32.0);
+    expect(loaded.tiltInvert).toBe(true);
   });
 
   it('safely handles corrupted JSON and invalid types in localStorage', () => {

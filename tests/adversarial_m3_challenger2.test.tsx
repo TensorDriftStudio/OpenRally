@@ -391,7 +391,7 @@ describe('Adversarial Challenge M3 (Challenger 2): Touch Overlay, Persistence & 
     });
 
     it('loadSettingsFromStorage strictly validates touchSteeringScheme and touchButtonSize enums', () => {
-      const hostileSchemes = ['wheel', 'tilt', 'dpad', 'analog_stick', '', null, 1];
+      const hostileSchemes = ['wheel', 'gyroscope_unsupported', 'dpad', 'analog_stick', '', null, 1];
       for (const scheme of hostileSchemes) {
         storageMock.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ touchSteeringScheme: scheme }));
         const loaded = loadSettingsFromStorage();
@@ -406,7 +406,7 @@ describe('Adversarial Challenge M3 (Challenger 2): Touch Overlay, Persistence & 
       }
 
       // Valid enums
-      for (const validScheme of ['joystick', 'buttons']) {
+      for (const validScheme of ['joystick', 'buttons', 'tilt']) {
         storageMock.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ touchSteeringScheme: validScheme }));
         expect(loadSettingsFromStorage().touchSteeringScheme).toBe(validScheme);
       }
