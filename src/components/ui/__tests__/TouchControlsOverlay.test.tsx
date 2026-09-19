@@ -104,22 +104,14 @@ describe('TouchControlsOverlay Component', () => {
       expect(htmlLarge).toContain('129px');
     });
 
-    it('positions DRIFT button on the left side with ergonomic offset for both schemes', () => {
-      // Joystick scheme
-      const htmlJoy = renderToString(
-        <TouchControlsOverlay touchControlMode="always" touchSteeringScheme="joystick" />
+    it('positions DRIFT button on the right side above pedals cluster', () => {
+      const html = renderToString(
+        <TouchControlsOverlay touchControlMode="always" />
       );
-      // Handbrake container has left: calc(24px + var(--sal, 0px)) and 168px bottom offset in joystick mode
-      expect(htmlJoy).toContain('left:calc(24px + var(--sal, 0px))');
-      expect(htmlJoy).toContain('168px');
-
-      // Buttons scheme
-      const htmlBtn = renderToString(
-        <TouchControlsOverlay touchControlMode="always" touchSteeringScheme="buttons" />
-      );
-      // Handbrake container has left: calc(24px + var(--sal, 0px)) and 116px bottom offset in buttons mode
-      expect(htmlBtn).toContain('left:calc(24px + var(--sal, 0px))');
-      expect(htmlBtn).toContain('116px');
+      // Handbrake container has right: calc(24px + var(--sar, 0px)) and 150px bottom offset above pedals
+      expect(html).toContain('right:calc(24px + var(--sar, 0px))');
+      expect(html).toContain('150px');
+      expect(html).toContain('data-testid="touch-btn-handbrake"');
     });
   });
 

@@ -652,15 +652,12 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
         </button>
       </div>
 
-      {/* Handbrake Button (Drift) - Ergonomic Left Thumb Placement */}
+      {/* Handbrake Button (Drift) - Right Thumb Placement */}
       <div
         style={{
           position: 'absolute',
-          left: 'calc(24px + var(--sal, 0px))',
-          bottom:
-            touchSteeringScheme === 'joystick'
-              ? `calc(${Math.round(168 * sizeMultiplier)}px + var(--sab, 0px))`
-              : `calc(${Math.round(116 * sizeMultiplier)}px + var(--sab, 0px))`,
+          right: 'calc(24px + var(--sar, 0px))',
+          bottom: `calc(${Math.round(150 * sizeMultiplier)}px + var(--sab, 0px))`,
           zIndex: 10,
           pointerEvents: 'auto',
         }}
@@ -698,7 +695,7 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
           data-testid="touch-manual-shifter"
           style={{
             position: 'absolute',
-            right: 'calc(24px + var(--sar, 0px))',
+            right: `calc(${Math.round(120 * sizeMultiplier)}px + var(--sar, 0px))`,
             bottom: `calc(${Math.round(150 * sizeMultiplier)}px + var(--sab, 0px))`,
             display: 'flex',
             gap: '8px',
