@@ -116,13 +116,13 @@ export function createDetailedTerrainMaterial(options: TerrainMaterialOptions): 
       : isDesert
       ? 'baseGround = texture2D(u_sandTexture, uvMacro).rgb;'
       : isGymkhana
-      ? 'baseGround = texture2D(u_trackTexture, uvMacro).rgb * vec3(0.28, 0.29, 0.31);'
+      ? 'baseGround = texture2D(u_trackTexture, uvMacro).rgb * vec3(0.55, 0.57, 0.60);'
       : 'baseGround = texture2D(u_grassTexture, uvMacro).rgb;';
 
     const mobileTrackTexCode = isSnow
       ? 'trackTex = texture2D(u_snowTrackTexture, uvTrackMacro).rgb * vec3(0.92, 0.95, 1.0);'
       : isGymkhana
-      ? 'trackTex = texture2D(u_trackTexture, uvTrackMacro).rgb * vec3(0.35, 0.36, 0.38);'
+      ? 'trackTex = texture2D(u_trackTexture, uvTrackMacro).rgb * vec3(0.62, 0.64, 0.68);'
       : 'trackTex = texture2D(u_trackTexture, uvTrackMacro).rgb * vec3(0.95, 0.90, 0.85);';
 
     const desktopBaseGroundCode = isSnow
@@ -136,7 +136,7 @@ export function createDetailedTerrainMaterial(options: TerrainMaterialOptions): 
       : isGymkhana
       ? `vec3 asphaltMacro = texture2D(u_trackTexture, uvMacro).rgb;
         vec3 asphaltMicro = texture2D(u_trackTexture, uvMicro).rgb;
-        baseGround = mix(asphaltMacro, asphaltMicro, 0.5) * vec3(0.28, 0.29, 0.31);`
+        baseGround = mix(asphaltMacro, asphaltMicro, 0.5) * vec3(0.55, 0.57, 0.60);`
       : `vec3 grassMacro = texture2D(u_grassTexture, uvMacro).rgb;
         vec3 grassMicro = texture2D(u_grassTexture, uvMicro).rgb;
         baseGround = mix(grassMacro, grassMicro, 0.5);`;
@@ -148,7 +148,7 @@ export function createDetailedTerrainMaterial(options: TerrainMaterialOptions): 
       : isGymkhana
       ? `vec3 trackMacro = texture2D(u_trackTexture, uvTrackMacro).rgb;
         vec3 trackMicro = texture2D(u_trackTexture, uvTrackMacro).rgb;
-        trackTex = mix(trackMacro, trackMicro, 0.5) * vec3(0.35, 0.36, 0.38) * 1.15;`
+        trackTex = mix(trackMacro, trackMicro, 0.5) * vec3(0.62, 0.64, 0.68);`
       : `vec3 trackMacro = texture2D(u_trackTexture, uvTrackMacro).rgb;
         vec3 trackMicro = texture2D(u_trackTexture, uvTrackMicro).rgb;
         trackTex = mix(trackMacro, trackMicro, 0.5) * vec3(0.95, 0.90, 0.85);`;

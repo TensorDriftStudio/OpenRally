@@ -3,7 +3,14 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Physics } from '@react-three/rapier';
 import { EffectComposer, Bloom, Vignette, SMAA, ToneMapping } from '@react-three/postprocessing';
 import { ToneMappingMode } from 'postprocessing';
-import { ACESFilmicToneMapping, HalfFloatType, PCFShadowMap } from 'three';
+import {
+  ACESFilmicToneMapping,
+  HalfFloatType,
+  PCFShadowMap,
+  CanvasTexture,
+  EquirectangularReflectionMapping,
+  SRGBColorSpace,
+} from 'three';
 import { Terrain } from '@/components/terrain/Terrain';
 import { GrassField } from '@/components/terrain/GrassField';
 import { PropsInstancer } from '@/components/terrain/PropsInstancer';
@@ -292,6 +299,55 @@ export function shouldRenderEnvironment(
 }
 
 /**
+ * Calculates tone mapping exposure based on platform.
+ * Mobile displays require elevated exposure (1.32 vs 0.98) to pull shadows and tarmac
+ * out of the steep ACES Filmic toe curve when dynamic HDR cubemaps are disabled.
+ */
+export function getToneMappingExposure(isMobile: boolean): number {
+  return isMobile ? 1.32 : 0.98;
+}
+
+/**
+ * Lightweight static sky gradient probe for mobile devices.
+ * When Drei's dynamic <Environment> is disabled to avoid CubeCamera WebGLRenderTarget OOM,
+ * this provides a zero-draw-call, 8KB equirectangular reflection map to scene.environment.
+ * Restores metallic specular sheen and natural ambient fill to vehicles without GPU overhead.
+ */
+export function MobileEnvironmentProbe(): null {
+  const scene = useThree((s) => s.scene);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const gradient = ctx.createLinearGradient(0, 0, 0, 32);
+      gradient.addColorStop(0.0, '#7eb6f2');  // Vibrant sky zenith
+      gradient.addColorStop(0.48, '#d4e6fb'); // Bright sunlit horizon
+      gradient.addColorStop(0.52, '#95a38e'); // Ground boundary
+      gradient.addColorStop(1.0, '#4b5742');  // Ambient terrain bounce
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 64, 32);
+    }
+    const texture = new CanvasTexture(canvas);
+    texture.mapping = EquirectangularReflectionMapping;
+    texture.colorSpace = SRGBColorSpace;
+    texture.needsUpdate = true;
+    scene.environment = texture;
+
+    return () => {
+      if (scene.environment === texture) {
+        scene.environment = null;
+      }
+      texture.dispose();
+    };
+  }, [scene]);
+
+  return null;
+}
+
+/**
  * Main game canvas — wraps the R3F Canvas with Physics, scene objects,
  * dynamic level environments, and post-processing effects.
  */
@@ -382,7 +438,7 @@ export function GameCanvas() {
         stencil: false,
         depth: true,
         toneMapping: ACESFilmicToneMapping,
-        toneMappingExposure: 0.98,
+        toneMappingExposure: getToneMappingExposure(isMobile),
       }}
       performance={{ min: 0.6 }}
       style={{
@@ -459,8 +515,8 @@ export function GameCanvas() {
           mieCoefficient={mieCoefficient}
           mieDirectionalG={mieDirectionalG}
         />
-        {/* Environment captures the Sky for realistic reflections on water and car */}
-        {canRenderEnvironment && (
+        {/* Environment captures the Sky on desktop/high, or mounts zero-draw-call gradient probe on mobile */}
+        {canRenderEnvironment ? (
           <EnvironmentErrorBoundary>
             <Environment background={false} resolution={envResolution} frames={1}>
               <Sky 
@@ -475,6 +531,8 @@ export function GameCanvas() {
               />
             </Environment>
           </EnvironmentErrorBoundary>
+        ) : (
+          <MobileEnvironmentProbe />
         )}
 
         {/* Terrain context wraps both physics terrain, visual grass, ocean, props, and checkpoints */}

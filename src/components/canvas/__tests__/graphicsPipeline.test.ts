@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { shouldEnableCanvasShadows, getCanvasShadowsType, shouldRenderEnvironment } from '../GameCanvas';
+import {
+  shouldEnableCanvasShadows,
+  getCanvasShadowsType,
+  shouldRenderEnvironment,
+  getToneMappingExposure,
+} from '../GameCanvas';
 import { useSettingsStore } from '@/store/settingsStore';
 
 describe('Graphics Pipeline & Settings Scaling', () => {
@@ -188,4 +193,15 @@ describe('Graphics Pipeline & Settings Scaling', () => {
       expect(onErrorMock).toHaveBeenCalled();
     });
   });
+
+  describe('getToneMappingExposure', () => {
+    it('elevates exposure to 1.32 on mobile to compensate for missing IBL fill and ACES toe curve', () => {
+      expect(getToneMappingExposure(true)).toBe(1.32);
+    });
+
+    it('maintains balanced 0.98 exposure on desktop', () => {
+      expect(getToneMappingExposure(false)).toBe(0.98);
+    });
+  });
 });
+

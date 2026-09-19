@@ -122,11 +122,17 @@ export function Lights() {
     }
   });
 
+  // Mobile light compensation: When Drei's dynamic <Environment> is disabled on mobile
+  // to protect from CubeCamera OOM, boost analytic ambient and hemisphere lights to replace missing IBL fill
+  const ambientIntensity = isMobile ? 0.72 : LIGHTING_CONFIG.ambient.intensity;
+  const hemisphereIntensity = isMobile ? 0.85 : LIGHTING_CONFIG.hemisphere.intensity;
+  const directionalIntensity = isMobile ? 1.45 : LIGHTING_CONFIG.directional.intensity;
+
   return (
     <>
       {/* Ambient fill light */}
       <ambientLight 
-        intensity={LIGHTING_CONFIG.ambient.intensity} 
+        intensity={ambientIntensity} 
         color={LIGHTING_CONFIG.ambient.color} 
       />
 
@@ -137,7 +143,7 @@ export function Lights() {
       <directionalLight
         ref={lightRef}
         target={targetRef.current}
-        intensity={LIGHTING_CONFIG.directional.intensity}
+        intensity={directionalIntensity}
         color={LIGHTING_CONFIG.directional.color}
         castShadow={!isMobile && shadowsEnabled && graphicsQuality !== 'low'}
         shadow-mapSize-width={shadowMapSize}
@@ -155,9 +161,9 @@ export function Lights() {
       {/* Hemisphere light — sky/ground color bounce */}
       <hemisphereLight
         args={[
-          LIGHTING_CONFIG.hemisphere.skyColor, 
-          LIGHTING_CONFIG.hemisphere.groundColor, 
-          LIGHTING_CONFIG.hemisphere.intensity
+          isMobile ? '#a2cbfa' : LIGHTING_CONFIG.hemisphere.skyColor, 
+          isMobile ? '#4e6244' : LIGHTING_CONFIG.hemisphere.groundColor, 
+          hemisphereIntensity,
         ]}
       />
     </>
