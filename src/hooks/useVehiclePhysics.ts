@@ -179,7 +179,7 @@ export function useVehiclePhysics(
       // Configure suspension for each wheel
       for (let i = 0; i < config.wheels.length; i++) {
         const wheel = config.wheels[i];
-        controller.setWheelSuspensionStiffness(i, wheel.suspensionStiffness);
+        controller.setWheelSuspensionStiffness?.(i, wheel.suspensionStiffness);
         if (typeof controller.setWheelMaxSuspensionTravel === 'function') {
           controller.setWheelMaxSuspensionTravel(i, wheel.suspensionTravel);
         }
@@ -188,10 +188,10 @@ export function useVehiclePhysics(
         // Absorbs bumps and landings smoothly while rapidly settling any bounce.
         const compDamping = wheel.suspensionCompression ?? (wheel.suspensionDamping * 0.75);
         const relaxDamping = wheel.suspensionRelaxation ?? (wheel.suspensionDamping * 1.15);
-        controller.setWheelSuspensionCompression(i, compDamping);
-        controller.setWheelSuspensionRelaxation(i, relaxDamping);
+        controller.setWheelSuspensionCompression?.(i, compDamping);
+        controller.setWheelSuspensionRelaxation?.(i, relaxDamping);
         // Ensure suspension can support high-G centripetal loads in vertical loops without bottoming out
-        controller.setWheelMaxSuspensionForce(i, Math.max(wheel.maxSuspensionForce ?? 15000, 85000));
+        controller.setWheelMaxSuspensionForce?.(i, Math.max(wheel.maxSuspensionForce ?? 15000, 85000));
       }
 
       vehicleControllerRef.current = controller;

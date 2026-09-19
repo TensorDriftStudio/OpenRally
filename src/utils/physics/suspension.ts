@@ -285,11 +285,11 @@ export function resetSuspensionBumpStops(
   if (controller && config) {
     for (let i = 0; i < config.wheels.length; i++) {
       const wheel = config.wheels[i];
-      controller.setWheelSuspensionStiffness(i, wheel.suspensionStiffness);
+      controller.setWheelSuspensionStiffness?.(i, wheel.suspensionStiffness);
       const c0 = wheel.suspensionCompression ?? (wheel.suspensionDamping * 0.75);
       const r0 = wheel.suspensionRelaxation ?? (wheel.suspensionDamping * 1.15);
-      controller.setWheelSuspensionCompression(i, c0);
-      controller.setWheelSuspensionRelaxation(i, r0);
+      controller.setWheelSuspensionCompression?.(i, c0);
+      controller.setWheelSuspensionRelaxation?.(i, r0);
     }
   }
 }
@@ -387,9 +387,9 @@ export function applyProgressiveSuspensionDynamics(
         const effectiveCompression = c0;
         const effectiveRelaxation = r0 * (1.8 + 0.8 * ramp);
 
-        controller.setWheelSuspensionStiffness(i, effectiveStiffness);
-        controller.setWheelSuspensionCompression(i, effectiveCompression);
-        controller.setWheelSuspensionRelaxation(i, effectiveRelaxation);
+        controller.setWheelSuspensionStiffness?.(i, effectiveStiffness);
+        controller.setWheelSuspensionCompression?.(i, effectiveCompression);
+        controller.setWheelSuspensionRelaxation?.(i, effectiveRelaxation);
       } else {
         // COMPRESSION / STROKE PHASE:
         // When landing from jumps: absorb shock with high viscous damping (up to 3.5x c0)
@@ -409,14 +409,14 @@ export function applyProgressiveSuspensionDynamics(
         const effectiveCompression = c0 * Math.max(dampScale, landingDampBoost);
         const effectiveRelaxation = r0 * dampScale;
 
-        controller.setWheelSuspensionStiffness(i, effectiveStiffness);
-        controller.setWheelSuspensionCompression(i, effectiveCompression);
-        controller.setWheelSuspensionRelaxation(i, effectiveRelaxation);
+        controller.setWheelSuspensionStiffness?.(i, effectiveStiffness);
+        controller.setWheelSuspensionCompression?.(i, effectiveCompression);
+        controller.setWheelSuspensionRelaxation?.(i, effectiveRelaxation);
       }
     } else {
-      controller.setWheelSuspensionStiffness(i, k0);
-      controller.setWheelSuspensionCompression(i, c0);
-      controller.setWheelSuspensionRelaxation(i, r0);
+      controller.setWheelSuspensionStiffness?.(i, k0);
+      controller.setWheelSuspensionCompression?.(i, c0);
+      controller.setWheelSuspensionRelaxation?.(i, r0);
     }
   }
 }
