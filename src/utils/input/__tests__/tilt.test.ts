@@ -28,9 +28,11 @@ describe('Mobile Motion Sensor (Tilt) Steering Subsystem', () => {
     listeners = {};
     const mockWindow = {
       DeviceOrientationEvent: class DeviceOrientationEvent {
+        type: string;
         beta?: number;
         gamma?: number;
-        constructor(public type: string, init?: { beta?: number; gamma?: number }) {
+        constructor(type: string, init?: { beta?: number; gamma?: number }) {
+          this.type = type;
           this.beta = init?.beta;
           this.gamma = init?.gamma;
         }
@@ -82,8 +84,7 @@ describe('Mobile Motion Sensor (Tilt) Steering Subsystem', () => {
         writable: true,
       });
     } else {
-      // @ts-expect-error cleanup global
-      delete globalThis.window;
+      Reflect.deleteProperty(globalThis, 'window');
     }
   });
 
