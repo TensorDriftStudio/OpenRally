@@ -11,6 +11,7 @@ import {
   calculateSpeedHeightDrop,
   calculateHighSpeedCameraRumble,
   calculateSlopeCameraAdjustments,
+  calculateStunt3DCameraFactor,
 } from '@/hooks/useChaseCamera';
 
 describe('Chase Camera Dynamic Speed Lag Compensation', () => {
@@ -475,6 +476,31 @@ describe('360° Smooth Camera Orbit & Invariant Distance', () => {
         expect(Number.isFinite(nanRes.lookTargetPitchDrop)).toBe(true);
         expect(nanRes.cameraElevationLift).toBe(0);
       });
+    });
+  });
+
+  describe('Chase Camera Stunt 3D Tracking', () => {
+    it('returns 0.0 for standard horizontal ground rally driving', () => {
+      // Flat ground: forward.y = 0, up.y = 1.0
+      expect(calculateStunt3DCameraFactor(0, 1.0)).toBe(0);
+      // Mild terrain slope (10° / 0.17 forward.y): zero stunt factor
+      expect(calculateStunt3DCameraFactor(0.17, 0.98)).toBe(0);
+    });
+
+    it('progressively engages when climbing steep vertical slopes and loops', () => {
+      // 30° climb: forward.y = 0.50
+      const factor30 = calculateStunt3DCameraFactor(0.50, 0.86);
+      expect(factor30).toBeGreaterThan(0.5);
+
+      // 90° vertical loop climb: forward.y = 1.0
+      const factor90 = calculateStunt3DCameraFactor(1.0, 0.0);
+      expect(factor90).toBe(1.0);
+    });
+
+    it('fully engages when vehicle is inverted upside down at loop apex', () => {
+      // Inverted loop apex: forward.y = 0, up.y = -1.0
+      const factorApex = calculateStunt3DCameraFactor(0, -1.0);
+      expect(factorApex).toBe(1.0);
     });
   });
 });

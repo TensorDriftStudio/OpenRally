@@ -17,7 +17,10 @@ export const ZEPHYR_WR4_VEHICLE_CONFIG: VehicleConfig = {
   },
   engine: {
     maxForce: 425,
-    maxSpeed: 255,
+    maxSpeed: 225,
+    turboBoostMultiplier: 1.10,
+    boostThresholdRpm: 3800,
+    turboSpoolRate: 3.2,
   },
   drivetrain: {
     frontBias: 0.48, // 48/52 Rear-biased AWD for nimble throttle steering
@@ -25,7 +28,7 @@ export const ZEPHYR_WR4_VEHICLE_CONFIG: VehicleConfig = {
   brakes: {
     maxForce: 18,
     handbrakeForce: 40,
-    frontBias: 0.50, // Balanced 50/50 brake distribution preventing nose-dive
+    frontBias: 0.65, // Balanced front-biased brake distribution preventing rear lockup
   },
   suspension: {
     frontAntiRollBarStiffness: 18.0,
@@ -34,11 +37,12 @@ export const ZEPHYR_WR4_VEHICLE_CONFIG: VehicleConfig = {
   },
   handling: {
     steeringCurve: [
-      [0, Math.PI / 3.6],
-      [40, Math.PI / 4.1],
-      [90, Math.PI / 6.3],
-      [150, Math.PI / 10.0],
-      [240, Math.PI / 15.0],
+      [0, Math.PI / 5.0],    // ~36.0° at 0 km/h (agile rally hairpin rotation)
+      [30, Math.PI / 7.8],   // ~23.1° at 30 km/h
+      [60, Math.PI / 12.5],  // ~14.4° at 60 km/h
+      [90, Math.PI / 18.0],  // ~10.0° at 90 km/h
+      [140, Math.PI / 27.0], // ~6.7° at 140 km/h
+      [240, Math.PI / 40.0], // ~4.5° at 240 km/h
     ],
     steeringSpeed: 8.8,
     assists: {
@@ -48,6 +52,9 @@ export const ZEPHYR_WR4_VEHICLE_CONFIG: VehicleConfig = {
   },
   aerodynamics: {
     downforceFactor: 21,
+    dragCoefficient: 0.48,
+    frontalArea: 2.0,
+    dragMultiplier: 1.0,
   },
   chassisDynamics: {
     maxRollAngle: 0.088, // ~5.0 degrees (classic balanced rally body roll)

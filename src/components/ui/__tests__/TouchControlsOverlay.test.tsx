@@ -103,6 +103,24 @@ describe('TouchControlsOverlay Component', () => {
       expect(htmlSmall).toContain('95px');
       expect(htmlLarge).toContain('129px');
     });
+
+    it('positions DRIFT button on the left side with ergonomic offset for both schemes', () => {
+      // Joystick scheme
+      const htmlJoy = renderToString(
+        <TouchControlsOverlay touchControlMode="always" touchSteeringScheme="joystick" />
+      );
+      // Handbrake container has left: calc(24px + var(--sal, 0px)) and 168px bottom offset in joystick mode
+      expect(htmlJoy).toContain('left:calc(24px + var(--sal, 0px))');
+      expect(htmlJoy).toContain('168px');
+
+      // Buttons scheme
+      const htmlBtn = renderToString(
+        <TouchControlsOverlay touchControlMode="always" touchSteeringScheme="buttons" />
+      );
+      // Handbrake container has left: calc(24px + var(--sal, 0px)) and 116px bottom offset in buttons mode
+      expect(htmlBtn).toContain('left:calc(24px + var(--sal, 0px))');
+      expect(htmlBtn).toContain('116px');
+    });
   });
 
   describe('Steering Calculations & Logic', () => {

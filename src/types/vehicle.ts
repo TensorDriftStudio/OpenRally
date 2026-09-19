@@ -38,6 +38,12 @@ export interface EngineConfig {
   readonly maxForce: number;
   /** Maximum speed in km/h (for HUD / limiter) */
   readonly maxSpeed: number;
+  /** Optional turbo boost multiplier when peak boost is reached (e.g. 1.25 for Group B, default: 1.10) */
+  readonly turboBoostMultiplier?: number;
+  /** Optional RPM threshold above which turbo boost builds (default: 3800 RPM) */
+  readonly boostThresholdRpm?: number;
+  /** Optional rate at which turbo builds pressure per second (default: 3.2) */
+  readonly turboSpoolRate?: number;
 }
 
 /**
@@ -171,6 +177,12 @@ export interface HandlingConfig {
 export interface AerodynamicsConfig {
   /** Downforce coefficient to keep the car glued to the ground at high speeds */
   readonly downforceFactor: number;
+  /** Drag coefficient (Cd), typical rally car ~0.45 to 0.55 (default: 0.48) */
+  readonly dragCoefficient?: number;
+  /** Frontal cross-sectional area (m^2), typical rally car ~1.8 to 2.2 m^2 (default: 2.0) */
+  readonly frontalArea?: number;
+  /** Optional direct aerodynamic drag multiplier to fine-tune high-speed resistance (default: 1.0) */
+  readonly dragMultiplier?: number;
 }
 
 /**

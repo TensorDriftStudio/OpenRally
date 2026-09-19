@@ -129,27 +129,27 @@ describe('Settings & Menu Gamepad Navigation Invariants', () => {
 
     it('toggles ABS, TCS, and ESP driving assists via gamepad actions', () => {
       const store = useSettingsStore.getState();
-      expect(store.absEnabled).toBe(true);
-      expect(store.tcsEnabled).toBe(true);
-      expect(store.espEnabled).toBe(true);
+      expect(store.absEnabled).toBe(false);
+      expect(store.tcsEnabled).toBe(false);
+      expect(store.espEnabled).toBe(false);
 
       // Toggle ABS
       store.toggleAbs();
-      expect(useSettingsStore.getState().absEnabled).toBe(false);
-      store.toggleAbs();
       expect(useSettingsStore.getState().absEnabled).toBe(true);
+      store.toggleAbs();
+      expect(useSettingsStore.getState().absEnabled).toBe(false);
 
       // Toggle TCS
       store.toggleTcs();
-      expect(useSettingsStore.getState().tcsEnabled).toBe(false);
-      store.toggleTcs();
       expect(useSettingsStore.getState().tcsEnabled).toBe(true);
+      store.toggleTcs();
+      expect(useSettingsStore.getState().tcsEnabled).toBe(false);
 
       // Toggle ESP
       store.toggleEsp();
-      expect(useSettingsStore.getState().espEnabled).toBe(false);
-      store.toggleEsp();
       expect(useSettingsStore.getState().espEnabled).toBe(true);
+      store.toggleEsp();
+      expect(useSettingsStore.getState().espEnabled).toBe(false);
     });
   });
 

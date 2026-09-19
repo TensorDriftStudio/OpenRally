@@ -37,6 +37,26 @@ const _idealPos = new Vector3();
 const _lookOffset = new Vector3();
 const _idealLook = new Vector3();
 const _forward = new Vector3();
+const _up = new Vector3();
+const _camUp = new Vector3();
+const _offsetFlat = new Vector3();
+const _offset3D = new Vector3();
+const _lookOffsetFlat = new Vector3();
+const _lookOffset3D = new Vector3();
+const _worldUp = new Vector3(0, 1, 0);
+
+/**
+ * Evaluates the 3D stunt camera blend factor (0.0 to 1.0) based on vehicle pitch and roll departure
+ * from standard horizontal terrain driving.
+ * Smoothly activates 3D orientation tracking during steep climbs, vertical loops, and inversions
+ * to eliminate Euler 'YXZ' gimbal lock and prevent camera clipping.
+ */
+export function calculateStunt3DCameraFactor(forwardY: number, upY: number): number {
+  const pitchDeparture = Math.max(0, Math.abs(forwardY) - 0.25) / 0.30;
+  const rollDeparture = Math.max(0, (1.0 - upY) - 0.18) / 0.35;
+  const raw = Math.max(pitchDeparture, rollDeparture);
+  return MathUtils.clamp(raw, 0, 1);
+}
 
 /**
  * Pure mathematical calculation of velocity lead compensation for the chase camera.
@@ -442,6 +462,7 @@ export function useChaseCamera(
         Number.isFinite(idealLookRef.current.y) &&
         Number.isFinite(idealLookRef.current.z)
       ) {
+        camera.up.set(0, 1, 0);
         camera.position.copy(idealPosRef.current);
         camera.lookAt(idealLookRef.current);
       }
@@ -468,8 +489,9 @@ export function useChaseCamera(
     target.getWorldPosition(_bodyPos);
     target.getWorldQuaternion(_worldQuat);
 
-    // Extract pitch from forward vector
+    // Extract pitch from forward vector and orientation
     _forward.set(0, 0, 1).applyQuaternion(_worldQuat);
+    _up.set(0, 1, 0).applyQuaternion(_worldQuat);
     const targetPitch = Math.asin(MathUtils.clamp(_forward.y, -0.99, 0.99));
     
     // Smooth the vehicle pitch
@@ -508,6 +530,10 @@ export function useChaseCamera(
     const blendFactor = 1 - Math.exp((isOrbitActive ? 14.0 : 6.0) * -safeDelta);
     orbitActiveBlendRef.current = MathUtils.lerp(orbitActiveBlendRef.current, targetBlend, blendFactor);
     const orbitBlend = orbitActiveBlendRef.current;
+
+    // 3D Stunt camera blend factor (smoothly tracks 3D chassis orientation during vertical loops and steep wall climbs)
+    const stunt3DFactor = calculateStunt3DCameraFactor(_forward.y, _up.y);
+    const effectiveStunt3D = stunt3DFactor * (1 - orbitBlend);
 
     // Extract vehicle yaw
     _euler.setFromQuaternion(_worldQuat, 'YXZ');
@@ -548,8 +574,17 @@ export function useChaseCamera(
 
     const effectiveH = baseH + slopeAdjustments.cameraElevationLift;
 
+    // In stunt loops and steep vertical geometry, adapt follow distance to stay strictly inside the curvature
+    // In a 9.5m radius loop, a 14m tangent distance punches 7.4m outside the road deck.
+    // Tightening stunt follow distance to ~5.5m and elevation to ~2.2m mathematically guarantees
+    // the camera stays strictly inside the concave track cylinder with zero clipping.
+    const stuntD = MathUtils.lerp(baseD, 5.5, effectiveStunt3D);
+    const stuntH = MathUtils.lerp(effectiveH, 2.2, effectiveStunt3D);
+
     // Base distance is invariant (never shrunk closer than standstill)
-    _offset.set(0, effectiveH, -baseD).applyQuaternion(_yawQuat);
+    _offsetFlat.set(0, effectiveH, -baseD).applyQuaternion(_yawQuat);
+    _offset3D.set(0, stuntH, -stuntD).applyQuaternion(_worldQuat);
+    _offset.lerpVectors(_offsetFlat, _offset3D, effectiveStunt3D);
     _idealPos.copy(_bodyPos).add(_offset);
 
     // ─── Look-At Target with Downhill Road Pitch Compensation ───
@@ -559,8 +594,12 @@ export function useChaseCamera(
       orbitBlend,
     );
     const baseLookZ = MathUtils.lerp(LOOK_AHEAD_OFFSET.z, 0, orbitBlend);
+    const stuntLookZ = MathUtils.lerp(baseLookZ, 3.5, effectiveStunt3D);
+    const stuntLookY = MathUtils.lerp(baseLookY, 1.0, effectiveStunt3D);
 
-    _lookOffset.set(0, baseLookY, baseLookZ).applyQuaternion(_yawQuat);
+    _lookOffsetFlat.set(0, baseLookY, baseLookZ).applyQuaternion(_yawQuat);
+    _lookOffset3D.set(0, stuntLookY, stuntLookZ).applyQuaternion(_worldQuat);
+    _lookOffset.lerpVectors(_lookOffsetFlat, _lookOffset3D, effectiveStunt3D);
     _idealLook.copy(_bodyPos).add(_lookOffset);
 
     // ─── Dynamic Velocity Lead Compensation (Halves In-Motion Lag Pull-Back by 50%) ───
@@ -593,7 +632,8 @@ export function useChaseCamera(
         levelData.terrainBase.width,
         levelData.terrainBase.depth,
       );
-      const minTerrainClearance = cameraMode === 'chase_close' ? 1.7 : 2.8;
+      const baseTerrainClearance = cameraMode === 'chase_close' ? 1.7 : 2.8;
+      const minTerrainClearance = MathUtils.lerp(baseTerrainClearance, 0.8, effectiveStunt3D);
       _idealPos.y = Math.max(_idealPos.y, camTerrainY + minTerrainClearance);
 
       const lookTerrainY = getInterpolatedHeight(
@@ -628,19 +668,14 @@ export function useChaseCamera(
         levelData.terrainBase.width,
         levelData.terrainBase.depth,
       );
-      const minTerrainClearance = cameraMode === 'chase_close' ? 1.7 : 2.8;
+      const baseTerrainClearance = cameraMode === 'chase_close' ? 1.7 : 2.8;
+      const minTerrainClearance = MathUtils.lerp(baseTerrainClearance, 0.8, effectiveStunt3D);
       idealPosRef.current.y = Math.max(idealPosRef.current.y, smoothedTerrainY + minTerrainClearance);
     }
 
-    // Prevent camera from going below vehicle baseline (minimum Y)
-    idealPosRef.current.y = Math.max(idealPosRef.current.y, _bodyPos.y + MIN_CAM_Y_OFFSET);
-
-    // High-speed chassis micro-rumble (road & aerodynamic vibration)
-    const rumble = calculateHighSpeedCameraRumble(safeSpeed, state.clock.elapsedTime, orbitBlend);
-    if (rumble.offsetX !== 0 || rumble.offsetY !== 0) {
-      _offset.set(rumble.offsetX, rumble.offsetY, 0).applyQuaternion(_yawQuat);
-      idealPosRef.current.add(_offset);
-    }
+    // Prevent camera from going below vehicle baseline (minimum Y, dynamically relaxed during 3D stunts & loops)
+    const effectiveMinCamY = MathUtils.lerp(MIN_CAM_Y_OFFSET, -10.0, effectiveStunt3D);
+    idealPosRef.current.y = Math.max(idealPosRef.current.y, _bodyPos.y + effectiveMinCamY);
 
     // Apply to camera with strict finite number check
     if (
@@ -651,7 +686,22 @@ export function useChaseCamera(
       Number.isFinite(idealLookRef.current.y) &&
       Number.isFinite(idealLookRef.current.z)
     ) {
+      _camUp.lerpVectors(_worldUp, _up, effectiveStunt3D).normalize();
+      camera.up.copy(_camUp);
       camera.position.copy(idealPosRef.current);
+
+      // High-speed chassis micro-rumble (road & aerodynamic vibration)
+      // Applied directly to transient camera.position so idealPosRef smoothing is never mutated or polluted.
+      // Smoothly faded to 0 during 3D stunts (effectiveStunt3D > 0) to prevent Euler gimbal-lock jitter at 90° pitch.
+      if (effectiveStunt3D < 0.2) {
+        const rumbleScale = 1.0 - effectiveStunt3D / 0.2;
+        const rumble = calculateHighSpeedCameraRumble(safeSpeed, state.clock.elapsedTime, orbitBlend);
+        if (rumble.offsetX !== 0 || rumble.offsetY !== 0) {
+          _offset.set(rumble.offsetX * rumbleScale, rumble.offsetY * rumbleScale, 0).applyQuaternion(_yawQuat);
+          camera.position.add(_offset);
+        }
+      }
+
       camera.lookAt(idealLookRef.current);
     }
 

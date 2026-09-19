@@ -100,6 +100,17 @@ export function applyAssists(
       if (!isPowerSliding && Math.abs(_localAngVel.y) > 0.2) {
         localTorqueY -= _localAngVel.y * Math.max(0.18, config.handling.assists.yawDamping * 2.0) * mass * dt * 1.5;
       }
+    } else {
+      // Reverse motion (forwardSpeed <= 1.0):
+      // Active Reverse Yaw Damping: Prevents straight-line forklift snap-spinouts,
+      // but completely yields during handbrake turns or intentional steering flicks to allow J-turns!
+      if (forwardSpeed < -1.2 && Math.abs(_localAngVel.y) > 0.35 && !input.handbrake) {
+        const isIntentionalTurn = Math.abs(input.steering) > 0.65;
+        if (!isIntentionalTurn) {
+          const reverseDamping = 1.6 * mass * dt;
+          localTorqueY -= _localAngVel.y * reverseDamping;
+        }
+      }
     }
   } else {
     // Handbrake Active: allow responsive handbrake flick rotation and deliberate slides,
@@ -117,9 +128,15 @@ export function applyAssists(
   if (Math.abs(_localAngVel.x) > 0.04) {
     const isUnderThrottle = input.throttle > 0.1;
     const isPitchingUp = _localAngVel.x < -0.04;
-    const dampMultiplier = isUnderThrottle && isPitchingUp 
-      ? assistsBalance.pitchDampingThrottleUp 
-      : assistsBalance.pitchDampingNormal;
+    // Power wheelies only occur during standing starts and low-speed acceleration (<= 45 km/h / 12.5 m/s).
+    // At high speeds, pitch-up rotation is natural terrain cresting or loop curvature, which must not be forcefully fought.
+    const isLowSpeedLaunch = Math.abs(forwardSpeed) < 12.5;
+    let dampMultiplier = assistsBalance.pitchDampingNormal;
+    if (isPitchingUp) {
+      dampMultiplier = isUnderThrottle && isLowSpeedLaunch
+        ? assistsBalance.pitchDampingThrottleUp
+        : 0;
+    }
     localTorqueX = -_localAngVel.x * dampMultiplier * mass * dt;
   }
 

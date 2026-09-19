@@ -16,8 +16,11 @@ export const VORTEX_B_VEHICLE_CONFIG: VehicleConfig = {
     centerOfMassY: -0.36,
   },
   engine: {
-    maxForce: 450,
-    maxSpeed: 280,
+    maxForce: 430,
+    maxSpeed: 235,
+    turboBoostMultiplier: 1.25,
+    boostThresholdRpm: 3900,
+    turboSpoolRate: 3.6,
   },
   drivetrain: {
     frontBias: 0.47, // 47/53 Rear-biased AWD for nimble throttle steering
@@ -25,7 +28,7 @@ export const VORTEX_B_VEHICLE_CONFIG: VehicleConfig = {
   brakes: {
     maxForce: 20,
     handbrakeForce: 42,
-    frontBias: 0.52,
+    frontBias: 0.65,
   },
   suspension: {
     frontAntiRollBarStiffness: 19.5,
@@ -34,11 +37,12 @@ export const VORTEX_B_VEHICLE_CONFIG: VehicleConfig = {
   },
   handling: {
     steeringCurve: [
-      [0, Math.PI / 3.5],
-      [40, Math.PI / 4.0],
-      [90, Math.PI / 6.0],
-      [150, Math.PI / 9.5],
-      [240, Math.PI / 14.0],
+      [0, Math.PI / 4.9],    // ~36.7° at 0 km/h (Group B rally lock)
+      [30, Math.PI / 7.5],   // ~24.0° at 30 km/h
+      [60, Math.PI / 12.0],  // ~15.0° at 60 km/h
+      [90, Math.PI / 17.5],  // ~10.3° at 90 km/h
+      [140, Math.PI / 26.5], // ~6.8° at 140 km/h
+      [240, Math.PI / 39.0], // ~4.6° at 240 km/h
     ],
     steeringSpeed: 9.2,
     assists: {
@@ -48,6 +52,9 @@ export const VORTEX_B_VEHICLE_CONFIG: VehicleConfig = {
   },
   aerodynamics: {
     downforceFactor: 26, // Large rally rear wing & hood vents
+    dragCoefficient: 0.52,
+    frontalArea: 2.05,
+    dragMultiplier: 1.05,
   },
   wheels: [
     {

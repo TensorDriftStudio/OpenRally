@@ -420,8 +420,11 @@ export function sampleGamepad(sensitivity = 1.0, customGamepad?: Gamepad | null)
     if (absSteer === 0) {
       finalSteering = 0;
     } else if (sensitivity <= 1.0) {
-      const progressive = sensitivity * absSteer + (1 - sensitivity) * Math.pow(absSteer, 3);
-      finalSteering = signSteer * Math.min(1.0, Math.max(0, progressive));
+      // Smooth continuous power response for sensitivity <= 1.0:
+      // Replaces the cubic polynomial cliff with a predictable exponential curve (exponent 1.0 to 1.85)
+      // providing gentle, intuitive micro-corrections around center without an abrupt slope surge.
+      const exponent = 1.0 + (1.0 - Math.max(0.1, sensitivity)) * 0.85;
+      finalSteering = signSteer * Math.min(1.0, Math.pow(absSteer, exponent));
     } else {
       finalSteering = signSteer * Math.min(1.0, Math.pow(absSteer, 1 / Math.max(0.1, sensitivity)));
     }

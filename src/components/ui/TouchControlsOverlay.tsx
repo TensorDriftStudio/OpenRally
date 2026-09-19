@@ -319,6 +319,7 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
       } catch {}
+      e.stopPropagation();
       setHandbrakePressed(true);
       if (touchHaptics) triggerHapticFeedback(25);
       setTouchInput({ handbrake: true });
@@ -331,6 +332,7 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
       try {
         e.currentTarget.releasePointerCapture(e.pointerId);
       } catch {}
+      e.stopPropagation();
       setHandbrakePressed(false);
       setTouchInput({ handbrake: false });
     },
@@ -650,12 +652,16 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
         </button>
       </div>
 
-      {/* Handbrake Button (Drift) */}
+      {/* Handbrake Button (Drift) - Ergonomic Left Thumb Placement */}
       <div
         style={{
           position: 'absolute',
-          right: 'calc(24px + var(--sar, 0px))',
-          bottom: `calc(${Math.round(150 * sizeMultiplier)}px + var(--sab, 0px))`,
+          left: 'calc(24px + var(--sal, 0px))',
+          bottom:
+            touchSteeringScheme === 'joystick'
+              ? `calc(${Math.round(168 * sizeMultiplier)}px + var(--sab, 0px))`
+              : `calc(${Math.round(116 * sizeMultiplier)}px + var(--sab, 0px))`,
+          zIndex: 10,
           pointerEvents: 'auto',
         }}
       >
@@ -692,7 +698,7 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
           data-testid="touch-manual-shifter"
           style={{
             position: 'absolute',
-            right: `calc(${Math.round(120 * sizeMultiplier)}px + var(--sar, 0px))`,
+            right: 'calc(24px + var(--sar, 0px))',
             bottom: `calc(${Math.round(150 * sizeMultiplier)}px + var(--sab, 0px))`,
             display: 'flex',
             gap: '8px',

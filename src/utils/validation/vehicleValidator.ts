@@ -34,6 +34,29 @@ export function validateVehicleConfig(config: VehicleConfig): ValidationResult {
   if (!config.engine || config.engine.maxSpeed <= 0) {
     errors.push(`Invalid engine.maxSpeed: ${config.engine?.maxSpeed}. Must be > 0.`);
   }
+  if (config.engine?.turboBoostMultiplier !== undefined && (typeof config.engine.turboBoostMultiplier !== 'number' || config.engine.turboBoostMultiplier < 1.0)) {
+    errors.push(`Invalid engine.turboBoostMultiplier: ${config.engine.turboBoostMultiplier}. Must be >= 1.0.`);
+  }
+  if (config.engine?.boostThresholdRpm !== undefined && (typeof config.engine.boostThresholdRpm !== 'number' || config.engine.boostThresholdRpm <= 0)) {
+    errors.push(`Invalid engine.boostThresholdRpm: ${config.engine.boostThresholdRpm}. Must be > 0.`);
+  }
+  if (config.engine?.turboSpoolRate !== undefined && (typeof config.engine.turboSpoolRate !== 'number' || config.engine.turboSpoolRate <= 0)) {
+    errors.push(`Invalid engine.turboSpoolRate: ${config.engine.turboSpoolRate}. Must be > 0.`);
+  }
+
+  // Aerodynamics checks
+  if (!config.aerodynamics || typeof config.aerodynamics.downforceFactor !== 'number' || config.aerodynamics.downforceFactor < 0) {
+    errors.push(`Invalid aerodynamics.downforceFactor: ${config.aerodynamics?.downforceFactor}. Must be >= 0.`);
+  }
+  if (config.aerodynamics?.dragCoefficient !== undefined && (typeof config.aerodynamics.dragCoefficient !== 'number' || config.aerodynamics.dragCoefficient <= 0)) {
+    errors.push(`Invalid aerodynamics.dragCoefficient: ${config.aerodynamics.dragCoefficient}. Must be > 0.`);
+  }
+  if (config.aerodynamics?.frontalArea !== undefined && (typeof config.aerodynamics.frontalArea !== 'number' || config.aerodynamics.frontalArea <= 0)) {
+    errors.push(`Invalid aerodynamics.frontalArea: ${config.aerodynamics.frontalArea}. Must be > 0.`);
+  }
+  if (config.aerodynamics?.dragMultiplier !== undefined && (typeof config.aerodynamics.dragMultiplier !== 'number' || config.aerodynamics.dragMultiplier < 0)) {
+    errors.push(`Invalid aerodynamics.dragMultiplier: ${config.aerodynamics.dragMultiplier}. Must be >= 0.`);
+  }
 
   // Drivetrain checks
   if (!config.drivetrain || config.drivetrain.frontBias < 0 || config.drivetrain.frontBias > 1) {

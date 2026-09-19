@@ -29,6 +29,51 @@ export function isAndroid(): boolean {
 }
 
 /**
+ * Detects whether the current client is running on iOS or iPadOS.
+ * Evaluates Capacitor native platform ('ios'), mobile user-agent matching (iPhone, iPad, iPod),
+ * and iPadOS 13+ desktop-class Safari user agent spoofing ('MacIntel' with multi-touch points).
+ * Safe for SSR and headless environments.
+ */
+export function isIOS(): boolean {
+  if (typeof window !== 'undefined') {
+    const anyWindow = window as unknown as {
+      Capacitor?: { getPlatform?: () => string };
+    };
+    if (anyWindow.Capacitor?.getPlatform?.() === 'ios') {
+      return true;
+    }
+  }
+
+  if (typeof navigator !== 'undefined') {
+    const ua = navigator.userAgent || '';
+    if (/iPad|iPhone|iPod/i.test(ua)) {
+      return true;
+    }
+    // iPadOS 13+ desktop-class Safari user-agent spoofing reports MacIntel with touch points
+    if (
+      typeof navigator.platform === 'string' &&
+      navigator.platform === 'MacIntel' &&
+      typeof navigator.maxTouchPoints === 'number' &&
+      navigator.maxTouchPoints > 1
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Detects whether the current browser is Apple Safari (WebKit engine).
+ * Distinguishes genuine Safari from Chrome/Edge/Firefox on desktop and iOS.
+ */
+export function isSafari(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /Safari/i.test(ua) && !/Chrome|CriOS|Edg|Android/i.test(ua);
+}
+
+/**
  * Detects whether the current client is a mobile device or touch-first mobile environment.
  * Evaluates Capacitor native runtime, user-agent strings, and pointer/viewport media queries.
  */
@@ -38,20 +83,29 @@ export function isMobileDevice(): boolean {
     const anyWindow = window as unknown as {
       Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
     };
-    if (anyWindow.Capacitor?.isNativePlatform?.() || anyWindow.Capacitor?.getPlatform?.() === 'android') {
+    if (
+      anyWindow.Capacitor?.isNativePlatform?.() ||
+      anyWindow.Capacitor?.getPlatform?.() === 'android' ||
+      anyWindow.Capacitor?.getPlatform?.() === 'ios'
+    ) {
       return true;
     }
   }
 
-  // 2. Mobile user-agent matching (Android, iOS, iPadOS)
+  // 2. iOS / iPadOS check (including iPadOS desktop user-agent)
+  if (isIOS()) {
+    return true;
+  }
+
+  // 3. Mobile user-agent matching (Android, etc.)
   if (typeof navigator !== 'undefined' && navigator.userAgent) {
     const ua = navigator.userAgent;
-    if (/Android|iPhone|iPad|iPod/i.test(ua)) {
+    if (/Android/i.test(ua)) {
       return true;
     }
   }
 
-  // 3. Touch-first coarse pointer with mobile-scale viewport (avoids false-positive on desktop touchscreens)
+  // 4. Touch-first coarse pointer with mobile-scale viewport (avoids false-positive on desktop touchscreens)
   if (
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
@@ -73,8 +127,12 @@ export function isMobileDevice(): boolean {
  * triggering severe GPU thermal throttling within 60-90 seconds.
  * Clamping to 1.75 yields ~1.37 MP (~284 effective PPI), perfectly balancing retina clarity
  * with sustained 60 FPS performance.
+ *
+ * On iOS Safari, the memory ceiling enforced by WebKit's jetsam daemon (~300MB)
+ * requires a stricter DPR ceiling of 1.5 to prevent process termination crashes.
  */
 export const MOBILE_MAX_DPR = 1.75;
+export const IOS_MAX_DPR = 1.5;
 export const DESKTOP_MAX_DPR = 2.0;
 
 /**
@@ -117,7 +175,7 @@ export function calculateDprConfig({
   viewportHeight,
 }: DprCalculationParams): DprCalculationResult {
   const safeBase = Number.isFinite(windowDpr) && windowDpr > 0 ? windowDpr : 1.0;
-  const maxCap = isMobile ? MOBILE_MAX_DPR : DESKTOP_MAX_DPR;
+  const maxCap = (isMobile && isIOS()) ? IOS_MAX_DPR : isMobile ? MOBILE_MAX_DPR : DESKTOP_MAX_DPR;
 
   // Clamp base DPR to device ceiling
   const baseDpr = Math.min(safeBase, maxCap);
@@ -138,7 +196,7 @@ export function calculateDprConfig({
   const rawTarget = Math.min(baseDpr, qualityMaxDpr) * clampedResolutionScale;
 
   // On mobile, guarantee the target DPR never breaches the thermal ceiling even with super-sampling
-  let clampedTargetDpr = isMobile ? Math.min(rawTarget, MOBILE_MAX_DPR) : rawTarget;
+  let clampedTargetDpr = isMobile ? Math.min(rawTarget, maxCap) : rawTarget;
 
   // Clamp target DPR by maximum rendered pixel count to avoid GPU fill-rate exhaustion on 4K/QHD displays
   const vpWidth = viewportWidth ?? (typeof window !== 'undefined' ? window.innerWidth : undefined);

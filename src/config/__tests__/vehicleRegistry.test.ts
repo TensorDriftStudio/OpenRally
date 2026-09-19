@@ -48,7 +48,7 @@ describe('Vehicle Registry', () => {
     expect(phantom.id).toBe('apex_phantom_b');
     expect(phantom.name).toBe('Phantom B-Spec');
     expect(phantom.stats.driveType).toBe('AWD');
-    expect(phantom.config.engine.maxSpeed).toBe(275);
+    expect(phantom.config.engine.maxSpeed).toBe(232);
 
     const unknownCar = getVehiclePreset('non_existent_car');
     expect(unknownCar.id).toBe('zephyr_wr4');

@@ -197,7 +197,7 @@ export function ControlsView({
             <strong style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={styles.touchBadgeDrift}>DRIFT</span> Handbrake
             </strong>
-            <span style={{ color: '#FDE68A' }}>Thumb roll above throttle for hairpins</span>
+            <span style={{ color: '#FDE68A' }}>Left-side thumb button above steering for hairpins</span>
           </div>
 
           <div style={menuStyles.controlRow}>

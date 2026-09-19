@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { shouldEnableCanvasShadows, getCanvasShadowsType } from '../GameCanvas';
+import { shouldEnableCanvasShadows, getCanvasShadowsType, shouldRenderEnvironment } from '../GameCanvas';
 import { useSettingsStore } from '@/store/settingsStore';
 
 describe('Graphics Pipeline & Settings Scaling', () => {
@@ -140,6 +140,50 @@ describe('Graphics Pipeline & Settings Scaling', () => {
 
       boundaryWithCallback.componentDidCatch(new Error('Shader Compilation Timeout'), {
         componentStack: 'in EffectComposer\n in GameCanvas',
+      });
+      expect(onErrorMock).toHaveBeenCalled();
+    });
+  });
+
+  describe('shouldRenderEnvironment', () => {
+    it('enables environment cubemap reflections on desktop across all quality levels', () => {
+      expect(shouldRenderEnvironment(false, 'low')).toBe(true);
+      expect(shouldRenderEnvironment(false, 'medium')).toBe(true);
+      expect(shouldRenderEnvironment(false, 'high')).toBe(true);
+      expect(shouldRenderEnvironment(false, 'very_high')).toBe(true);
+    });
+
+    it('strictly bypasses environment cubemap reflections on mobile for low and medium presets', () => {
+      expect(shouldRenderEnvironment(true, 'low')).toBe(false);
+      expect(shouldRenderEnvironment(true, 'medium')).toBe(false);
+    });
+
+    it('permits environment cubemap reflections on mobile only for high and very_high presets', () => {
+      expect(shouldRenderEnvironment(true, 'high')).toBe(true);
+      expect(shouldRenderEnvironment(true, 'very_high')).toBe(true);
+    });
+  });
+
+  describe('EnvironmentErrorBoundary containment', () => {
+    it('catches and isolates cubemap capture exceptions without unmounting the scene', async () => {
+      const { EnvironmentErrorBoundary } = await import('../EnvironmentErrorBoundary');
+      const boundary = new EnvironmentErrorBoundary({
+        children: null,
+      });
+      expect(boundary.state.hasError).toBe(false);
+
+      const state = EnvironmentErrorBoundary.getDerivedStateFromError(new Error('CubeCamera WebGLRenderTarget OOM'));
+      expect(state.hasError).toBe(true);
+      expect(state.errorMessage).toBe('CubeCamera WebGLRenderTarget OOM');
+
+      const onErrorMock = vi.fn();
+      const boundaryWithCallback = new EnvironmentErrorBoundary({
+        children: null,
+        onError: onErrorMock,
+      });
+
+      boundaryWithCallback.componentDidCatch(new Error('CubeCamera WebGLRenderTarget OOM'), {
+        componentStack: 'in Environment\n in GameCanvas',
       });
       expect(onErrorMock).toHaveBeenCalled();
     });

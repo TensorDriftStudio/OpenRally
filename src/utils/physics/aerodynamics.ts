@@ -1,10 +1,17 @@
 import type { RapierRigidBody } from '@react-three/rapier';
 import { Vector3, Quaternion } from 'three';
 import type { VehicleConfig } from '@/types/vehicle';
+import {
+  AIR_DENSITY,
+  DEFAULT_DRAG_COEFFICIENT,
+  DEFAULT_FRONTAL_AREA,
+  AERO_FORCE_SCALE,
+} from '@/config/vehicle';
 
 const _bodyQuat = new Quaternion();
 const _downVector = new Vector3();
 const _waterDragImpulse = new Vector3();
+const _aeroDragImpulse = new Vector3();
 
 export function applyAerodynamics(
   body: RapierRigidBody,
@@ -12,7 +19,8 @@ export function applyAerodynamics(
   forwardSpeed: number,
   velocity: Vector3,
   posY: number,
-  dt: number
+  dt: number,
+  aeroDragMultiplier: number = 1.0,
 ) {
   // Apply aerodynamic downforce along the local down axis to keep the car grounded without crushing it
   const bodyRot = body.rotation();
@@ -50,6 +58,37 @@ export function applyAerodynamics(
       Number.isFinite(_waterDragImpulse.z)
     ) {
       body.applyImpulse(_waterDragImpulse, true);
+    }
+  }
+
+  // Apply atmospheric aerodynamic drag opposing planar motion (Fd = 0.5 * rho * Cd * A * v^2)
+  const planarSpeedSq = velocity.x * velocity.x + velocity.z * velocity.z;
+  if (planarSpeedSq > 0.25 && safeDt > 0) {
+    const planarSpeed = Math.sqrt(planarSpeedSq);
+    const cd = config.aerodynamics.dragCoefficient ?? DEFAULT_DRAG_COEFFICIENT;
+    const area = config.aerodynamics.frontalArea ?? DEFAULT_FRONTAL_AREA;
+    const customMult = config.aerodynamics.dragMultiplier ?? 1.0;
+    const totalMultiplier = customMult * aeroDragMultiplier;
+
+    // F_drag = 0.5 * rho * Cd * A * v^2 * AERO_FORCE_SCALE
+    const rawDragForce = 0.5 * AIR_DENSITY * cd * area * planarSpeedSq * AERO_FORCE_SCALE * totalMultiplier;
+    const dragImpulseMag = rawDragForce * safeDt;
+
+    // Numerical safety guard: aerodynamic drag impulse cannot exceed 85% of vehicle's current planar momentum
+    const maxDragImpulse = mass * planarSpeed * 0.85;
+    const clampedDrag = Math.min(dragImpulseMag, maxDragImpulse);
+
+    _aeroDragImpulse.set(
+      -(velocity.x / planarSpeed) * clampedDrag,
+      0,
+      -(velocity.z / planarSpeed) * clampedDrag,
+    );
+
+    if (
+      Number.isFinite(_aeroDragImpulse.x) &&
+      Number.isFinite(_aeroDragImpulse.z)
+    ) {
+      body.applyImpulse(_aeroDragImpulse, true);
     }
   }
 }

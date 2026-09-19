@@ -79,9 +79,9 @@ export const DEFAULT_SETTINGS: GameSettings = {
   gameMusicVolume: 0.5,
   vibrationEnabled: true,
   vibrationIntensity: 1.0,
-  absEnabled: true,
-  tcsEnabled: true,
-  espEnabled: true,
+  absEnabled: false,
+  tcsEnabled: false,
+  espEnabled: false,
   graphicsConfiguredByUser: false,
   ...DEFAULT_TOUCH_SETTINGS,
 };

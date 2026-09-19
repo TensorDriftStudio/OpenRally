@@ -419,56 +419,56 @@ describe('settingsStore', () => {
   });
 
   describe('driving assists (ABS, TCS, ESP)', () => {
-    it('defaults to all assists enabled', () => {
+    it('defaults to all assists disabled', () => {
       const state = useSettingsStore.getState();
-      expect(state.absEnabled).toBe(true);
-      expect(state.tcsEnabled).toBe(true);
-      expect(state.espEnabled).toBe(true);
+      expect(state.absEnabled).toBe(false);
+      expect(state.tcsEnabled).toBe(false);
+      expect(state.espEnabled).toBe(false);
     });
 
     it('toggles ABS and persists to localStorage', () => {
       const { toggleAbs, setAbsEnabled } = useSettingsStore.getState();
 
       toggleAbs();
-      expect(useSettingsStore.getState().absEnabled).toBe(false);
+      expect(useSettingsStore.getState().absEnabled).toBe(true);
       let saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}');
-      expect(saved.absEnabled).toBe(false);
+      expect(saved.absEnabled).toBe(true);
 
       toggleAbs();
-      expect(useSettingsStore.getState().absEnabled).toBe(true);
-
-      setAbsEnabled(false);
       expect(useSettingsStore.getState().absEnabled).toBe(false);
+
+      setAbsEnabled(true);
+      expect(useSettingsStore.getState().absEnabled).toBe(true);
     });
 
     it('toggles TCS and persists to localStorage', () => {
       const { toggleTcs, setTcsEnabled } = useSettingsStore.getState();
 
       toggleTcs();
-      expect(useSettingsStore.getState().tcsEnabled).toBe(false);
+      expect(useSettingsStore.getState().tcsEnabled).toBe(true);
       let saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}');
-      expect(saved.tcsEnabled).toBe(false);
+      expect(saved.tcsEnabled).toBe(true);
 
       toggleTcs();
-      expect(useSettingsStore.getState().tcsEnabled).toBe(true);
-
-      setTcsEnabled(false);
       expect(useSettingsStore.getState().tcsEnabled).toBe(false);
+
+      setTcsEnabled(true);
+      expect(useSettingsStore.getState().tcsEnabled).toBe(true);
     });
 
     it('toggles ESP and persists to localStorage', () => {
       const { toggleEsp, setEspEnabled } = useSettingsStore.getState();
 
       toggleEsp();
-      expect(useSettingsStore.getState().espEnabled).toBe(false);
+      expect(useSettingsStore.getState().espEnabled).toBe(true);
       let saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}');
-      expect(saved.espEnabled).toBe(false);
+      expect(saved.espEnabled).toBe(true);
 
       toggleEsp();
-      expect(useSettingsStore.getState().espEnabled).toBe(true);
-
-      setEspEnabled(false);
       expect(useSettingsStore.getState().espEnabled).toBe(false);
+
+      setEspEnabled(true);
+      expect(useSettingsStore.getState().espEnabled).toBe(true);
     });
 
     it('loads assists from localStorage correctly', () => {

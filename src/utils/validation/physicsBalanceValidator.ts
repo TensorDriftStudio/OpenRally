@@ -111,6 +111,24 @@ export function validateDrivingModelBalance(balance: DrivingModelBalance): Valid
     if (!isFiniteNumber(dt.rearSpoolLockRatio) || dt.rearSpoolLockRatio < 0 || dt.rearSpoolLockRatio > 1.0) {
       errors.push(`drivetrain.rearSpoolLockRatio must be between [0, 1.0] (got: ${dt.rearSpoolLockRatio}).`);
     }
+    if (dt.driveForceScale !== undefined && (!isFiniteNumber(dt.driveForceScale) || dt.driveForceScale <= 0 || dt.driveForceScale > 2.0)) {
+      errors.push(`drivetrain.driveForceScale must be between (0, 2.0] (got: ${dt.driveForceScale}).`);
+    }
+    if (dt.turboSpoolRate !== undefined && (!isFiniteNumber(dt.turboSpoolRate) || dt.turboSpoolRate <= 0)) {
+      errors.push(`drivetrain.turboSpoolRate must be > 0 (got: ${dt.turboSpoolRate}).`);
+    }
+    if (dt.offBoostTorqueFloor !== undefined && (!isFiniteNumber(dt.offBoostTorqueFloor) || dt.offBoostTorqueFloor <= 0 || dt.offBoostTorqueFloor > 1.0)) {
+      errors.push(`drivetrain.offBoostTorqueFloor must be between (0, 1.0] (got: ${dt.offBoostTorqueFloor}).`);
+    }
+    if (dt.aeroDragScale !== undefined && (!isFiniteNumber(dt.aeroDragScale) || dt.aeroDragScale < 0)) {
+      errors.push(`drivetrain.aeroDragScale must be >= 0 (got: ${dt.aeroDragScale}).`);
+    }
+    if (dt.reverseGearRatio !== undefined && (!isFiniteNumber(dt.reverseGearRatio) || dt.reverseGearRatio < 1.0 || dt.reverseGearRatio > 4.0)) {
+      errors.push(`drivetrain.reverseGearRatio must be between [1.0, 4.0] (got: ${dt.reverseGearRatio}).`);
+    }
+    if (dt.reverseLaunchRampFraction !== undefined && (!isFiniteNumber(dt.reverseLaunchRampFraction) || dt.reverseLaunchRampFraction <= 0 || dt.reverseLaunchRampFraction > 1.0)) {
+      errors.push(`drivetrain.reverseLaunchRampFraction must be between (0, 1.0] (got: ${dt.reverseLaunchRampFraction}).`);
+    }
   }
 
   // --- 4. Assists ---

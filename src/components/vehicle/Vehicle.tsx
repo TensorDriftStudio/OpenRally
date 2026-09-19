@@ -1,5 +1,5 @@
-import { useRef, Suspense, Component, type ReactNode, type ErrorInfo } from 'react';
-import { RigidBody, CuboidCollider } from '@react-three/rapier';
+import { useRef, useMemo, Suspense, Component, type ReactNode, type ErrorInfo } from 'react';
+import { RigidBody, CuboidCollider, RoundCuboidCollider, CoefficientCombineRule } from '@react-three/rapier';
 import type { RapierRigidBody } from '@react-three/rapier';
 import { Group, Object3D } from 'three';
 import { Wheel } from '@/components/vehicle/Wheel';
@@ -195,6 +195,63 @@ export function Vehicle() {
     effectiveSpawnRotation = grounded.euler;
   }
 
+  // Segment chassis colliders into 3 structural zones:
+  // 1. Central Floorpan Skid Plate (strictly between front & rear axles, Y in [-0.42m, -0.14m], 77% mass)
+  // 2. Front & Rear Bumper Envelopes (elevated to Y in [-0.16m, +0.14m], providing 26° approach/departure angles & preventing loop snagging, 4% mass each)
+  // 3. Upper Cabin & Roof Collider (cockpit, pillars, rollover protection, 15% mass)
+  // Total mass = 77% + 4% + 4% + 15% = 100%, preserving center of mass and full obstacle collision coverage without gaps.
+  const colliderEnvelope = useMemo(() => {
+    const comZ = config.weightDistribution?.centerOfMassZ ?? 0.06;
+    const halfWidth = config.chassisSize[0] / 2;
+    const halfLength = config.chassisSize[2] / 2;
+
+    let maxWheelZ = -Infinity;
+    let minWheelZ = Infinity;
+    for (const w of config.wheels) {
+      if (w.position[2] > maxWheelZ) maxWheelZ = w.position[2];
+      if (w.position[2] < minWheelZ) minWheelZ = w.position[2];
+    }
+    const frontAxleZ = Number.isFinite(maxWheelZ) ? maxWheelZ : 1.35;
+    const rearAxleZ = Number.isFinite(minWheelZ) ? minWheelZ : -1.30;
+
+    // Floorpan boundaries: keep skid plate between axles
+    const floorpanFrontZ = frontAxleZ - 0.05;
+    const floorpanRearZ = rearAxleZ + 0.05;
+    const floorpanLength = Math.max(0.5, floorpanFrontZ - floorpanRearZ);
+    const floorpanCenterZ = (floorpanFrontZ + floorpanRearZ) / 2;
+    const floorpanHalfZ = floorpanLength / 2;
+
+    // Front Bumper / Overhang boundaries:
+    const frontBumperLength = Math.max(0.2, halfLength - floorpanFrontZ);
+    const frontBumperCenterZ = (floorpanFrontZ + halfLength) / 2;
+    const frontBumperHalfZ = frontBumperLength / 2;
+
+    // Rear Bumper / Overhang boundaries:
+    const rearBumperLength = Math.max(0.2, floorpanRearZ - (-halfLength));
+    const rearBumperCenterZ = (-halfLength + floorpanRearZ) / 2;
+    const rearBumperHalfZ = rearBumperLength / 2;
+
+    return {
+      comZ,
+      halfWidth,
+      floorpan: {
+        centerZ: floorpanCenterZ,
+        halfX: Math.max(0.1, halfWidth - 0.06),
+        halfZ: Math.max(0.1, floorpanHalfZ - 0.05),
+      },
+      frontBumper: {
+        centerZ: frontBumperCenterZ,
+        halfX: Math.max(0.1, halfWidth * 0.90 - 0.03),
+        halfZ: Math.max(0.1, frontBumperHalfZ - 0.03),
+      },
+      rearBumper: {
+        centerZ: rearBumperCenterZ,
+        halfX: Math.max(0.1, halfWidth * 0.90 - 0.03),
+        halfZ: Math.max(0.1, rearBumperHalfZ - 0.03),
+      },
+    };
+  }, [config.chassisSize, config.wheels, config.weightDistribution?.centerOfMassZ]);
+
   return (
     <group visible={!isSpectating}>
       <RigidBody
@@ -209,36 +266,88 @@ export function Vehicle() {
         canSleep={false}
         ccd={true}
       >
-        {/* Lower Chassis Collider: floorpan, engine block, and lower running gear (92% mass for low CoM) */}
-        <CuboidCollider
-          key={`${selectedVehicleId}-chassis`}
+        {/* Zone 1: Central Floorpan Skid Plate (between axles, low CoM, Y in [-0.32m, -0.12m]) */}
+        <RoundCuboidCollider
+          key={`${selectedVehicleId}-floorpan`}
           position={[
             0,
-            config.weightDistribution?.centerOfMassY ?? -0.32,
-            config.weightDistribution?.centerOfMassZ ?? 0.06,
+            -0.22,
+            colliderEnvelope.floorpan.centerZ,
           ]}
           args={[
-            config.chassisSize[0] / 2,
-            (config.chassisSize[1] * 0.65) / 2,
-            config.chassisSize[2] / 2,
+            colliderEnvelope.floorpan.halfX,
+            0.06,
+            colliderEnvelope.floorpan.halfZ,
+            0.04,
           ]}
-          mass={config.chassisMass * 0.92}
+          mass={config.chassisMass * 0.77}
+          friction={0.05}
+          restitution={0.0}
+          frictionCombineRule={CoefficientCombineRule.Min}
+          restitutionCombineRule={CoefficientCombineRule.Min}
         />
 
-        {/* Upper Cabin & Roof Collider: cockpit, pillars, and roof panel for realistic rollovers (8% mass) */}
+        {/* Zone 2A: Front Bumper & Overhang Envelope (elevated to Y in [-0.16m, +0.14m] for 26° approach angle & loop clearance) */}
+        <RoundCuboidCollider
+          key={`${selectedVehicleId}-front-bumper`}
+          position={[
+            0,
+            -0.01,
+            colliderEnvelope.frontBumper.centerZ,
+          ]}
+          args={[
+            colliderEnvelope.frontBumper.halfX,
+            0.12,
+            colliderEnvelope.frontBumper.halfZ,
+            0.03,
+          ]}
+          mass={config.chassisMass * 0.04}
+          friction={0.2}
+          restitution={0.0}
+          frictionCombineRule={CoefficientCombineRule.Min}
+          restitutionCombineRule={CoefficientCombineRule.Min}
+        />
+
+        {/* Zone 2B: Rear Bumper & Overhang Envelope (elevated to Y in [-0.16m, +0.14m] for departure angle) */}
+        <RoundCuboidCollider
+          key={`${selectedVehicleId}-rear-bumper`}
+          position={[
+            0,
+            -0.01,
+            colliderEnvelope.rearBumper.centerZ,
+          ]}
+          args={[
+            colliderEnvelope.rearBumper.halfX,
+            0.12,
+            colliderEnvelope.rearBumper.halfZ,
+            0.03,
+          ]}
+          mass={config.chassisMass * 0.04}
+          friction={0.2}
+          restitution={0.0}
+          frictionCombineRule={CoefficientCombineRule.Min}
+          restitutionCombineRule={CoefficientCombineRule.Min}
+        />
+
+        {/* Zone 3: Upper Cabin & Roof Collider: cockpit, pillars, and roof panel for realistic rollovers (15% mass) */}
+        {/* Overlaps bumper and lower hull by 2cm (Y in [-0.16m, -0.14m]) to prevent snagging or seam cracking */}
         <CuboidCollider
           key={`${selectedVehicleId}-cabin`}
           position={[
             0,
-            (config.weightDistribution?.centerOfMassY ?? -0.32) + config.chassisSize[1] * 0.72,
-            config.weightDistribution?.centerOfMassZ ?? 0.06,
+            0.18,
+            colliderEnvelope.comZ,
           ]}
           args={[
-            (config.chassisSize[0] * 0.78) / 2,
-            (config.chassisSize[1] * 0.60) / 2,
+            (config.chassisSize[0] * 0.90) / 2,
+            0.34,
             (config.chassisSize[2] * 0.52) / 2,
           ]}
-          mass={config.chassisMass * 0.08}
+          mass={config.chassisMass * 0.15}
+          friction={0.95}
+          restitution={0.0}
+          frictionCombineRule={CoefficientCombineRule.Max}
+          restitutionCombineRule={CoefficientCombineRule.Min}
         />
 
         {/* Visual Mesh (Interpolated Position) */}

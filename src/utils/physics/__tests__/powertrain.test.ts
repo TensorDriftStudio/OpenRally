@@ -111,6 +111,63 @@ describe('powertrain physics', () => {
       });
       expect(gear).toBe(1);
     });
+
+    it('holds 1st gear (Hill-Hold) when braking to a stop on an uphill incline rather than shifting into reverse', () => {
+      // Stopped on an uphill incline (inclineSine = 0.25): holding brake should remain in 1st gear
+      const gear = updateGearbox(0, 0, { ...baseInput, brake: 1 }, 1, false, {
+        inclineSine: 0.25,
+      });
+      expect(gear).toBe(1);
+    });
+
+    it('maintains reverse gear (-1) on an incline when already in reverse and brake is held', () => {
+      const gear = updateGearbox(5, -1.4, { ...baseInput, brake: 1 }, -1, false, {
+        inclineSine: 0.25,
+      });
+      expect(gear).toBe(-1);
+    });
+
+    it('transitions from reverse (-1) to 1st gear when vehicle comes to a stop and throttle is pressed', () => {
+      // Moving backward at speed: throttle keeps -1 for braking
+      const brakingGear = updateGearbox(15, -4.2, { ...baseInput, throttle: 1, brake: 0 }, -1, false);
+      expect(brakingGear).toBe(-1);
+
+      // Slowed to transition threshold (-0.3 m/s >= -0.4 m/s): transitions cleanly to 1st gear
+      const slowedGear = updateGearbox(1, -0.3, { ...baseInput, throttle: 1, brake: 0 }, -1, false);
+      expect(slowedGear).toBe(1);
+
+      // Stopped: throttle transitions to 1st gear
+      const stoppedGear = updateGearbox(0, 0, { ...baseInput, throttle: 1, brake: 0 }, -1, false);
+      expect(stoppedGear).toBe(1);
+    });
+
+    it('immediately shifts into 1st gear under forward throttle on an uphill slope to prevent backward rollback', () => {
+      // Rolling backward down an uphill slope: forward throttle commands immediate 1st gear drive
+      const uphillGear = updateGearbox(5, -1.4, { ...baseInput, throttle: 1, brake: 0 }, -1, false, {
+        inclineSine: 0.20,
+      });
+      expect(uphillGear).toBe(1);
+    });
+
+    it('immediately shifts into 1st gear under forward throttle during a J-turn stunt maneuver', () => {
+      // High-speed reverse with hard steering flick: J-turn intent engages 1st gear for tractive pull
+      const jTurnSteerGear = updateGearbox(25, -6.9, { ...baseInput, throttle: 1, brake: 0, steering: 0.8 }, -1, false);
+      expect(jTurnSteerGear).toBe(1);
+
+      // High-speed reverse with handbrake pull: engages 1st gear
+      const jTurnHandbrakeGear = updateGearbox(25, -6.9, { ...baseInput, throttle: 1, brake: 0, handbrake: true }, -1, false);
+      expect(jTurnHandbrakeGear).toBe(1);
+    });
+
+    it('arbitrates dual-pedal inputs cleanly in reverse gear', () => {
+      // When brake exceeds or equals throttle while reversing, maintains reverse drive
+      const brakeDominant = updateGearbox(10, -2.8, { ...baseInput, throttle: 0.4, brake: 0.9 }, -1, false);
+      expect(brakeDominant).toBe(-1);
+
+      // When throttle exceeds brake while stopped/transitioning, shifts to 1st gear
+      const throttleDominant = updateGearbox(0, 0, { ...baseInput, throttle: 1.0, brake: 0.3 }, -1, false);
+      expect(throttleDominant).toBe(1);
+    });
   });
 
   describe('handleManualGearShift', () => {

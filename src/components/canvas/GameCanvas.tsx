@@ -13,11 +13,13 @@ import { Ocean } from '@/components/environment/Ocean';
 import { Checkpoints } from '@/components/environment/Checkpoints';
 import { GymkhanaController } from '@/components/environment/GymkhanaController';
 import { TagController } from '@/components/environment/TagController';
+import { StuntLoop } from '@/components/environment/StuntLoop';
 import { Vehicle } from '@/components/vehicle/Vehicle';
 import { RemoteVehicleManager } from '@/components/vehicle/RemoteVehicleManager';
 import { Lights } from '@/components/canvas/Lights';
 import { ShaderWarmUp } from '@/components/canvas/ShaderWarmUp';
 import { PostProcessingErrorBoundary } from '@/components/canvas/PostProcessingErrorBoundary';
+import { EnvironmentErrorBoundary } from '@/components/canvas/EnvironmentErrorBoundary';
 import { Environment, Sky, AdaptiveDpr, AdaptiveEvents } from '@react-three/drei';
 import { useSettingsStore, saveSettingsToStorage } from '@/store/settingsStore';
 import { useGameStore } from '@/store/gameStore';
@@ -274,6 +276,22 @@ export function shouldRenderPostProcessing(
 }
 
 /**
+ * Evaluates whether Drei's <Environment> cubemap reflection pass should be executed.
+ * On mobile devices (especially iOS Safari with WebKit's strict ~300MB Jetsam ceiling),
+ * allocating a WebGLCubeRenderTarget and performing 6 render passes of procedural Sky
+ * shaders can trigger Metal shader compilation stalls and out-of-memory crashes.
+ *
+ * It is bypassed on mobile for 'low' and 'medium' quality profiles (falling back to ambient/directional light),
+ * and only active on 'high' / 'very_high' or desktop platforms.
+ */
+export function shouldRenderEnvironment(
+  isMobile: boolean,
+  graphicsQuality: string,
+): boolean {
+  return !isMobile || graphicsQuality === 'high' || graphicsQuality === 'very_high';
+}
+
+/**
  * Main game canvas — wraps the R3F Canvas with Physics, scene objects,
  * dynamic level environments, and post-processing effects.
  */
@@ -302,7 +320,12 @@ export function GameCanvas() {
     graphicsQuality,
   );
 
-  const envResolution = isMobile ? (graphicsQuality === 'low' ? 64 : 128) : 256;
+  const canRenderEnvironment = shouldRenderEnvironment(
+    isMobile,
+    graphicsQuality,
+  );
+
+  const envResolution = isMobile ? 64 : 256;
 
   const levelPreset = getLevelPreset(selectedLevelId);
 
@@ -355,7 +378,7 @@ export function GameCanvas() {
       camera={{ fov: 60, near: 0.35, far: cameraFar, position: [0, 10, -15] }}
       gl={{
         antialias: antiAliasing !== 'off',
-        powerPreference: 'high-performance',
+        powerPreference: isMobile ? 'default' : 'high-performance',
         stencil: false,
         depth: true,
         toneMapping: ACESFilmicToneMapping,
@@ -437,18 +460,22 @@ export function GameCanvas() {
           mieDirectionalG={mieDirectionalG}
         />
         {/* Environment captures the Sky for realistic reflections on water and car */}
-        <Environment background={false} resolution={envResolution} frames={1}>
-          <Sky 
-            distance={SKY_CONFIG.distance} 
-            sunPosition={sunPosition} 
-            inclination={inclination} 
-            azimuth={azimuth} 
-            turbidity={turbidity}
-            rayleigh={rayleigh}
-            mieCoefficient={mieCoefficient}
-            mieDirectionalG={mieDirectionalG}
-          />
-        </Environment>
+        {canRenderEnvironment && (
+          <EnvironmentErrorBoundary>
+            <Environment background={false} resolution={envResolution} frames={1}>
+              <Sky 
+                distance={SKY_CONFIG.distance} 
+                sunPosition={sunPosition} 
+                inclination={inclination} 
+                azimuth={azimuth} 
+                turbidity={turbidity}
+                rayleigh={rayleigh}
+                mieCoefficient={mieCoefficient}
+                mieDirectionalG={mieDirectionalG}
+              />
+            </Environment>
+          </EnvironmentErrorBoundary>
+        )}
 
         {/* Terrain context wraps both physics terrain, visual grass, ocean, props, and checkpoints */}
         <TerrainProvider key={selectedLevelId} levelPreset={levelPreset}>
@@ -474,6 +501,11 @@ export function GameCanvas() {
 
             {/* Rally Tag match and round timing controller */}
             <TagController />
+
+            {/* Apex Gymkhana Stunt Loop-the-Loop */}
+            {selectedLevelId === 'level5_gymkhana' && (
+              <StuntLoop position={[-70, 8.0, -30]} rotation={[0, 0, 0]} />
+            )}
 
             {/* Player vehicle */}
             <Vehicle />

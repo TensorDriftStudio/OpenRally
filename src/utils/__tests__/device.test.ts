@@ -3,9 +3,12 @@ import {
   isAndroid,
   isMobileDevice,
   isMobileOrAndroid,
+  isIOS,
+  isSafari,
   calculateDprConfig,
   calculateTargetDpr,
   MOBILE_MAX_DPR,
+  IOS_MAX_DPR,
   DESKTOP_MAX_DPR,
   MOBILE_MAX_PIXELS,
   DESKTOP_HIGH_MAX_PIXELS,
@@ -463,6 +466,86 @@ describe('Device Detection & DPR Scaling', () => {
         writable: true,
       });
       expect(isMobileOrAndroid()).toBe(false);
+    });
+  });
+
+  describe('isIOS & isSafari', () => {
+    it('detects iPhone, iPad, and iPod user agents via isIOS()', () => {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)' },
+        configurable: true,
+        writable: true,
+      });
+      expect(isIOS()).toBe(true);
+
+      Object.defineProperty(globalThis, 'navigator', {
+        value: { userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X)' },
+        configurable: true,
+        writable: true,
+      });
+      expect(isIOS()).toBe(true);
+    });
+
+    it('detects iPadOS 13+ desktop-class Safari spoofing (MacIntel with touch points)', () => {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: {
+          userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15',
+          platform: 'MacIntel',
+          maxTouchPoints: 5,
+        },
+        configurable: true,
+        writable: true,
+      });
+      expect(isIOS()).toBe(true);
+      expect(isMobileDevice()).toBe(true);
+    });
+
+    it('returns false for genuine macOS without touch points', () => {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: {
+          userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15',
+          platform: 'MacIntel',
+          maxTouchPoints: 0,
+        },
+        configurable: true,
+        writable: true,
+      });
+      expect(isIOS()).toBe(false);
+    });
+
+    it('detects Safari browser and excludes Chrome / Android', () => {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15' },
+        configurable: true,
+        writable: true,
+      });
+      expect(isSafari()).toBe(true);
+
+      Object.defineProperty(globalThis, 'navigator', {
+        value: { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36' },
+        configurable: true,
+        writable: true,
+      });
+      expect(isSafari()).toBe(false);
+    });
+
+    it('enforces iOS DPR ceiling of 1.5 to protect against WebKit jetsam OOM', () => {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' },
+        configurable: true,
+        writable: true,
+      });
+
+      // iPhone with Retina 3.0x display
+      const result = calculateDprConfig({
+        windowDpr: 3.0,
+        graphicsQuality: 'very_high',
+        isMobile: true,
+        dynamicResolution: false,
+      });
+
+      expect(result.targetDpr).toBeLessThanOrEqual(IOS_MAX_DPR);
+      expect(result.targetDpr).toBe(1.5);
     });
   });
 });

@@ -17,7 +17,10 @@ export const PHANTOM_B_VEHICLE_CONFIG: VehicleConfig = {
   },
   engine: {
     maxForce: 440,
-    maxSpeed: 275,
+    maxSpeed: 232,
+    turboBoostMultiplier: 1.22,
+    boostThresholdRpm: 3850,
+    turboSpoolRate: 3.5,
   },
   drivetrain: {
     frontBias: 0.48, // 48/52 Rear-biased AWD
@@ -25,7 +28,7 @@ export const PHANTOM_B_VEHICLE_CONFIG: VehicleConfig = {
   brakes: {
     maxForce: 19,
     handbrakeForce: 42,
-    frontBias: 0.52,
+    frontBias: 0.65,
   },
   suspension: {
     frontAntiRollBarStiffness: 19.0,
@@ -34,11 +37,12 @@ export const PHANTOM_B_VEHICLE_CONFIG: VehicleConfig = {
   },
   handling: {
     steeringCurve: [
-      [0, Math.PI / 3.6],
-      [40, Math.PI / 4.1],
-      [90, Math.PI / 6.2],
-      [150, Math.PI / 9.8],
-      [240, Math.PI / 14.5],
+      [0, Math.PI / 5.0],    // ~36.0° at 0 km/h (mid-engine agile turn-in)
+      [30, Math.PI / 7.6],   // ~23.7° at 30 km/h
+      [60, Math.PI / 12.2],  // ~14.8° at 60 km/h
+      [90, Math.PI / 18.0],  // ~10.0° at 90 km/h
+      [140, Math.PI / 27.0], // ~6.7° at 140 km/h
+      [240, Math.PI / 40.0], // ~4.5° at 240 km/h
     ],
     steeringSpeed: 9.0,
     assists: {
@@ -48,6 +52,9 @@ export const PHANTOM_B_VEHICLE_CONFIG: VehicleConfig = {
   },
   aerodynamics: {
     downforceFactor: 24,
+    dragCoefficient: 0.50,
+    frontalArea: 2.0,
+    dragMultiplier: 1.0,
   },
   wheels: [
     {

@@ -125,7 +125,7 @@ export interface DrivetrainBalanceConfig {
 
   /**
    * Additional AWD tractive power factor per unit of normalized drift slip angle.
-   * Safe Range: 0.40 to 1.10 (default: 0.75)
+   * Safe Range: 0.40 to 2.50 (default: 1.65)
    */
   readonly driftBoostSlipWeight: number;
 
@@ -180,6 +180,45 @@ export interface DrivetrainBalanceConfig {
    * Safe Range: 0.50 to 1.0 (default: 0.85)
    */
   readonly rearSpoolLockRatio: number;
+
+  /**
+   * Global drive force scaling multiplier applied to total engine thrust.
+   * Calibrated so 4-wheel drive delivers authentic rally acceleration (0-100 km/h in 2.5-3.6s)
+   * rather than electric hypercar rocket thrust.
+   * Safe Range: 0.80 to 1.30 (default: 1.08)
+   */
+  readonly driveForceScale?: number;
+
+  /**
+   * Rate at which turbo boost pressure builds per second under throttle (units/sec).
+   * Safe Range: 1.5 to 5.0 (default: 3.2)
+   */
+  readonly turboSpoolRate?: number;
+
+  /**
+   * Base atmospheric torque floor fraction before turbo boost builds (ensures zero input lag).
+   * Safe Range: 0.40 to 0.70 (default: 0.55)
+   */
+  readonly offBoostTorqueFloor?: number;
+
+  /**
+   * Atmospheric aerodynamic drag force scale multiplier.
+   * Safe Range: 0.5 to 2.0 (default: 1.0)
+   */
+  readonly aeroDragScale?: number;
+
+  /**
+   * Effective mechanical gear ratio for reverse gear.
+   * Calibrated between 1st and 2nd gear ratios to deliver authentic tractive pull without violent wheelie shocks.
+   * Safe Range: 1.5 to 3.2 (default: 2.35)
+   */
+  readonly reverseGearRatio?: number;
+
+  /**
+   * Standing-start launch torque fraction in reverse gear (ramps to 1.0 over launchRampEndSpeedMps).
+   * Safe Range: 0.40 to 0.85 (default: 0.65)
+   */
+  readonly reverseLaunchRampFraction?: number;
 }
 
 export interface AssistsBalanceConfig {
@@ -349,19 +388,25 @@ export const DRIVING_MODEL_BALANCE: DrivingModelBalance = {
     antiWheeliePitchMultiplier: 12.0,
   },
   drivetrain: {
-    launchRampEndSpeedMps: 4.2,
-    launchRampBaseFraction: 0.60,
-    gear2TorquePunch: 1.08,
+    launchRampEndSpeedMps: 3.5,
+    launchRampBaseFraction: 0.70,
+    gear2TorquePunch: 1.18,
     driftBoostSteerWeight: 0.35,
-    driftBoostSlipWeight: 0.75,
+    driftBoostSlipWeight: 1.65,
     frontUnweightedDampingThreshold: 0.045,
-    driftPropulsionMultiplier: 1.15,
+    driftPropulsionMultiplier: 1.85,
     driftSteeredPullRatio: 0.0,
     driftTargetSpeedKmh: 75,
     dccdMinFrontBias: 0.35,
-    dccdDriftFrontBias: 0.48,
+    dccdDriftFrontBias: 0.38,
     dccdIntensityDecayRate: 4.0,
-    rearSpoolLockRatio: 0.90,
+    rearSpoolLockRatio: 0.92,
+    driveForceScale: 1.20,
+    reverseGearRatio: 2.35,
+    reverseLaunchRampFraction: 0.65,
+    turboSpoolRate: 3.5,
+    offBoostTorqueFloor: 0.60,
+    aeroDragScale: 1.0,
   },
   assists: {
     turnInTorqueGain: 0.22,

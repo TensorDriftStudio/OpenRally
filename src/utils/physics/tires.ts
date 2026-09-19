@@ -2,12 +2,19 @@ import type { VehicleConfig, IRapierVehicleController, SurfaceType, TireType } f
 import type { InputState } from '@/types/game';
 import type { HeightmapData } from '@/types/terrain';
 import type { LevelData } from '@/types/level';
-import { BRAKE_SPEED_THRESHOLD, SAND_ELEVATION_THRESHOLD } from '@/config/vehicle';
+import { BRAKE_SPEED_THRESHOLD, REVERSE_TRANSITION_SPEED, SAND_ELEVATION_THRESHOLD } from '@/config/vehicle';
 import { getSurfaceDefinition } from '@/config/surfaceRegistry';
 import { getTireDefinition, DEFAULT_TIRE_TYPE } from '@/config/tireRegistry';
 import { DRIVING_MODEL_BALANCE, type DrivingModelBalance } from '@/config/physicsBalance';
+import { clamp } from '@/utils/math';
 
 export type { SurfaceType, TireType };
+
+export interface TireFrictionOptions {
+  readonly forwardY?: number;
+  readonly currentGear?: number;
+  readonly isManual?: boolean;
+}
 
 /**
  * Determines the surface type under a given world position.
@@ -110,6 +117,7 @@ export function applyTireFrictionAndBrakes(
   balance: DrivingModelBalance = DRIVING_MODEL_BALANCE,
   assists?: { absEnabled?: boolean; tcsEnabled?: boolean; espEnabled?: boolean },
   tireType: TireType = DEFAULT_TIRE_TYPE,
+  options?: TireFrictionOptions,
 ): { grips: number[]; surface: SurfaceType; steerAngle: number; absActive: boolean; tireType: TireType } {
   const surface = getSurfaceAtPosition(posX, posY, posZ, heightmapData, levelData);
   const surfaceDef = getSurfaceDefinition(surface);
@@ -131,7 +139,7 @@ export function applyTireFrictionAndBrakes(
 
   const baseSteerLimit = getInterpolatedSteeringAngle(speedKmh, config.handling.steeringCurve);
   const isCountersteer = Math.abs(slipAngle) > 0.05 && (input.steering * slipAngle < -0.005);
-  const driftExpansion = Math.min(1.0, Math.max(0, (Math.abs(slipAngle) - 0.05) / 0.35));
+  const driftExpansion = Math.min(1.0, Math.max(0, (Math.abs(slipAngle) - 0.05) / 0.28));
   const effectiveSteerLimit = isCountersteer
     ? baseSteerLimit + (DRIFT_MAX_STEER_LOCK - baseSteerLimit) * driftExpansion
     : baseSteerLimit;
@@ -166,8 +174,29 @@ export function applyTireFrictionAndBrakes(
   const hbBalance = balance.handbrake;
   const tireBalance = balance.tires;
 
-  const isBraking = input.brake > 0.05 && forwardSpeed > BRAKE_SPEED_THRESHOLD;
-  const isHeavyBrake = input.brake > 0.45;
+  // Reverse Throttle vs Mechanical Braking:
+  // In Manual Mode: input.brake is strictly mechanical brake, input.throttle is engine drive
+  // In Automatic Mode:
+  // - When in reverse gear (-1) and stopped or rolling backward, input.brake functions as reverse throttle.
+  // - When moving backward in reverse gear, input.throttle serves as the mechanical brake to halt reverse motion.
+  // - In forward gears or neutral, input.brake is always a mechanical brake.
+  const isManual = options?.isManual ?? false;
+  const isStuntIntent = Boolean(input.handbrake) || (Math.abs(input.steering) > 0.65);
+  const isUphill = (options?.forwardY ?? 0) > 0.05;
+
+  const isReverseThrottle = !isManual && options?.currentGear === -1 && input.brake > 0.05 && input.brake >= throttle && forwardSpeed <= 0.1;
+  const isReverseBrake =
+    !isManual &&
+    options?.currentGear === -1 &&
+    throttle > 0.05 &&
+    throttle > input.brake &&
+    forwardSpeed < -REVERSE_TRANSITION_SPEED &&
+    !isStuntIntent &&
+    !isUphill;
+  const isForwardBrake = input.brake > 0.05 && !isReverseThrottle && (forwardSpeed > BRAKE_SPEED_THRESHOLD || Math.abs(forwardSpeed) > BRAKE_SPEED_THRESHOLD || options?.currentGear !== -1);
+  const isBraking = isForwardBrake || isReverseBrake;
+  const effectiveBrakeInput = isReverseBrake ? throttle : input.brake;
+  const isHeavyBrake = effectiveBrakeInput > 0.45;
   const isWheelLockup = isBraking && isHeavyBrake && !absEnabled;
 
   if (isBraking && isHeavyBrake && absEnabled) {
@@ -182,14 +211,21 @@ export function applyTireFrictionAndBrakes(
     // Braking
     let brakeForce = 0;
     if (isBraking) {
-      // Brake Bias
-      const frontBias = config.brakes.frontBias;
+      // Dynamic Downhill EBD (Electronic Brakeforce Distribution):
+      // On downhills (forwardY < 0), weight shifts forward onto the front axle.
+      // Proactively bias braking towards the front wheels (up to 80%) to prevent
+      // unweighted rear wheels from locking up and sending the car into an uncontrollable spin.
+      const forwardY = options?.forwardY ?? 0;
+      const downhillShift = Math.max(0, -forwardY) * 0.28;
+      const frontBias = clamp(config.brakes.frontBias + downhillShift, 0.50, 0.80);
       const rearBias = 1.0 - frontBias;
       // Multiplier ensures the total braking power remains consistent
       const brakeMultiplier = wheel.steerable ? (frontBias * 2) : (rearBias * 2);
-      const rawForce = config.brakes.maxForce * input.brake * brakeMultiplier;
-      // When ABS is active, modulate brake force right at threshold to prevent full wheel lock
-      brakeForce = absActive ? rawForce * 0.88 : rawForce;
+      const rawForce = config.brakes.maxForce * effectiveBrakeInput * brakeMultiplier;
+      // When ABS is active, modulate brake force right at threshold to prevent full wheel lock.
+      // Rear wheels are modulated with higher slip tolerance (0.48 vs 0.88) to keep unweighted rear rolling.
+      const absModulation = wheel.steerable ? 0.88 : 0.48;
+      brakeForce = absActive ? rawForce * absModulation : rawForce;
     }
 
     // Calculate local slip angle relative to wheel heading:
@@ -341,10 +377,11 @@ export function applyTireFrictionAndBrakes(
       currentFriction = Math.min(currentFriction, effectiveSlideGrip * 0.50);
       if (wheel.steerable) {
         currentFriction *= 0.30;
+        wheelSideStiffness *= 0.25;
       }
     }
 
-    const appliedSteerAngle = isWheelLockup ? steerAngle * 0.08 : steerAngle;
+    const appliedSteerAngle = steerAngle;
     const safeFriction = Number.isFinite(currentFriction) ? Math.max(0, currentFriction) : 1.0;
     const safeBrake = Number.isFinite(brakeForce) ? Math.max(0, brakeForce) : 0;
     const safeSteer = Number.isFinite(appliedSteerAngle) ? appliedSteerAngle : 0;
@@ -363,11 +400,10 @@ export function applyTireFrictionAndBrakes(
     }
   }
   
-  const finalSteerAngle = isWheelLockup ? steerAngle * 0.08 : steerAngle;
   return {
     grips: _gripsBuffer,
     surface,
-    steerAngle: Number.isFinite(finalSteerAngle) ? finalSteerAngle : 0,
+    steerAngle: Number.isFinite(steerAngle) ? steerAngle : 0,
     absActive,
     tireType: tireDef.id,
   };

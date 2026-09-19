@@ -57,6 +57,48 @@ describe('drivetrain physics', () => {
     expect(controller.forces[3]).toBeLessThan(0);
   });
 
+  it('delivers 50/50 locked torque split across front and rear axles in reverse gear', () => {
+    const controller = createMockController();
+    applyDrivetrain(
+      controller,
+      DEFAULT_VEHICLE_CONFIG,
+      { throttle: 0, brake: 1 },
+      0,
+      -1
+    );
+
+    // In reverse, activeFrontBias = 0.50 and activeRearBias = 0.50
+    // Each of the 2 front wheels gets 25%, each of the 2 rear wheels gets 25%
+    expect(controller.forces[0]).toBeCloseTo(controller.forces[2], 2);
+    expect(controller.forces[1]).toBeCloseTo(controller.forces[3], 2);
+  });
+
+  it('applies reverse drive via throttle when in manual transmission mode', () => {
+    const controller = createMockController();
+    applyDrivetrain(
+      controller,
+      DEFAULT_VEHICLE_CONFIG,
+      { throttle: 1, brake: 0 },
+      -2.0,
+      -1,
+      0,
+      7.2,
+      1.0,
+      DRIVING_MODEL_BALANCE.drivetrain,
+      undefined,
+      undefined,
+      0,
+      1 / 60,
+      { isManual: true }
+    );
+
+    // Throttle drives reverse in manual mode
+    expect(controller.forces[0]).toBeLessThan(0);
+    expect(controller.forces[1]).toBeLessThan(0);
+    expect(controller.forces[2]).toBeLessThan(0);
+    expect(controller.forces[3]).toBeLessThan(0);
+  });
+
   it('sets 0 engine force when braking at high forward speed', () => {
     const controller = createMockController();
     applyDrivetrain(
@@ -628,6 +670,36 @@ describe('drivetrain physics', () => {
       // Decays progressively rather than dropping immediately to 0
       expect(res.nextDriftIntensity).toBeLessThan(0.90);
       expect(res.nextDriftIntensity).toBeGreaterThan(0.70);
+    });
+
+    it('delivers authentic Group B torque surge under lateral slip while keeping straight line torque calibrated', () => {
+      const straightController = createMockController();
+      applyDrivetrain(
+        straightController,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, brake: 0, steering: 0 },
+        15,
+        2,
+        0, // Straight line (0 slip)
+        54
+      );
+
+      const driftController = createMockController();
+      applyDrivetrain(
+        driftController,
+        DEFAULT_VEHICLE_CONFIG,
+        { throttle: 1, brake: 0, steering: 0.8 },
+        15,
+        2,
+        0.45, // Active drift (approx 26 deg slip)
+        54
+      );
+
+      // Total wheel force during slide is significantly elevated to overcome tire scrub drag
+      const straightTotalForce = straightController.forces.reduce((a, b) => a + b, 0);
+      const driftTotalForce = driftController.forces.reduce((a, b) => a + b, 0);
+
+      expect(driftTotalForce).toBeGreaterThan(straightTotalForce * 1.5);
     });
   });
 });

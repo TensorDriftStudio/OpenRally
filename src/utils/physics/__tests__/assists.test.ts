@@ -101,6 +101,18 @@ describe('assists physics', () => {
     expect(sumPitch).toBeGreaterThan(0);
   });
 
+  it('does not forcefully fight natural pitch-up rotation at high speeds (e.g. loops or crests)', () => {
+    // Car traversing vertical loop or cresting a rise at 100 km/h (~28 m/s), pitching up (-3.5 rad/s)
+    const body = createMockBody({ angvel: { x: -3.5, y: 0, z: 0 } });
+
+    applyAssists(body, DEFAULT_VEHICLE_CONFIG, { ...baseInput, throttle: 1 }, 28, 0.016);
+
+    const pitchTorques = body.appliedTorques.map((t) => t.x);
+    const sumPitch = pitchTorques.reduce((a, b) => a + b, 0);
+    // At high speed, pitch-up rotation is natural curvature/cresting and must NOT be forcefully damped with nose-down torque
+    expect(sumPitch).toBe(0);
+  });
+
   it('does not apply false anti-wheelie pitch torque when vehicle climbs an uphill slope with steady pitch', () => {
     // Car resting or climbing a steep uphill slope (inclined orientation) with zero angular pitch velocity
     const q = { x: -0.15, y: 0, z: 0, w: 0.988 };
@@ -215,5 +227,37 @@ describe('assists physics', () => {
     const yawTorques = bodyReverse.appliedTorques.map((t) => t.y);
     const sumYaw = yawTorques.reduce((a, b) => a + b, 0);
     expect(sumYaw).toBe(0);
+  });
+
+  it('damps snap yaw oscillations in reverse during mild steering, but yields during intentional J-turns or handbrake', () => {
+    // 1. Mild steering with high reverse yaw rate: damping opposes rotation
+    const bodyMild = createMockBody({ angvel: { x: 0, y: 0.8, z: 0 } });
+    applyAssists(
+      bodyMild,
+      DEFAULT_VEHICLE_CONFIG,
+      { ...baseInput, steering: 0.2 },
+      -6.0,
+      0.016,
+      undefined,
+      { espEnabled: true },
+      0,
+    );
+    const mildTorqueY = bodyMild.appliedTorques.map((t) => t.y).reduce((a, b) => a + b, 0);
+    expect(mildTorqueY).toBeLessThan(0); // Opposes positive yaw rate
+
+    // 2. Full lock steering (J-turn intent): yields damping
+    const bodyJTurn = createMockBody({ angvel: { x: 0, y: 0.8, z: 0 } });
+    applyAssists(
+      bodyJTurn,
+      DEFAULT_VEHICLE_CONFIG,
+      { ...baseInput, steering: 0.9 },
+      -6.0,
+      0.016,
+      undefined,
+      { espEnabled: true },
+      0,
+    );
+    const jTurnTorqueY = bodyJTurn.appliedTorques.map((t) => t.y).reduce((a, b) => a + b, 0);
+    expect(jTurnTorqueY).toBe(0); // Zero resistance to allow 180 J-turn flip
   });
 });

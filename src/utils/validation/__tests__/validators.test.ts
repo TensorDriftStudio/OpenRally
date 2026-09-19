@@ -185,12 +185,16 @@ describe('Runtime Validators', () => {
           ...DRIVING_MODEL_BALANCE.drivetrain,
           launchRampBaseFraction: 1.5,
           launchRampEndSpeedMps: -2,
+          reverseGearRatio: 0.5,
+          reverseLaunchRampFraction: 1.5,
         },
       };
       const res = validateDrivingModelBalance(badBalance);
       expect(res.valid).toBe(false);
       expect(res.errors.some((e) => e.includes('launchRampBaseFraction'))).toBe(true);
       expect(res.errors.some((e) => e.includes('launchRampEndSpeedMps'))).toBe(true);
+      expect(res.errors.some((e) => e.includes('reverseGearRatio'))).toBe(true);
+      expect(res.errors.some((e) => e.includes('reverseLaunchRampFraction'))).toBe(true);
     });
 
     it('catches invalid assists deadzone and pitch damping', () => {

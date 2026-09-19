@@ -134,9 +134,9 @@ export function blendInputs({
   const isAnalogSteering = Math.abs(gpSteering) > 0.001 || Math.abs(touchSteering) > 0.001;
 
   if (isAnalogSteering) {
-    steerSpeed = GAMEPAD_STEER_SPEED * Math.max(0.4, Math.min(1.6, Math.sqrt(sensitivity)));
+    steerSpeed = GAMEPAD_STEER_SPEED * Math.max(0.10, Math.min(1.6, Math.sqrt(sensitivity)));
   } else if (kbSteer !== 0) {
-    steerSpeed = STEER_SPEED * Math.max(0.15, Math.min(2.5, sensitivity));
+    steerSpeed = STEER_SPEED * Math.max(0.10, Math.min(2.5, sensitivity));
   } else {
     // Re-centering when keyboard keys released: quick and stable
     steerSpeed = Math.max(STEER_SPEED, STEER_SPEED * Math.min(1.5, sensitivity));

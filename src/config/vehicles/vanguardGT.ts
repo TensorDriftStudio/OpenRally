@@ -17,7 +17,10 @@ export const VANGUARD_GT_VEHICLE_CONFIG: VehicleConfig = {
   },
   engine: {
     maxForce: 440,
-    maxSpeed: 280,
+    maxSpeed: 260,
+    turboBoostMultiplier: 1.15,
+    boostThresholdRpm: 4200,
+    turboSpoolRate: 3.5,
   },
   drivetrain: {
     frontBias: 0.42, // 42/58 AWD for exhilarating sports GT dynamics without violent front lift
@@ -25,7 +28,7 @@ export const VANGUARD_GT_VEHICLE_CONFIG: VehicleConfig = {
   brakes: {
     maxForce: 20,
     handbrakeForce: 42,
-    frontBias: 0.56,
+    frontBias: 0.65,
   },
   suspension: {
     frontAntiRollBarStiffness: 21.0,
@@ -34,11 +37,12 @@ export const VANGUARD_GT_VEHICLE_CONFIG: VehicleConfig = {
   },
   handling: {
     steeringCurve: [
-      [0, Math.PI / 3.7],
-      [40, Math.PI / 4.3],
-      [90, Math.PI / 6.6],
-      [150, Math.PI / 10.5],
-      [240, Math.PI / 15.5],
+      [0, Math.PI / 5.4],    // ~33.3° at 0 km/h (smooth touring lock)
+      [30, Math.PI / 8.2],   // ~22.0° at 30 km/h
+      [60, Math.PI / 13.2],  // ~13.6° at 60 km/h
+      [90, Math.PI / 19.5],  // ~9.2° at 90 km/h
+      [140, Math.PI / 29.0], // ~6.2° at 140 km/h
+      [240, Math.PI / 44.0], // ~4.1° at 240 km/h
     ],
     steeringSpeed: 8.6,
     assists: {
@@ -48,6 +52,9 @@ export const VANGUARD_GT_VEHICLE_CONFIG: VehicleConfig = {
   },
   aerodynamics: {
     downforceFactor: 25,
+    dragCoefficient: 0.38, // Sleek low-drag GT profile
+    frontalArea: 1.95,
+    dragMultiplier: 0.85,
   },
   chassisDynamics: {
     maxRollAngle: 0.058, // ~3.3 degrees (stiff GT chassis, flat cornering)

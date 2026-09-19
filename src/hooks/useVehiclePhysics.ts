@@ -25,7 +25,12 @@ import { applyTireFrictionAndBrakes } from '@/utils/physics/tires';
 import { applyAerodynamics } from '@/utils/physics/aerodynamics';
 import { applyAssists } from '@/utils/physics/assists';
 import { syncWheelVisuals } from '@/utils/physics/visuals';
-import { applyAntiRollBars } from '@/utils/physics/suspension';
+import {
+  applyAntiRollBars,
+  applyProgressiveSuspensionDynamics,
+  resetSuspensionBumpStops,
+} from '@/utils/physics/suspension';
+import { applyCollisionAngularGovernor } from '@/utils/physics/collisionGovernor';
 import {
   createChassisDynamicsState,
   updateChassisDynamics,
@@ -185,7 +190,8 @@ export function useVehiclePhysics(
         const relaxDamping = wheel.suspensionRelaxation ?? (wheel.suspensionDamping * 1.15);
         controller.setWheelSuspensionCompression(i, compDamping);
         controller.setWheelSuspensionRelaxation(i, relaxDamping);
-        controller.setWheelMaxSuspensionForce(i, wheel.maxSuspensionForce ?? 15000);
+        // Ensure suspension can support high-G centripetal loads in vertical loops without bottoming out
+        controller.setWheelMaxSuspensionForce(i, Math.max(wheel.maxSuspensionForce ?? 15000, 85000));
       }
 
       vehicleControllerRef.current = controller;
@@ -236,6 +242,9 @@ export function useVehiclePhysics(
     const body = chassisRef.current;
     if (body && (typeof body.isValid !== 'function' || body.isValid())) {
       setupController(body);
+      if (typeof body.setAngularDamping === 'function') {
+        body.setAngularDamping(0.6);
+      }
     }
 
     return () => {
@@ -305,9 +314,11 @@ export function useVehiclePhysics(
     const speedKmh = groundSpeed * MS_TO_KMH;
 
     // Slip angle calculation
+    // Uses absolute forward speed to prevent 180-degree slip-angle spike when rolling backward down slopes
     let slipAngle = 0;
-    if (Math.abs(forwardSpeed) > 1.0) {
-      slipAngle = Math.atan2(lateralSpeed, forwardSpeed);
+    const absForwardSpeed = Math.abs(forwardSpeed);
+    if (absForwardSpeed > 0.8) {
+      slipAngle = Math.atan2(lateralSpeed, absForwardSpeed);
     }
 
     const state = useGameStore.getState();
@@ -345,6 +356,7 @@ export function useVehiclePhysics(
     } else {
       currentGear = updateGearbox(speedKmh, forwardSpeed, effectiveInput, prevGearRef.current, isAirborneRef.current, {
         slipAngle,
+        inclineSine: _forward.y,
       });
     }
 
@@ -353,6 +365,7 @@ export function useVehiclePhysics(
 
     // --- 1. APPLY TIRE FRICTION & BRAKES ---
     const selectedTireType = useGameStore.getState().selectedTireType;
+    const isManual = transmissionMode === 'manual';
     const { grips: tireGrips, surface, steerAngle, absActive } = applyTireFrictionAndBrakes(
       controller,
       config,
@@ -368,6 +381,7 @@ export function useVehiclePhysics(
       balance,
       { absEnabled, tcsEnabled, espEnabled },
       selectedTireType,
+      { forwardY: _forward.y, currentGear, isManual },
     );
 
     // --- 2. APPLY DRIVETRAIN (Engine, Reverse, Rev Limiter, Rally TCS, DCCD) ---
@@ -386,6 +400,7 @@ export function useVehiclePhysics(
       surface,
       filteredDriftIntensityRef.current,
       dt,
+      { isManual },
     );
     filteredDriftIntensityRef.current = nextDriftIntensity;
 
@@ -404,6 +419,22 @@ export function useVehiclePhysics(
 
     // --- 3.5. APPLY SUSPENSION ARB & PITCH STABILIZATION ---
     applyAntiRollBars(body, controller, config, dt, balance.suspension);
+
+    // --- 3.6. DISSIPATE UNNATURAL COLLISION ROTATIONAL SPIKES ---
+    applyCollisionAngularGovernor(body, config, dt, {
+      isGrounded: !isAirborneRef.current,
+      forwardSpeed,
+    });
+
+    // --- 3.7. DYNAMIC PROGRESSIVE SUSPENSION DYNAMICS ---
+    // Under extreme centripetal compression (vertical loops, high-speed dips),
+    // smoothly ramp raycast stiffness and critical damping to maintain clearance.
+    // Absorbs jump landing impacts with viscous damping and zero trampoline rebound.
+    applyProgressiveSuspensionDynamics(controller, config, {
+      dt,
+      forwardSpeed,
+      isAirborne: isAirborneRef.current,
+    });
 
     // --- 4. UPDATE RAPIER VEHICLE ---
     try {
@@ -436,8 +467,23 @@ export function useVehiclePhysics(
       isRolledOverRef.current = rollover.isRolledOver;
     }
 
+    // --- 4.3. DYNAMIC INVERTED DAMPING (PREVENTS WEEBLE-WOBBLE SELF-RIGHTING) ---
+    if (_up.y < 0.20 && speedKmh < 24 && isAirborne && groundedRatio === 0) {
+      // When car is inverted on its roof or severely tipped on its side at low speed, elevate angular damping
+      // to rapidly extinguish tumbling kinetic energy, keeping the vehicle stably inverted instead of bouncing back.
+      // Guarded by isAirborne & groundedRatio === 0 so track driving through an inverted loop apex is never frozen.
+      if (typeof body.setAngularDamping === 'function') {
+        body.setAngularDamping(5.0);
+      }
+    } else {
+      // Restore baseline angular damping once car is righted or driving inverted at speed through a stunt loop
+      if (typeof body.angularDamping === 'function' && Math.abs(body.angularDamping() - 0.6) > 0.01) {
+        body.setAngularDamping(0.6);
+      }
+    }
+
     // --- 5. APPLY AERODYNAMICS & SURFACE ROLLING DRAG ---
-    applyAerodynamics(body, config, forwardSpeed, _velocity, currentBodyPos.y, dt);
+    applyAerodynamics(body, config, forwardSpeed, _velocity, currentBodyPos.y, dt, balance.drivetrain.aeroDragScale ?? 1.0);
 
     const surfaceDef = getSurfaceDefinition(surface);
 
@@ -619,6 +665,10 @@ export function useVehiclePhysics(
       pausedStateRef.current = null;
       isPausedRef.current = false;
       resetChassisDynamics(visualRef?.current ?? null, chassisDynamicsStateRef.current);
+      resetSuspensionBumpStops();
+      if (typeof body.setAngularDamping === 'function') {
+        body.setAngularDamping(0.6);
+      }
 
       emitGameEvent('vehicle_reset', {
         reason: isCorrupted
@@ -903,6 +953,10 @@ export function useVehiclePhysics(
         latestSpeedKmhRef.current = 0;
         useGameStore.setState({ isRolledOver: false });
         resetChassisDynamics(visualRef?.current ?? null, chassisDynamicsStateRef.current);
+        resetSuspensionBumpStops(vehicleControllerRef.current, config);
+        if (typeof body.setAngularDamping === 'function') {
+          body.setAngularDamping(0.6);
+        }
 
         emitGameEvent('vehicle_reset', {
           reason: 'recovery',
@@ -931,6 +985,10 @@ export function useVehiclePhysics(
         latestSpeedKmhRef.current = 0;
         useGameStore.setState({ isRolledOver: false });
         resetChassisDynamics(visualRef?.current ?? null, chassisDynamicsStateRef.current);
+        resetSuspensionBumpStops(vehicleControllerRef.current, config);
+        if (typeof body.setAngularDamping === 'function') {
+          body.setAngularDamping(0.6);
+        }
 
         emitGameEvent('vehicle_reset', {
           reason: 'manual',

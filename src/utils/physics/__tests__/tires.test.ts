@@ -504,8 +504,9 @@ describe('tire and surface physics', () => {
         { absEnabled: true }
       );
 
-      // Without ABS, steering authority under lockup drops to 25% of ABS-on steering authority
-      expect(Math.abs(resultAbsOff.steerAngle)).toBeLessThan(Math.abs(resultAbsOn.steerAngle) * 0.3);
+      // Without ABS, wheels maintain commanded steering angle while front lateral side stiffness drops
+      expect(resultAbsOff.steerAngle).toBeCloseTo(resultAbsOn.steerAngle);
+      expect(controllerAbsOff.sideStiffnesses[0]).toBeLessThan(controllerAbsOn.sideStiffnesses[0]);
       // Sliding friction under locked wheels is lower than modulated ABS friction
       expect(absOffGrips[0]).toBeLessThan(resultAbsOn.grips[0]);
     });
@@ -997,6 +998,201 @@ describe('tire and surface physics', () => {
       // Standstill friction and grip are maintained at high stability to prevent slope creep
       expect(stoppedRes.grips[0]).toBeGreaterThan(0);
       expect(ctrlStopped.setWheelFrictionSlip).toHaveBeenCalled();
+    });
+
+    it('dynamically shifts brake bias forward (EBD) when pitching downhill', () => {
+      const ctrlFlat = createMockController();
+      applyTireFrictionAndBrakes(
+        ctrlFlat,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 1.0, handbrake: false, steering: 0, throttle: 0 },
+        40,
+        11.1,
+        0,
+        10,
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        { absEnabled: false },
+        undefined,
+        { forwardY: 0 },
+      );
+
+      const ctrlDownhill = createMockController();
+      applyTireFrictionAndBrakes(
+        ctrlDownhill,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 1.0, handbrake: false, steering: 0, throttle: 0 },
+        40,
+        11.1,
+        0,
+        10,
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        { absEnabled: false },
+        undefined,
+        { forwardY: -0.35 }, // Steep downhill
+      );
+
+      // On downhill, front brake force increases and rear brake force decreases
+      const flatFrontBrake = ctrlFlat.brakes[0];
+      const flatRearBrake = ctrlFlat.brakes[2];
+      const downhillFrontBrake = ctrlDownhill.brakes[0];
+      const downhillRearBrake = ctrlDownhill.brakes[2];
+
+      expect(downhillFrontBrake).toBeGreaterThan(flatFrontBrake);
+      expect(downhillRearBrake).toBeLessThan(flatRearBrake);
+    });
+
+    it('clamps mechanical brakes when rolling backward down a hill in a forward gear', () => {
+      const ctrl = createMockController();
+      applyTireFrictionAndBrakes(
+        ctrl,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 1.0, handbrake: false, steering: 0, throttle: 0 },
+        5,
+        -1.4, // Rolling backward at 1.4 m/s down an uphill
+        0,
+        10,
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        { absEnabled: true },
+        undefined,
+        { forwardY: 0.25, currentGear: 1 },
+      );
+
+      // Calipers clamp down to stop backward roll
+      expect(ctrl.brakes[0]).toBeGreaterThan(0);
+      expect(ctrl.brakes[2]).toBeGreaterThan(0);
+    });
+
+    it('does not apply mechanical brakes when input.brake acts as reverse throttle in reverse gear', () => {
+      const ctrl = createMockController();
+      applyTireFrictionAndBrakes(
+        ctrl,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 1.0, handbrake: false, steering: 0, throttle: 0 },
+        0,
+        0, // Stopped
+        0,
+        10,
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        { absEnabled: true },
+        undefined,
+        { forwardY: 0, currentGear: -1 },
+      );
+
+      // Since input.brake is driving in reverse, mechanical brakes remain disengaged
+      expect(ctrl.brakes[0]).toBe(0);
+      expect(ctrl.brakes[2]).toBe(0);
+    });
+
+    it('clamps mechanical brakes when moving backward at speed in reverse gear and throttle is pressed', () => {
+      const ctrl = createMockController();
+      applyTireFrictionAndBrakes(
+        ctrl,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 1.0 },
+        10,
+        -2.8, // Moving backward at speed in reverse
+        0,
+        10,
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        { absEnabled: true },
+        undefined,
+        { forwardY: 0, currentGear: -1 },
+      );
+
+      // Calipers engage to rapidly stop backward motion
+      expect(ctrl.brakes[0]).toBeGreaterThan(0);
+      expect(ctrl.brakes[2]).toBeGreaterThan(0);
+    });
+
+    it('disengages reverse caliper brakes when backward speed slows into the transition window (-0.3 m/s)', () => {
+      const ctrl = createMockController();
+      applyTireFrictionAndBrakes(
+        ctrl,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 1.0 },
+        1,
+        -0.3, // Within transition threshold (-0.3 m/s >= -0.4 m/s)
+        0,
+        10,
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        { absEnabled: true },
+        undefined,
+        { forwardY: 0, currentGear: -1 },
+      );
+
+      // Calipers release cleanly so 1st gear tractive power can take over with zero solver fighting
+      expect(ctrl.brakes[0]).toBe(0);
+      expect(ctrl.brakes[2]).toBe(0);
+    });
+
+    it('bypasses reverse caliper brakes on uphill inclines or during J-turn stunt maneuvers', () => {
+      // 1. Uphill slope: calipers do not clamp, allowing immediate uphill tractive drive
+      const ctrlUphill = createMockController();
+      applyTireFrictionAndBrakes(
+        ctrlUphill,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0, throttle: 1.0 },
+        8,
+        -2.2,
+        0,
+        10,
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        { absEnabled: true },
+        undefined,
+        { forwardY: 0.20, currentGear: -1 },
+      );
+      expect(ctrlUphill.brakes[0]).toBe(0);
+      expect(ctrlUphill.brakes[2]).toBe(0);
+
+      // 2. J-turn steering flick: calipers do not clamp, preserving stunt rotation authority
+      const ctrlJTurn = createMockController();
+      applyTireFrictionAndBrakes(
+        ctrlJTurn,
+        DEFAULT_VEHICLE_CONFIG,
+        { brake: 0, handbrake: false, steering: 0.85, throttle: 1.0 },
+        15,
+        -4.2,
+        0,
+        10,
+        0,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        { absEnabled: true },
+        undefined,
+        { forwardY: 0, currentGear: -1 },
+      );
+      expect(ctrlJTurn.brakes[0]).toBe(0);
+      expect(ctrlJTurn.brakes[2]).toBe(0);
     });
   });
 });

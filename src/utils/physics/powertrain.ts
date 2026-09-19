@@ -1,4 +1,4 @@
-import { SHIFT_UP_SPEEDS, SHIFT_DOWN_SPEEDS, BRAKE_SPEED_THRESHOLD, GEAR_MAX_SPEEDS } from '@/config/vehicle';
+import { SHIFT_UP_SPEEDS, SHIFT_DOWN_SPEEDS, BRAKE_SPEED_THRESHOLD, REVERSE_TRANSITION_SPEED, GEAR_MAX_SPEEDS } from '@/config/vehicle';
 
 export const IDLE_RPM = 1000;
 export const MAX_RPM = 8000;
@@ -46,6 +46,8 @@ const GEAR_SPEED_BANDS: readonly GearSpeedBand[] = [
 export interface GearboxOptions {
   /** Lateral slip angle in radians */
   slipAngle?: number;
+  /** Forward incline sine (_forward.y). Positive when pointing uphill. */
+  inclineSine?: number;
 }
 
 /**
@@ -62,9 +64,8 @@ export function handleManualGearShift(
   input: { gearUp?: boolean; gearDown?: boolean },
   isAirborne: boolean = false
 ): number {
-  if (isAirborne) {
-    return currentGear;
-  }
+  if (isAirborne) return currentGear; // Lock gear while in the air
+
   let gear = currentGear;
   if (input.gearUp && !input.gearDown) {
     if (gear < 5) {
@@ -98,8 +99,35 @@ export function updateGearbox(
 
   let newGear = currentGear;
 
-  if (input.brake > 0 && forwardSpeed < BRAKE_SPEED_THRESHOLD) {
-    newGear = -1; // Reverse
+  const isUphill = (options?.inclineSine ?? 0) > 0.05;
+  const throttleIntent = input.throttle > 0.05 && input.throttle > input.brake;
+  const isStuntIntent = Boolean(input.handbrake) || (input.steering !== undefined && Math.abs(input.steering) > 0.65);
+
+  if (currentGear === -1) {
+    // 1. Vehicle is currently in Reverse:
+    if (throttleIntent) {
+      // Driver commands forward drive:
+      // Immediately engage 1st gear if:
+      // - Vehicle has slowed to transition speed or stopped (forwardSpeed >= -REVERSE_TRANSITION_SPEED)
+      // - Vehicle is on an uphill slope (anti-rollback: 1st gear engine torque holds and pulls car)
+      // - Driver is executing a J-turn / Rockford stunt (handbrake or hard steering flick)
+      if (forwardSpeed >= -REVERSE_TRANSITION_SPEED || isUphill || isStuntIntent) {
+        newGear = 1;
+      } else {
+        // High-speed backward motion: hold -1 for caliper braking in tires.ts until slowed
+        newGear = -1;
+      }
+    } else if (input.brake > 0 || forwardSpeed < -REVERSE_TRANSITION_SPEED) {
+      // Hold reverse gear while reverse throttle (brake pedal in auto) is active or rolling backward
+      newGear = -1;
+    } else if (speedKmh < 1 && input.throttle === 0 && input.brake === 0) {
+      newGear = 1; // Idle in 1st gear if stopped with zero input
+    }
+  } else if (input.brake > 0 && forwardSpeed < BRAKE_SPEED_THRESHOLD && input.brake > input.throttle) {
+    // 2. Coming to a stop from forward gears:
+    // If rolling backward down the slope (forwardSpeed < -0.1), driver is requesting reverse -> shift to -1
+    // If stopping or stopped facing uphill (forwardSpeed >= -0.1 && isUphill) -> hold 1st gear (Hill-Hold)
+    newGear = (isUphill && forwardSpeed >= -0.1) ? 1 : -1;
   } else if (speedKmh < 1 && input.throttle === 0 && input.brake === 0) {
     newGear = 1; // Idle in 1st gear
   } else {
@@ -122,7 +150,13 @@ export function updateGearbox(
         kickdownMargin = 12;
       }
 
-      if (effectiveSpeed < SHIFT_DOWN_SPEEDS[newGear] + kickdownMargin) {
+      // Transmission Hysteresis Guard:
+      // Downshift threshold under kickdown must never equal or exceed the gear's upshift point (SHIFT_UP_SPEEDS[newGear - 1]).
+      // Maintaining a strict hysteresis buffer (at least 3.5 km/h) prevents rapid gear-hunting resonance.
+      const maxDownshiftSpeed = SHIFT_UP_SPEEDS[newGear - 1] - 3.5;
+      const downshiftThreshold = Math.min(maxDownshiftSpeed, SHIFT_DOWN_SPEEDS[newGear] + kickdownMargin);
+
+      if (effectiveSpeed < downshiftThreshold) {
         newGear--;
       }
     }

@@ -146,5 +146,62 @@ describe('suspension physics (Anti-Roll & Pitch Stabilization)', () => {
     // appliedImpulses should be 0 because ARB only acts on asymmetric roll differences
     expect(body.appliedImpulses.length).toBe(0);
   });
+
+  it('decouples anti-dive pitch-up catapult torque during extreme frontal collision compression', () => {
+    // Normal braking compression: front at 0.24m (delta = 0.08m)
+    const normalBrakingBody = createMockBody({ angvel: { x: 0, y: 0, z: 0 } });
+    const normalBrakingController = createMockController([0.24, 0.24, 0.32, 0.32]);
+    applyPitchStabilization(normalBrakingBody, normalBrakingController, WRC_VEHICLE_CONFIG, 0.016);
+    const normalBrakingTorque = Math.abs(normalBrakingBody.appliedTorques[0].x);
+
+    // Extreme frontal impact crushing front springs flat (0.05m vs 0.32m -> delta = 0.27m, 3.375x normal delta)
+    const crashBody = createMockBody({ angvel: { x: 0, y: 0, z: 0 } });
+    const crashController = createMockController([0.05, 0.05, 0.32, 0.32]);
+    applyPitchStabilization(crashBody, crashController, WRC_VEHICLE_CONFIG, 0.016);
+    const crashTorque = Math.abs(crashBody.appliedTorques[0].x);
+
+    // Without decoupling, crashTorque would be 3.375x normalBrakingTorque.
+    // With anti-dive decoupling at 0.14m, crashTorque must be significantly less than 2.0x normalBrakingTorque.
+    expect(crashTorque).toBeLessThan(normalBrakingTorque * 2.0);
+  });
+
+  it('smoothly attenuates pitch damping under high-G dual-axle compression to follow track curvature', () => {
+    // 1. Uncompressed baseline with angular pitch rate
+    const normalBody = createMockBody({ angvel: { x: 2.0, y: 0, z: 0 } });
+    const normalController = createMockController([0.32, 0.32, 0.32, 0.32]);
+    applyPitchStabilization(normalBody, normalController, WRC_VEHICLE_CONFIG, 0.016);
+    const normalDampingImpulse = Math.abs(normalBody.appliedTorques[0].x);
+
+    // 2. High-G dual axle compression (e.g. inside a vertical loop or dip, 0.08m compression on all wheels)
+    const compressedBody = createMockBody({ angvel: { x: 2.0, y: 0, z: 0 } });
+    const compressedController = createMockController([0.24, 0.24, 0.24, 0.24]);
+    applyPitchStabilization(compressedBody, compressedController, WRC_VEHICLE_CONFIG, 0.016);
+    const compressedDampingImpulse = Math.abs(compressedBody.appliedTorques[0].x);
+
+    // Damping should be attenuated smoothly to ~20% of baseline
+    expect(compressedDampingImpulse).toBeLessThan(normalDampingImpulse * 0.35);
+    expect(compressedDampingImpulse).toBeGreaterThan(0);
+  });
+
+  it('attenuates pitch restoring torque under high-G dual-axle loop compression to prevent nose snagging', () => {
+    // 1. Normal single-axle acceleration squat on flat ground (front 0.32m uncompressed, rear 0.24m compressed)
+    const flatSquatBody = createMockBody({ angvel: { x: 0, y: 0, z: 0 } });
+    const flatSquatController = createMockController([0.32, 0.32, 0.24, 0.24]);
+    applyPitchStabilization(flatSquatBody, flatSquatController, WRC_VEHICLE_CONFIG, 0.016);
+    const flatSquatTorque = flatSquatBody.appliedTorques[0]?.x ?? 0;
+
+    // 2. High-G centripetal loop compression where both axles are compressed, but with identical 0.08m delta (front 0.24m, rear 0.16m)
+    const loopSquatBody = createMockBody({ angvel: { x: 0, y: 0, z: 0 } });
+    const loopSquatController = createMockController([0.24, 0.24, 0.16, 0.16]);
+    applyPitchStabilization(loopSquatBody, loopSquatController, WRC_VEHICLE_CONFIG, 0.016);
+    const loopSquatTorque = loopSquatBody.appliedTorques[0]?.x ?? 0;
+
+    // Under loop compression (minCompression = 0.08m, highGFactor = 1.0), restoring torque must be attenuated by ~85%
+    expect(flatSquatTorque).toBeGreaterThan(0);
+    expect(loopSquatTorque).toBeGreaterThan(0);
+    expect(loopSquatTorque).toBeLessThan(flatSquatTorque * 0.30);
+  });
 });
+
+
 

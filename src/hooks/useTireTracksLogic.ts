@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect } from 'react';
+import { useRef, useMemo, useEffect, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
 import type { RapierRigidBody } from '@react-three/rapier';
 import { Object3D, Vector3, Mesh, BufferGeometry, BufferAttribute } from 'three';
@@ -14,6 +14,7 @@ import {
   TIRE_TRACK_MOBILE_PRESETS,
 } from '@/config/particles';
 import { isMobileDevice } from '@/utils/device';
+import { useGameEventListener } from '@/utils/events';
 
 // Reusable scratch objects to avoid per-frame allocations
 const _wheelPos = new Vector3();
@@ -57,6 +58,56 @@ export function useTireTracksLogic(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ribbonBuffers]);
 
+  /**
+   * Resets all ribbon buffers and flushes geometry draw ranges immediately to 0.
+   */
+  const clearTracks = useCallback(() => {
+    for (let i = 0; i < 4; i++) {
+      ribbonBuffers[i].reset();
+      const geo = geometries[i];
+      if (geo) {
+        geo.setDrawRange(0, 0);
+        const alphaAttr = geo.attributes.ribbonAlpha;
+        if (alphaAttr) {
+          alphaAttr.needsUpdate = true;
+        }
+      }
+    }
+  }, [geometries, ribbonBuffers]);
+
+  // Reset ribbon buffers on vehicle reset events (restart stage, manual 'R' respawn, out of bounds)
+  useGameEventListener('vehicle_reset', (e) => {
+    if (e.reason !== 'recovery') {
+      clearTracks();
+    }
+  });
+
+  // Clear tire tracks when stage reset is pending, switching back to menu/loading, or changing track
+  useEffect(() => {
+    return useGameStore.subscribe((state, prevState) => {
+      if (state.pendingReset && !prevState.pendingReset) {
+        clearTracks();
+      }
+      if (
+        state.gameState !== prevState.gameState &&
+        (state.gameState === 'menu' || state.gameState === 'loading')
+      ) {
+        clearTracks();
+      }
+      if (state.selectedLevelId !== prevState.selectedLevelId) {
+        clearTracks();
+      }
+    });
+  }, [clearTracks]);
+
+  // Clear tracks on initial mount, track data change, and unmount
+  useEffect(() => {
+    clearTracks();
+    return () => {
+      clearTracks();
+    };
+  }, [levelData, clearTracks]);
+
   // Bind buffer geometry attributes on initialization or quality change
   useEffect(() => {
     for (let i = 0; i < 4; i++) {
@@ -84,9 +135,14 @@ export function useTireTracksLogic(
     if (!chassis || !wheels) return;
     if (typeof chassis.isValid === 'function' && !chassis.isValid()) return;
 
-    const currentTime = state.clock.elapsedTime;
     const gameState = useGameStore.getState();
+    if (gameState.pendingReset) {
+      clearTracks();
+      return;
+    }
     if (gameState.gameState !== 'playing') return;
+
+    const currentTime = state.clock.elapsedTime;
     const surfaceType = gameState.surface;
 
     const linvel = chassis.linvel();
@@ -195,6 +251,6 @@ export function useTireTracksLogic(
     }
   });
 
-  return { meshRefs, geometries };
+  return { meshRefs, geometries, clearTracks };
 }
 

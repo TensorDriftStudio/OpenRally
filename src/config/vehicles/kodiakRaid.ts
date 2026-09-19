@@ -17,7 +17,10 @@ export const KODIAK_RAID_VEHICLE_CONFIG: VehicleConfig = {
   },
   engine: {
     maxForce: 465, // Robust low-end crawler and hillclimbing torque
-    maxSpeed: 235,
+    maxSpeed: 185,
+    turboBoostMultiplier: 1.05,
+    boostThresholdRpm: 3200,
+    turboSpoolRate: 2.5,
   },
   drivetrain: {
     frontBias: 0.50, // Permanent locked 50/50 AWD
@@ -25,7 +28,7 @@ export const KODIAK_RAID_VEHICLE_CONFIG: VehicleConfig = {
   brakes: {
     maxForce: 22,
     handbrakeForce: 42,
-    frontBias: 0.55,
+    frontBias: 0.65,
   },
   suspension: {
     frontAntiRollBarStiffness: 16.0, // Softer ARB allows independent wheel articulation on boulders/ruts
@@ -34,11 +37,12 @@ export const KODIAK_RAID_VEHICLE_CONFIG: VehicleConfig = {
   },
   handling: {
     steeringCurve: [
-      [0, Math.PI / 3.7],
-      [40, Math.PI / 4.3],
-      [90, Math.PI / 6.5],
-      [150, Math.PI / 10.5],
-      [240, Math.PI / 15.5],
+      [0, Math.PI / 5.2],    // ~34.6° at 0 km/h (heavy raid 4x4 steering)
+      [30, Math.PI / 8.0],   // ~22.5° at 30 km/h
+      [60, Math.PI / 13.0],  // ~13.8° at 60 km/h
+      [90, Math.PI / 19.0],  // ~9.5° at 90 km/h
+      [140, Math.PI / 28.5], // ~6.3° at 140 km/h
+      [240, Math.PI / 42.0], // ~4.3° at 240 km/h
     ],
     steeringSpeed: 8.2,
     assists: {
@@ -48,6 +52,9 @@ export const KODIAK_RAID_VEHICLE_CONFIG: VehicleConfig = {
   },
   aerodynamics: {
     downforceFactor: 16,
+    dragCoefficient: 0.65, // Tall, boxy, high ground clearance
+    frontalArea: 2.6,
+    dragMultiplier: 1.2,
   },
   chassisDynamics: {
     maxRollAngle: 0.115, // ~6.6 degrees (dramatic off-road trophy raid body lean)

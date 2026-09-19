@@ -17,7 +17,10 @@ export const SHADOWFIRE_RS_VEHICLE_CONFIG: VehicleConfig = {
   },
   engine: {
     maxForce: 435,
-    maxSpeed: 250,
+    maxSpeed: 230,
+    turboBoostMultiplier: 1.18,
+    boostThresholdRpm: 3800,
+    turboSpoolRate: 3.4,
   },
   drivetrain: {
     frontBias: 0.50, // 50/50 symmetrical power delivery
@@ -25,7 +28,7 @@ export const SHADOWFIRE_RS_VEHICLE_CONFIG: VehicleConfig = {
   brakes: {
     maxForce: 19,
     handbrakeForce: 40,
-    frontBias: 0.52,
+    frontBias: 0.65,
   },
   suspension: {
     frontAntiRollBarStiffness: 18.0,
@@ -34,11 +37,12 @@ export const SHADOWFIRE_RS_VEHICLE_CONFIG: VehicleConfig = {
   },
   handling: {
     steeringCurve: [
-      [0, Math.PI / 3.7],
-      [40, Math.PI / 4.2],
-      [90, Math.PI / 6.4],
-      [150, Math.PI / 10.2],
-      [240, Math.PI / 15.0],
+      [0, Math.PI / 5.2],    // ~34.6° at 0 km/h (agile track rotation)
+      [30, Math.PI / 8.0],   // ~22.5° at 30 km/h
+      [60, Math.PI / 12.8],  // ~14.1° at 60 km/h
+      [90, Math.PI / 18.5],  // ~9.7° at 90 km/h
+      [140, Math.PI / 28.0], // ~6.4° at 140 km/h
+      [240, Math.PI / 42.0], // ~4.3° at 240 km/h
     ],
     steeringSpeed: 8.8,
     assists: {
@@ -48,6 +52,9 @@ export const SHADOWFIRE_RS_VEHICLE_CONFIG: VehicleConfig = {
   },
   aerodynamics: {
     downforceFactor: 22,
+    dragCoefficient: 0.50,
+    frontalArea: 2.0,
+    dragMultiplier: 1.0,
   },
   wheels: [
     {

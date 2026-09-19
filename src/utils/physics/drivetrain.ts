@@ -7,11 +7,14 @@ import {
   GEAR_MAX_SPEEDS,
   REVERSE_MAX_SPEED,
   BRAKE_SPEED_THRESHOLD,
-  REVERSE_FORCE_MULTIPLIER,
 } from '@/config/vehicle';
 import { DRIVING_MODEL_BALANCE, type DrivetrainBalanceConfig, type DrivingModelBalance } from '@/config/physicsBalance';
 
 const _thrustImpulse = new Vector3();
+
+export interface DrivetrainOptions {
+  readonly isManual?: boolean;
+}
 
 /**
  * Calculates and applies engine forces, AWD torque distribution, launch ramping,
@@ -31,6 +34,7 @@ export function applyDrivetrain(
   surface?: SurfaceType,
   filteredDriftIntensity?: number,
   dt: number = 1 / 60,
+  options?: DrivetrainOptions,
 ): { tcsActive: boolean; nextDriftIntensity: number } {
   const dtBalance = balance;
   const gearRatio = currentGear > 0 && currentGear < GEAR_RATIOS.length ? GEAR_RATIOS[currentGear] : 1;
@@ -88,11 +92,16 @@ export function applyDrivetrain(
     ? 1.0
     : (1.0 + steerAmount * dtBalance.driftBoostSteerWeight + slipAmount * dtBalance.driftBoostSlipWeight);
 
-  // Progressive launch torque delivery in 1st gear from dead stop:
+  // Progressive launch torque delivery in 1st and reverse gears from dead stop:
   // Smoothly ramps torque over 0 -> launchRampEndSpeedMps to prevent violent launch wheelie shock
   const speedAbs = Math.abs(forwardSpeed);
   const launchRamp = currentGear === 1 && speedAbs < dtBalance.launchRampEndSpeedMps
     ? dtBalance.launchRampBaseFraction + (1.0 - dtBalance.launchRampBaseFraction) * (speedAbs / dtBalance.launchRampEndSpeedMps)
+    : 1.0;
+
+  const revLaunchFraction = dtBalance.reverseLaunchRampFraction ?? 0.65;
+  const revLaunchRamp = currentGear === -1 && speedAbs < dtBalance.launchRampEndSpeedMps
+    ? revLaunchFraction + (1.0 - revLaunchFraction) * (speedAbs / dtBalance.launchRampEndSpeedMps)
     : 1.0;
 
   // 2nd Gear Rally Attack Torque Punch:
@@ -119,11 +128,40 @@ export function applyDrivetrain(
   // DCCD Dynamic Torque Split:
   // Baseline front bias in straight line / grip driving (35% front / 65% rear for sharp oversteer initiation),
   // transferring power forward (up to 48% front) during throttle drift to pull the car through the turn.
-  const baseFrontBias = dtBalance.dccdMinFrontBias ?? config.drivetrain.frontBias;
+  // In reverse gear (-1), lock center differential to neutral 50/50 split to prevent
+  // unweighted rear wheel spinout while avoiding forklift-style oversteer on front steerable wheels.
+  const isReverseGear = currentGear === -1;
+  const baseFrontBias = isReverseGear
+    ? 0.50
+    : (dtBalance.dccdMinFrontBias ?? 0.35);
   const driftFrontBias = dtBalance.dccdDriftFrontBias ?? 0.48;
   const throttleInput = input.throttle ?? 0;
-  const activeFrontBias = baseFrontBias + (driftFrontBias - baseFrontBias) * (nextDriftIntensity * Math.min(1.0, throttleInput * 1.2));
+
+  // Dynamic Cornering Front Pull:
+  // Under cornering throttle without a slide, active center differential transfers tractive torque forward
+  // (up to driftFrontBias) so the front wheels pull the car through the apex,
+  // eliminating throttle-on push understeer while preserving straight-line rear launch balance.
+  const corneringSteerDemand = input.steering ? Math.abs(input.steering) : 0;
+  const corneringFrontPull = (driftFrontBias - baseFrontBias) * Math.min(1.0, corneringSteerDemand * 1.2) * Math.min(1.0, throttleInput);
+
+  const activeFrontBias = isReverseGear
+    ? 0.50
+    : Math.min(
+        0.52,
+        baseFrontBias + corneringFrontPull + (driftFrontBias - baseFrontBias) * (nextDriftIntensity * Math.min(1.0, throttleInput * 1.2))
+      );
   const activeRearBias = 1.0 - activeFrontBias;
+
+  // Count front and rear powered wheels to distribute total engine force accurately across all driven wheels
+  let frontPoweredCount = 0;
+  let rearPoweredCount = 0;
+  for (let i = 0; i < config.wheels.length; i++) {
+    const w = config.wheels[i];
+    if (w.powered) {
+      if (w.steerable) frontPoweredCount++;
+      else rearPoweredCount++;
+    }
+  }
 
   for (let i = 0; i < config.wheels.length; i++) {
     const wheel = config.wheels[i];
@@ -139,8 +177,13 @@ export function applyDrivetrain(
 
       let engineForce = 0;
       
-      // Front steerable wheels deliver balanced front-wheel drive traction under handbrake
-      const baseTorqueMultiplier = wheel.steerable ? (activeFrontBias * 2) : (activeRearBias * 2);
+      // Distribute front and rear torque fractions across powered wheels per axle
+      // Under handbrake, 100% of engine power routes to front steerable wheels
+      const frontWheelFraction = activeFrontBias / Math.max(1, frontPoweredCount);
+      const rearWheelFraction = activeRearBias / Math.max(1, rearPoweredCount);
+      const baseTorqueMultiplier = isHandbrakeActive
+        ? (wheel.steerable ? 1.0 / Math.max(1, frontPoweredCount) : 0)
+        : (wheel.steerable ? frontWheelFraction : rearWheelFraction);
 
       // Rear spool lock: equalize rear wheel torque delivery during throttle slides to prevent inside-wheel spin
       const rearSpoolFactor = (!wheel.steerable && nextDriftIntensity > 0.10 && throttleInput > 0.10)
@@ -168,29 +211,40 @@ export function applyDrivetrain(
           if (isLoose) {
             tcsMultiplier = Math.max(0.85, 1.0 - excessSlip * 0.15);
           } else {
-            tcsMultiplier = Math.max(0.35, 1.0 - excessSlip * 0.65);
+            // On tarmac, prevent choking the engine during high-speed banked turns or helical loops
+            const tarmacFloor = speedAbs > 12.0 ? 0.50 : 0.35;
+            const cutDepth = 1.0 - tarmacFloor;
+            tcsMultiplier = Math.max(tarmacFloor, 1.0 - excessSlip * cutDepth);
           }
           tcsActive = tcsMultiplier < 0.98;
         }
       }
 
+      const driveForceScale = dtBalance.driveForceScale ?? 0.48;
+      const maxTurboBoost = config.engine.turboBoostMultiplier ?? 1.10;
+      const turboTorqueFactor = maxTurboBoost;
+
       if (currentGear === 0) {
         // Neutral: zero tractive drive force to wheels (engine revs freely in neutral)
         engineForce = 0;
       } else if (currentGear === -1) {
-        // Reverse gear: Throttle powers car backward; in automatic mode, Brake also powers reverse
-        const revDrive = input.throttle > 0 ? input.throttle : (input.brake > 0 && forwardSpeed < BRAKE_SPEED_THRESHOLD ? input.brake : 0);
+        // Reverse gear:
+        // In Manual mode: input.throttle delivers reverse engine force.
+        // In Automatic mode: input.brake delivers reverse engine force (input.throttle acts as brake to halt motion).
+        const isManual = options?.isManual ?? false;
+        const revDrive = isManual
+          ? (input.throttle ?? 0)
+          : (input.brake > 0 && input.brake >= (input.throttle ?? 0) && forwardSpeed < BRAKE_SPEED_THRESHOLD ? input.brake : 0);
+
         if (revDrive > 0) {
-          engineForce = -config.engine.maxForce * revDrive * REVERSE_FORCE_MULTIPLIER * baseTorqueMultiplier * revLimiterGovernor * powerMultiplier;
+          const reverseRatio = dtBalance.reverseGearRatio ?? 2.35;
+          engineForce = -config.engine.maxForce * driveForceScale * revDrive * reverseRatio * revLaunchRamp * baseTorqueMultiplier * revLimiterGovernor * powerMultiplier;
         }
       } else if (input.throttle > 0) {
-        engineForce = config.engine.maxForce * input.throttle * gearRatio * torqueMultiplier * driftPowerBoost * launchRamp * gearTorquePunch * revLimiterGovernor * powerMultiplier * tcsMultiplier;
-      } else if (input.brake > 0 && forwardSpeed > BRAKE_SPEED_THRESHOLD) {
-        // Braking when moving forward
-        engineForce = 0;
+        engineForce = config.engine.maxForce * driveForceScale * input.throttle * gearRatio * torqueMultiplier * driftPowerBoost * launchRamp * gearTorquePunch * turboTorqueFactor * revLimiterGovernor * powerMultiplier * tcsMultiplier;
       } else if (input.brake > 0) {
-        // Auto reverse trigger when stopped
-        engineForce = -config.engine.maxForce * input.brake * REVERSE_FORCE_MULTIPLIER * baseTorqueMultiplier * revLimiterGovernor * powerMultiplier;
+        // In forward gears while stopped, on an incline, or braking forward, holding brake applies zero engine force
+        engineForce = 0;
       }
       const safeEngineForce = Number.isFinite(engineForce) ? engineForce : 0;
       controller.setWheelEngineForce(i, safeEngineForce);
@@ -222,12 +276,17 @@ export function applyAwdDriftPropulsion(
   balance: DrivingModelBalance = DRIVING_MODEL_BALANCE,
   _assists?: { espEnabled?: boolean },
 ): void {
-  // Do not engage AWD body propulsion while handbrake is actively locked, off throttle, or airborne
-  if ((input.handbrake && balance.handbrake.disableAwdPropulsion) || input.throttle <= 0.05 || groundedRatio <= 0.3) return;
+  // Do not engage AWD body propulsion while handbrake is actively locked, off throttle, airborne, or in reverse gear
+  if (
+    (input.handbrake && balance.handbrake.disableAwdPropulsion) || 
+    input.throttle <= 0.05 || 
+    groundedRatio <= 0.3 ||
+    currentGear === -1
+  ) return;
 
   const absSlip = Math.abs(slipAngle);
-  // Only engage during an active drift slide (slip angle > 7.5 deg), never in regular clean cornering
-  if (absSlip < 0.13) return;
+  // Only engage during an active drift slide (slip angle > 12.6 deg / 0.22 rad), never in regular hill climbs or clean cornering
+  if (absSlip < 0.22) return;
 
   const dtBalance = balance.drivetrain;
   const targetDriftSpeed = dtBalance.driftTargetSpeedKmh ?? 75;
@@ -245,7 +304,7 @@ export function applyAwdDriftPropulsion(
   }
 
   const gearRatio = currentGear > 0 && currentGear < GEAR_RATIOS.length ? GEAR_RATIOS[currentGear] : 1.0;
-  const driftPropulsionMultiplier = dtBalance.driftPropulsionMultiplier ?? 1.15;
+  const driftPropulsionMultiplier = dtBalance.driftPropulsionMultiplier ?? 1.85;
 
   const thrustMagnitude =
     config.engine.maxForce *

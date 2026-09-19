@@ -17,7 +17,10 @@ export const BANTAM_TURBO_VEHICLE_CONFIG: VehicleConfig = {
   },
   engine: {
     maxForce: 405,
-    maxSpeed: 230,
+    maxSpeed: 210,
+    turboBoostMultiplier: 1.15,
+    boostThresholdRpm: 4000,
+    turboSpoolRate: 3.4,
   },
   drivetrain: {
     frontBias: 0.46, // 46/54 rear-biased AWD for snappy Scandinavian flicks without violent wheelies
@@ -25,7 +28,7 @@ export const BANTAM_TURBO_VEHICLE_CONFIG: VehicleConfig = {
   brakes: {
     maxForce: 18,
     handbrakeForce: 40,
-    frontBias: 0.50,
+    frontBias: 0.65,
   },
   suspension: {
     frontAntiRollBarStiffness: 17.0,
@@ -34,11 +37,12 @@ export const BANTAM_TURBO_VEHICLE_CONFIG: VehicleConfig = {
   },
   handling: {
     steeringCurve: [
-      [0, Math.PI / 3.6],   // 50 degrees lock at low speeds
-      [40, Math.PI / 4.2],  // 42.8 degrees
-      [90, Math.PI / 6.2],  // 29 degrees
-      [150, Math.PI / 9.5], // 18.9 degrees
-      [240, Math.PI / 14],  // 12.8 degrees
+      [0, Math.PI / 4.8],    // ~37.5° at 0 km/h (ultra-nimble pocket rocket)
+      [30, Math.PI / 7.5],   // ~24.0° at 30 km/h
+      [60, Math.PI / 12.0],  // ~15.0° at 60 km/h
+      [90, Math.PI / 17.5],  // ~10.3° at 90 km/h
+      [140, Math.PI / 26.0], // ~6.9° at 140 km/h
+      [240, Math.PI / 38.0], // ~4.7° at 240 km/h
     ],
     steeringSpeed: 9.0, // Lightning quick steering response
     assists: {
@@ -48,6 +52,9 @@ export const BANTAM_TURBO_VEHICLE_CONFIG: VehicleConfig = {
   },
   aerodynamics: {
     downforceFactor: 18,
+    dragCoefficient: 0.46,
+    frontalArea: 1.85,
+    dragMultiplier: 1.0,
   },
   wheels: [
     {

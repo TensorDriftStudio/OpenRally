@@ -9,8 +9,8 @@ export const SURFACE_REGISTRY: Record<SurfaceType, SurfaceDefinition> = {
     id: 'tarmac',
     name: 'Asphalt / Tarmac',
     tireModel: {
-      front: { baseGrip: 2.52, peakSlipAngle: Math.PI / 8.0, slideGrip: 1.95 },
-      rear: { baseGrip: 2.30, peakSlipAngle: Math.PI / 8.5, slideGrip: 1.72 },
+      front: { baseGrip: 2.10, peakSlipAngle: Math.PI / 7.5, slideGrip: 1.25 },
+      rear: { baseGrip: 1.95, peakSlipAngle: Math.PI / 8.0, slideGrip: 1.10 },
     },
     particles: {
       color: '#e5e7eb',
@@ -32,8 +32,8 @@ export const SURFACE_REGISTRY: Record<SurfaceType, SurfaceDefinition> = {
     id: 'mud',
     name: 'Mud / Track Dirt',
     tireModel: {
-      front: { baseGrip: 1.98, peakSlipAngle: Math.PI / 5.6, slideGrip: 1.78 },
-      rear: { baseGrip: 1.84, peakSlipAngle: Math.PI / 6.0, slideGrip: 1.66 },
+      front: { baseGrip: 1.42, peakSlipAngle: Math.PI / 5.6, slideGrip: 0.85 },
+      rear: { baseGrip: 1.32, peakSlipAngle: Math.PI / 6.0, slideGrip: 0.78 },
     },
     particles: {
       color: '#8b6f4e',
@@ -55,8 +55,8 @@ export const SURFACE_REGISTRY: Record<SurfaceType, SurfaceDefinition> = {
     id: 'grass',
     name: 'Grass / Meadow',
     tireModel: {
-      front: { baseGrip: 1.82, peakSlipAngle: Math.PI / 6.0, slideGrip: 1.52 },
-      rear: { baseGrip: 1.65, peakSlipAngle: Math.PI / 6.4, slideGrip: 1.38 },
+      front: { baseGrip: 1.35, peakSlipAngle: Math.PI / 6.0, slideGrip: 0.80 },
+      rear: { baseGrip: 1.25, peakSlipAngle: Math.PI / 6.4, slideGrip: 0.74 },
     },
     particles: {
       color: '#856a4b',
@@ -78,8 +78,8 @@ export const SURFACE_REGISTRY: Record<SurfaceType, SurfaceDefinition> = {
     id: 'sand',
     name: 'Beach Sand / Dunes',
     tireModel: {
-      front: { baseGrip: 1.52, peakSlipAngle: Math.PI / 5.5, slideGrip: 1.32 },
-      rear: { baseGrip: 1.42, peakSlipAngle: Math.PI / 5.8, slideGrip: 1.24 },
+      front: { baseGrip: 1.15, peakSlipAngle: Math.PI / 5.5, slideGrip: 0.72 },
+      rear: { baseGrip: 1.05, peakSlipAngle: Math.PI / 5.8, slideGrip: 0.65 },
     },
     particles: {
       color: '#d4b483',
@@ -101,8 +101,8 @@ export const SURFACE_REGISTRY: Record<SurfaceType, SurfaceDefinition> = {
     id: 'snow',
     name: 'Snow / Ice',
     tireModel: {
-      front: { baseGrip: 1.88, peakSlipAngle: Math.PI / 5.2, slideGrip: 1.72 },
-      rear: { baseGrip: 1.78, peakSlipAngle: Math.PI / 5.5, slideGrip: 1.64 },
+      front: { baseGrip: 0.98, peakSlipAngle: Math.PI / 5.2, slideGrip: 0.58 },
+      rear: { baseGrip: 0.90, peakSlipAngle: Math.PI / 5.5, slideGrip: 0.52 },
     },
     particles: {
       color: '#f0f9ff',
@@ -124,8 +124,8 @@ export const SURFACE_REGISTRY: Record<SurfaceType, SurfaceDefinition> = {
     id: 'gravel',
     name: 'Loose Gravel',
     tireModel: {
-      front: { baseGrip: 2.18, peakSlipAngle: Math.PI / 5.4, slideGrip: 1.96 },
-      rear: { baseGrip: 2.05, peakSlipAngle: Math.PI / 5.8, slideGrip: 1.85 },
+      front: { baseGrip: 1.55, peakSlipAngle: Math.PI / 5.4, slideGrip: 0.90 },
+      rear: { baseGrip: 1.45, peakSlipAngle: Math.PI / 5.8, slideGrip: 0.82 },
     },
     particles: {
       color: '#a8a29e',

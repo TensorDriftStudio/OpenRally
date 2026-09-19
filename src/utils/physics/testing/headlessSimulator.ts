@@ -9,6 +9,9 @@ import { applyAntiRollBars, applyPitchStabilization } from '../suspension';
 import { applyAssists } from '../assists';
 import { applyAerodynamics } from '../aerodynamics';
 import type { RapierRigidBody } from '@react-three/rapier';
+import type { LevelData } from '@/types/level';
+import type { HeightmapData } from '@/types/terrain';
+import { DEFAULT_TIRE_TYPE } from '@/config/tireRegistry';
 
 /**
  * Lightweight mock physics body state for headless simulation.
@@ -35,7 +38,8 @@ export function createHeadlessVehicleEnvironment(config: VehicleConfig) {
   const brakeForces: number[] = [0, 0, 0, 0];
   const frictions: number[] = [1, 1, 1, 1];
   const steerings: number[] = [0, 0, 0, 0];
-  const suspensionLengths = config.wheels.map((w) => w.suspensionRestLength);
+  // Static sag: wheels compress suspension by ~0.05m under chassis weight at rest
+  const suspensionLengths = config.wheels.map((w) => w.suspensionRestLength - 0.05);
   const wheelContacts = [true, true, true, true];
 
   const appliedImpulses: { impulse: Vector3; point?: Vector3 }[] = [];
@@ -119,6 +123,8 @@ export function stepHeadlessSimulation(
   dt: number,
   currentGear: number,
   balance?: DrivingModelBalance,
+  levelData?: LevelData,
+  heightmapData?: HeightmapData,
 ): { currentGear: number; speedKmh: number; forwardSpeed: number; slipAngle: number } {
   const activeBalance = balance ?? resolveVehicleBalance(config);
   const { mockBody, mockController, state } = env;
@@ -139,11 +145,8 @@ export function stepHeadlessSimulation(
   // Automatic Gearbox Step
   const newGear = updateGearbox(speedKmh, forwardSpeed, input, currentGear, false, { slipAngle });
 
-  // 1. Drivetrain
-  applyDrivetrain(mockController, config, input, forwardSpeed, newGear, slipAngle, speedKmh, 1.0, activeBalance.drivetrain);
-
-  // 2. Tires and Brakes
-  const { steerAngle } = applyTireFrictionAndBrakes(
+  // 1. Tires and Brakes
+  const { steerAngle, surface } = applyTireFrictionAndBrakes(
     mockController,
     config,
     input,
@@ -153,9 +156,29 @@ export function stepHeadlessSimulation(
     state.position.y,
     state.position.z,
     slipAngle,
-    undefined,
-    undefined,
+    heightmapData,
+    levelData,
     activeBalance,
+    { absEnabled: true, tcsEnabled: true, espEnabled: true },
+    DEFAULT_TIRE_TYPE,
+    { currentGear: newGear },
+  );
+
+  // 2. Drivetrain (Engine, Reverse, Rev Limiter, Rally TCS, DCCD)
+  applyDrivetrain(
+    mockController,
+    config,
+    input,
+    forwardSpeed,
+    newGear,
+    slipAngle,
+    speedKmh,
+    1.0,
+    activeBalance.drivetrain,
+    { tcsEnabled: true },
+    surface,
+    0,
+    dt,
   );
 
   // 3. Assists & Suspension ARB
@@ -164,7 +187,7 @@ export function stepHeadlessSimulation(
   applyPitchStabilization(mockBody, mockController, config, dt, activeBalance.suspension);
 
   // 4. Aerodynamics
-  applyAerodynamics(mockBody, config, forwardSpeed, state.velocity, state.position.y, dt);
+  applyAerodynamics(mockBody, config, forwardSpeed, state.velocity, state.position.y, dt, activeBalance.drivetrain.aeroDragScale ?? 1.0);
 
   // 5. AWD Drift Propulsion
   applyAwdDriftPropulsion(mockBody, config, input, forward, speedKmh, slipAngle, 1.0, dt, newGear, right, steerAngle, activeBalance);
@@ -178,10 +201,13 @@ export function stepHeadlessSimulation(
   const requestedBrakeDecel = (totalBrakeForce * 22) / state.mass;
   const effectiveBrakeDecel = Math.min(requestedBrakeDecel, maxBrakeDecel);
 
-  const driveAccel = totalDriveForce / state.mass;
+  // Physical ground traction clamp (tires slip if engine force exceeds mu * Fn)
+  const maxDriveAccel = Math.max(9.0, avgGrip * 9.81 * 1.15);
+  const rawDriveAccel = totalDriveForce / state.mass;
+  const driveAccel = Math.min(rawDriveAccel, maxDriveAccel);
   const netAccel = driveAccel - (Math.abs(forwardSpeed) > 0.05 ? Math.sign(forwardSpeed) * effectiveBrakeDecel : 0);
 
-  if (Math.abs(forwardSpeed) > 0.05 || input.throttle > 0) {
+  if (Math.abs(forwardSpeed) > 0.05 || input.throttle > 0 || (newGear === -1 && input.brake > 0)) {
     state.velocity.addScaledVector(forward, netAccel * dt);
   }
 
@@ -199,6 +225,9 @@ export function stepHeadlessSimulation(
   }
 
   // Integrate positions & rotations
+  // Simulated ground plane support: vehicle rides flat on test terrain (prevents downforce sinking into water)
+  state.velocity.y = 0;
+  state.position.y = 0.5;
   state.position.addScaledVector(state.velocity, dt);
 
   const euler = new Euler().setFromQuaternion(state.rotation, 'YXZ');
