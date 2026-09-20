@@ -15,27 +15,34 @@ import { useIsMobile } from './MultiplayerHUD';
  */
 export function TagCompleteModal() {
   const isMobile = useIsMobile();
-  const showResultsModal = useTagStore((s) => s.showResultsModal);
-  const gameMode = useGameStore((s) => s.gameMode);
-  const leaderboard = useTagStore((s) => s.leaderboard);
-  const intermissionRemaining = useTagStore((s) => s.intermissionRemaining);
-  const selfId = useMultiplayerStore((s) => s.selfId);
-  const currentRoom = useMultiplayerStore((s) => s.currentRoom);
+  const storeShowResultsModal = useTagStore((s) => s.showResultsModal);
+  const showResultsModal = useTagStore.getState().showResultsModal ?? storeShowResultsModal;
+
+  const storeGameMode = useGameStore((s) => s.gameMode);
+  const gameMode = useGameStore.getState().gameMode ?? storeGameMode;
+
+  const storeLeaderboard = useTagStore((s) => s.leaderboard);
+  const leaderboard = useTagStore.getState().leaderboard ?? storeLeaderboard;
+
+  const storeIntermissionRemaining = useTagStore((s) => s.intermissionRemaining);
+  const intermissionRemaining = useTagStore.getState().intermissionRemaining ?? storeIntermissionRemaining;
+
+  const storeCurrentRoom = useMultiplayerStore((s) => s.currentRoom);
+  const currentRoom = useMultiplayerStore.getState().currentRoom ?? storeCurrentRoom;
+
+  const storeSelfId = useMultiplayerStore((s) => s.selfId);
+  const selfId = useMultiplayerStore.getState().selfId ?? storeSelfId;
+
   const dismissResultsModal = useTagStore((s) => s.dismissResultsModal);
 
-  const [intermissionTimer, setIntermissionTimer] = useState(() => intermissionRemaining || 20);
+  const intermissionSeconds =
+    Number.isFinite(intermissionRemaining) && intermissionRemaining > 0
+      ? Math.max(0, Math.ceil(intermissionRemaining))
+      : 0;
+
   const [focusedIndex, setFocusedIndex] = useState(0);
   const focusedIndexRef = useRef(0);
   focusedIndexRef.current = focusedIndex;
-
-  useEffect(() => {
-    if (!showResultsModal) return;
-    setIntermissionTimer(intermissionRemaining || 20);
-    const interval = setInterval(() => {
-      setIntermissionTimer((prev) => Math.max(0, prev - 1));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [showResultsModal, intermissionRemaining]);
 
   const handleContinue = useCallback(() => {
     resetGamepadEdgeState();
@@ -178,7 +185,7 @@ export function TagCompleteModal() {
           >
             <div style={{ fontSize: '9px', color: '#94A3B8', fontWeight: 700 }}>NEXT ROUND</div>
             <div style={{ fontSize: '14px', fontWeight: 900, color: '#FBBF24', fontFamily: 'monospace' }}>
-              {intermissionTimer}s
+              {`${intermissionSeconds}s`}
             </div>
           </div>
         </div>
@@ -207,7 +214,7 @@ export function TagCompleteModal() {
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '10px', color: '#94A3B8', fontWeight: 600 }}>CLEAN TIME</div>
               <div style={{ fontSize: isMobile ? '16px' : '18px', fontWeight: 900, color: '#34D399', fontFamily: 'monospace' }}>
-                {winner.timeClean}s
+                {`${Math.round(winner.timeClean)}s`}
               </div>
             </div>
           </div>
@@ -288,7 +295,7 @@ export function TagCompleteModal() {
                     fontSize: isMobile ? '12px' : '14px',
                   }}
                 >
-                  {entry.timeClean}s
+                  {`${Math.round(entry.timeClean)}s`}
                 </span>
                 <span
                   style={{

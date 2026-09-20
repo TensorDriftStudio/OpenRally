@@ -4,7 +4,7 @@
  *
  * NOTE: Synchronized automatically with package.json and server/src/version.ts via scripts/bumpVersion.mjs.
  */
-export const GAME_VERSION = '1.2.0';
+export const GAME_VERSION = '1.2.1';
 
 /**
  * Protocol version for binary/JSON network packets.

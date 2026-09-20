@@ -38,11 +38,11 @@ function GymkhanaCompleteModalContent() {
   const currentRoom = useMultiplayerStore((s) => s.currentRoom);
   const selfId = useMultiplayerStore((s) => s.selfId);
 
-  const [intermissionTimer, setIntermissionTimer] = useState(() => intermissionRemaining ?? 20);
+  const [intermissionTimer, setIntermissionTimer] = useState(() => Math.max(0, Math.ceil(intermissionRemaining ?? 20)));
 
   useEffect(() => {
     if (!isMultiplayerGymkhana) return;
-    setIntermissionTimer(intermissionRemaining ?? 20);
+    setIntermissionTimer(Math.max(0, Math.ceil(intermissionRemaining ?? 20)));
     const interval = setInterval(() => {
       setIntermissionTimer((prev) => Math.max(0, prev - 1));
     }, 1000);
@@ -253,7 +253,7 @@ function GymkhanaCompleteModalContent() {
             <div style={styles.intermissionBanner}>
               <span style={styles.intermissionPulseDot} />
               <span style={styles.intermissionLabel}>NEXT ROUND STARTS IN:</span>
-              <strong style={styles.intermissionTimerText}>{intermissionTimer}s</strong>
+              <strong style={styles.intermissionTimerText}>{Math.max(0, Math.ceil(intermissionTimer))}s</strong>
             </div>
 
             {leaderboard.length > 0 && (
@@ -304,7 +304,7 @@ function GymkhanaCompleteModalContent() {
             onPointerMove={() => setFocusedIndex(0)}
             onClick={handlePlayAgain}
           >
-            <span>{isMultiplayerGymkhana ? `READY FOR NEXT ROUND (${intermissionTimer}s)` : 'PLAY AGAIN'}</span>
+            <span>{isMultiplayerGymkhana ? `READY FOR NEXT ROUND (${Math.max(0, Math.ceil(intermissionTimer))}s)` : 'PLAY AGAIN'}</span>
             <span style={styles.buttonArrow}>➜</span>
           </button>
 
