@@ -4,10 +4,10 @@
  *
  * NOTE: Synchronized automatically with package.json and src/config/version.ts via scripts/bumpVersion.mjs.
  */
-export const SERVER_VERSION = '1.2.1';
+export const SERVER_VERSION = '1.3.0';
 
 /**
  * Protocol version for binary/JSON network packets.
  * Mismatched protocol versions reject client connections with VERSION_MISMATCH.
  */
-export const PROTOCOL_VERSION = '1.2';
+export const PROTOCOL_VERSION = '1.3';

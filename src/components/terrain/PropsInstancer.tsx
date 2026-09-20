@@ -101,6 +101,7 @@ export function PropsInstancer() {
   const hasStandingStone = hasProp('standing_stone');
   const hasHighlandCottage = hasProp('highland_cottage');
   const hasCabin = hasProp('cabin');
+  const hasShippingContainer = hasProp('shipping_container');
   const hasBirch = hasProp('tree_birch') || isBritain || isIsland;
   const hasDesertTree = hasProp('tree_desert') || isDesert;
   const hasPine = hasProp('tree_pine') || hasProp('tree') || (!isDesert && !hasDesertTree);
@@ -136,6 +137,9 @@ export function PropsInstancer() {
   const highlandCottageWallPath = (hasHighlandCottage || isBritain) ? '/textures/props/highland_cottage_wall.jpg' : BLANK;
   const highlandCottageThatchPath = (hasHayBale || hasHighlandCottage || isBritain || isGymkhana) ? '/textures/props/highland_cottage_thatch.jpg' : BLANK;
   const jumpRampPath = (hasJumpRamp || isGymkhana) ? '/textures/props/jump_ramp_diffuse.png' : BLANK;
+  const containerBluePath = (hasShippingContainer || isGymkhana) ? '/textures/props/shipping_container_blue.jpg' : BLANK;
+  const containerOrangePath = (hasShippingContainer || isGymkhana) ? '/textures/props/shipping_container_orange.jpg' : BLANK;
+  const containerRedPath = (hasShippingContainer || isGymkhana) ? '/textures/props/shipping_container_red.jpg' : BLANK;
 
   // Load shared props textures (biome-tailored to reduce VRAM by up to 120MB)
   const [
@@ -162,6 +166,9 @@ export function PropsInstancer() {
     _highlandCottageWallTexture,
     highlandCottageThatchTexture,
     jumpRampTexture,
+    containerBlueTexture,
+    containerOrangeTexture,
+    containerRedTexture,
   ] = useTexture([
     pineBarkPath,
     pineBranchPath,
@@ -186,6 +193,9 @@ export function PropsInstancer() {
     highlandCottageWallPath,
     highlandCottageThatchPath,
     jumpRampPath,
+    containerBluePath,
+    containerOrangePath,
+    containerRedPath,
   ]);
 
   useMemo(() => {
@@ -215,6 +225,9 @@ export function PropsInstancer() {
       _highlandCottageWallTexture,
       highlandCottageThatchTexture,
       jumpRampTexture,
+      containerBlueTexture,
+      containerOrangeTexture,
+      containerRedTexture,
     ].forEach((tex) => {
       tex.wrapS = RepeatWrapping;
       tex.wrapT = RepeatWrapping;
@@ -246,6 +259,9 @@ export function PropsInstancer() {
     _highlandCottageWallTexture,
     highlandCottageThatchTexture,
     jumpRampTexture,
+    containerBlueTexture,
+    containerOrangeTexture,
+    containerRedTexture,
   ]);
 
   const isMobile = isMobileDevice();
@@ -354,6 +370,9 @@ export function PropsInstancer() {
         driftPylons={categorized.driftPylons}
         jumpRamps={categorized.jumpRamps}
         jumpRampTexture={jumpRampTexture}
+        containerBlueTexture={containerBlueTexture}
+        containerOrangeTexture={containerOrangeTexture}
+        containerRedTexture={containerRedTexture}
         canShadow={canShadow}
       />
     </>

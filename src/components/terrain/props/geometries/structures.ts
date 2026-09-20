@@ -1,5 +1,6 @@
 import {
   BufferGeometry,
+  BufferAttribute,
   BoxGeometry,
   CylinderGeometry,
 } from 'three';
@@ -332,21 +333,58 @@ export function createStoneBridgeGeometry(): BufferGeometry {
 }
 
 /**
+ * Helper to assign UV rectangle coordinates to a BoxGeometry face (4 vertices).
+ */
+function setBoxFaceUV(
+  uvAttr: BufferAttribute,
+  faceIndex: number,
+  uMin: number,
+  uMax: number,
+  vMin: number,
+  vMax: number,
+): void {
+  const base = faceIndex * 4;
+  uvAttr.setXY(base + 0, uMin, vMax);
+  uvAttr.setXY(base + 1, uMax, vMax);
+  uvAttr.setXY(base + 2, uMin, vMin);
+  uvAttr.setXY(base + 3, uMax, vMin);
+}
+
+/**
  * Creates an industrial ISO shipping freight container with corrugated panels and corner castings.
+ * Features realistic UV unwrapping matching the multi-livery texture atlas:
+ * - Long sides (+X and -X) -> Top half (corrugated metal, stencil logo, hazard stripes)
+ * - Front cargo doors (+Z) -> Bottom-left quadrant (double doors, locking bars, ISO data plate)
+ * - Rear end wall (-Z) -> Bottom-center panel (corrugated paneling, structural welds)
+ * - Welded roof (+Y) -> Bottom-right quadrant (horizontal corrugated panels, rust streaks)
+ * - Structural corner posts & castings -> Dark oxidized structural frame steel
  */
 export function createShippingContainerGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  // Main container body (Width: 2.44m, Height: 2.6m, Length: 6.0m, deep anchor down to -0.4m)
+  // Main container body (Width: 2.44m, Height: 3.0m, Length: 6.0m, deep anchor down to -0.4m)
   const body = new BoxGeometry(2.44, 3.0, 6.0);
   body.translate(0, 1.1, 0);
-  const uvs = body.attributes.uv;
-  for (let i = 0; i < uvs.count; i++) {
-    uvs.setXY(i, uvs.getX(i) * 2.0, uvs.getY(i) * 2.0);
-  }
+  const bodyUV = body.attributes.uv as BufferAttribute;
+
+  // BoxGeometry face order:
+  // Face 0: +X side (Right long wall)
+  setBoxFaceUV(bodyUV, 0, 0.0, 1.0, 0.5, 1.0);
+  // Face 1: -X side (Left long wall)
+  setBoxFaceUV(bodyUV, 1, 0.0, 1.0, 0.5, 1.0);
+  // Face 2: +Y roof (Top horizontal corrugated roof)
+  setBoxFaceUV(bodyUV, 2, 0.57, 1.0, 0.0, 0.5);
+  // Face 3: -Y underside (Ground anchor / hidden base)
+  setBoxFaceUV(bodyUV, 3, 0.44, 0.46, 0.0, 0.05);
+  // Face 4: +Z front (Cargo double doors with locking bars and ISO rating plate)
+  setBoxFaceUV(bodyUV, 4, 0.0, 0.43, 0.0, 0.5);
+  // Face 5: -Z rear (Corrugated rear wall)
+  setBoxFaceUV(bodyUV, 5, 0.43, 0.57, 0.0, 0.5);
+
+  bodyUV.needsUpdate = true;
   parts.push(body);
 
-  // Corner structural posts
+  // Corner structural posts (Dark oxidized structural steel)
   const postCorners = [
     [-1.15, -2.9],
     [1.15, -2.9],
@@ -356,21 +394,37 @@ export function createShippingContainerGeometry(): BufferGeometry {
   for (const [px, pz] of postCorners) {
     const post = new BoxGeometry(0.18, 3.05, 0.18);
     post.translate(px, 1.1, pz);
+    const postUV = post.attributes.uv as BufferAttribute;
+    for (let i = 0; i < postUV.count; i++) {
+      postUV.setXY(i, 0.435, 0.05);
+    }
     parts.push(post);
 
     // Top corner castings
     const castingTop = new BoxGeometry(0.24, 0.22, 0.24);
     castingTop.translate(px, 2.65, pz);
+    const castingUV = castingTop.attributes.uv as BufferAttribute;
+    for (let i = 0; i < castingUV.count; i++) {
+      castingUV.setXY(i, 0.435, 0.05);
+    }
     parts.push(castingTop);
   }
 
   // End door lock rods and horizontal stiffeners
   const rodL = new CylinderGeometry(0.03, 0.03, 2.5, 8);
   rodL.translate(-0.35, 1.3, 3.02);
+  const rodLUV = rodL.attributes.uv as BufferAttribute;
+  for (let i = 0; i < rodLUV.count; i++) {
+    rodLUV.setXY(i, 0.435, 0.05);
+  }
   parts.push(rodL);
 
   const rodR = new CylinderGeometry(0.03, 0.03, 2.5, 8);
   rodR.translate(0.35, 1.3, 3.02);
+  const rodRUV = rodR.attributes.uv as BufferAttribute;
+  for (let i = 0; i < rodRUV.count; i++) {
+    rodRUV.setXY(i, 0.435, 0.05);
+  }
   parts.push(rodR);
 
   const merged = BufferGeometryUtils.mergeGeometries(parts);

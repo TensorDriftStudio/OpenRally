@@ -71,4 +71,51 @@ describe('Trackside & Gymkhana Props Texture Integrity', () => {
     expect(physicsHookSrc).toContain('body.setGravityScale(0, true)');
     expect(physicsHookSrc).toContain('body.setGravityScale(1, true)');
   });
+
+  it('verifies PropsInstancer dynamically assigns multi-livery textures to shipping containers on Gymkhana', () => {
+    const propsInstancerSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src/components/terrain/PropsInstancer.tsx'),
+      'utf-8',
+    );
+
+    expect(propsInstancerSrc).toContain("const hasShippingContainer = hasProp('shipping_container');");
+    expect(propsInstancerSrc).toContain(
+      "const containerBluePath = (hasShippingContainer || isGymkhana) ? '/textures/props/shipping_container_blue.jpg' : BLANK;",
+    );
+    expect(propsInstancerSrc).toContain(
+      "const containerOrangePath = (hasShippingContainer || isGymkhana) ? '/textures/props/shipping_container_orange.jpg' : BLANK;",
+    );
+    expect(propsInstancerSrc).toContain(
+      "const containerRedPath = (hasShippingContainer || isGymkhana) ? '/textures/props/shipping_container_red.jpg' : BLANK;",
+    );
+  });
+
+  it('verifies physical container texture assets exist in public directory', () => {
+    const publicPropsDir = path.join(process.cwd(), 'public/textures/props');
+    expect(fs.existsSync(path.join(publicPropsDir, 'shipping_container_blue.jpg'))).toBe(true);
+    expect(fs.existsSync(path.join(publicPropsDir, 'shipping_container_orange.jpg'))).toBe(true);
+    expect(fs.existsSync(path.join(publicPropsDir, 'shipping_container_red.jpg'))).toBe(true);
+  });
+
+  it('verifies createShippingContainerGeometry unwraps valid UVs without NaNs', async () => {
+    const { createShippingContainerGeometry } = await import(
+      '../geometries/structures'
+    );
+    const geo = createShippingContainerGeometry();
+    const uvs = geo.attributes.uv;
+
+    expect(uvs).toBeDefined();
+    expect(uvs.count).toBeGreaterThan(0);
+
+    for (let i = 0; i < uvs.count; i++) {
+      const u = uvs.getX(i);
+      const v = uvs.getY(i);
+      expect(Number.isNaN(u)).toBe(false);
+      expect(Number.isNaN(v)).toBe(false);
+      expect(u).toBeGreaterThanOrEqual(0.0);
+      expect(u).toBeLessThanOrEqual(1.0);
+      expect(v).toBeGreaterThanOrEqual(0.0);
+      expect(v).toBeLessThanOrEqual(1.0);
+    }
+  });
 });
