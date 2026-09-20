@@ -13,6 +13,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { isMobileOrAndroid } from '@/utils/device';
 import { menuStyles, getFocusStyle } from './menuStyles';
 import { MIN_STEERING_SENSITIVITY, MAX_STEERING_SENSITIVITY, STEERING_SENSITIVITY_STEP } from '@/config/input';
+import { isIosMotionPermissionRequired, requestTiltPermission } from '@/utils/input/tilt';
 import type { ControlsTab, MenuView, ResetConfirmState, SettingsCategory } from './types';
 import { ControlsView } from './ControlsView';
 
@@ -492,7 +493,13 @@ export function SettingsView({
               </div>
               <select
                 value={touchSteeringScheme}
-                onChange={(e) => setTouchSteeringScheme(e.target.value as TouchSteeringScheme)}
+                onChange={(e) => {
+                  const scheme = e.target.value as TouchSteeringScheme;
+                  setTouchSteeringScheme(scheme);
+                  if (scheme === 'tilt' && isIosMotionPermissionRequired()) {
+                    void requestTiltPermission();
+                  }
+                }}
                 style={menuStyles.select}
               >
                 <option value="joystick">Floating Analog Joystick</option>

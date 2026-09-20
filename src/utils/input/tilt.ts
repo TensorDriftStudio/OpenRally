@@ -66,32 +66,31 @@ export function extractRawTiltAngle(
 ): number {
   const normalizedScreenAngle = ((screenAngle % 360) + 360) % 360;
 
+  let angle: number;
+
   // In landscape-primary (90 deg CCW rotation, top of phone on Left):
-  // Tilting Left (left hand down) raises beta (positive).
-  // Tilting Right (right hand down) lowers beta (negative).
+  // Physical tilt left (left hand down) produces negative beta on mobile devices.
+  // Inverting (-beta) produces a positive angle, correctly yielding +1.0 Left steer.
   if (normalizedScreenAngle === 90) {
-    return beta;
+    angle = -beta;
+  } else if (normalizedScreenAngle === 270) {
+    // In landscape-secondary (270 deg CW rotation, top of phone on Right):
+    // Physical tilt left (left hand down) produces positive beta.
+    // Returning beta produces a positive angle, correctly yielding +1.0 Left steer.
+    angle = beta;
+  } else if (normalizedScreenAngle === 0) {
+    // Fallback for portrait (0 deg):
+    // Roll around Y axis is gamma. Tilting Left rolls towards negative gamma.
+    angle = -gamma;
+  } else if (normalizedScreenAngle === 180) {
+    // Inverted portrait (180 deg):
+    angle = gamma;
+  } else {
+    angle = -beta;
   }
 
-  // In landscape-secondary (270 deg CW rotation, top of phone on Right):
-  // Tilting Left (left hand down) lowers beta (negative).
-  // Therefore inverted: -beta produces positive angle.
-  if (normalizedScreenAngle === 270) {
-    return -beta;
-  }
-
-  // Fallback for portrait (0 deg):
-  // Roll around Y axis is gamma. Tilting Left rolls towards negative gamma.
-  if (normalizedScreenAngle === 0) {
-    return -gamma;
-  }
-
-  // Inverted portrait (180 deg):
-  if (normalizedScreenAngle === 180) {
-    return gamma;
-  }
-
-  return beta;
+  // Prevent IEEE-754 negative zero (-0)
+  return angle === 0 ? 0 : angle;
 }
 
 /**

@@ -16,7 +16,6 @@ import {
 import {
   startTiltSensorListener,
   calibrateTiltCenter,
-  getLiveTiltAngle,
   isIosMotionPermissionRequired,
   getTiltPermissionState,
   requestTiltPermission,
@@ -93,53 +92,37 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
   const [brakePressed, setBrakePressed] = useState(false);
   const [handbrakePressed, setHandbrakePressed] = useState(false);
 
-  // Tilt state & refs
-  const tiltIndicatorRef = useRef<HTMLDivElement>(null);
-  const tiltAngleLabelRef = useRef<HTMLSpanElement>(null);
+  // Tilt state
   const [calibratedToast, setCalibratedToast] = useState(false);
-  const [iosPermissionNeeded, setIosPermissionNeeded] = useState(false);
-  const [permissionGranted, setPermissionGranted] = useState(() => getTiltPermissionState() === 'granted');
 
-  // Start tilt listener when tilt steering is selected
+  // Start tilt listener when tilt steering is selected and auto-request iOS permission on first gesture
   useEffect(() => {
     if (touchSteeringScheme !== 'tilt') return;
-
-    if (isIosMotionPermissionRequired() && getTiltPermissionState() !== 'granted') {
-      setIosPermissionNeeded(true);
-    }
 
     const cleanup = startTiltSensorListener();
+
+    // On iOS 13+, motion sensor permission must be requested via user gesture.
+    // If not yet granted, request it automatically on the first user interaction.
+    let cleanupPointer: (() => void) | undefined;
+    if (isIosMotionPermissionRequired() && getTiltPermissionState() !== 'granted') {
+      const handleFirstInteraction = async () => {
+        const res = await requestTiltPermission();
+        if (res === 'granted' && touchHaptics) {
+          triggerHapticFeedback(20);
+        }
+      };
+      window.addEventListener('pointerdown', handleFirstInteraction, { once: true });
+      cleanupPointer = () => {
+        window.removeEventListener('pointerdown', handleFirstInteraction);
+      };
+    }
+
     return () => {
       cleanup();
+      cleanupPointer?.();
       setTiltTouchOverride(false);
     };
-  }, [touchSteeringScheme]);
-
-  // Zero-GC 60fps visual update loop for tilt gauge
-  useEffect(() => {
-    if (touchSteeringScheme !== 'tilt') return;
-    let animId: number;
-
-    const updateVisual = () => {
-      const angle = getLiveTiltAngle();
-      if (tiltIndicatorRef.current) {
-        // Clamped between -30 and +30 deg -> translate -42px to +42px
-        const clamped = Math.max(-30, Math.min(30, angle));
-        // OpenRally: +angle is Left (translate left: negative px)
-        const offsetPx = -(clamped / 30) * 42;
-        tiltIndicatorRef.current.style.transform = `translate3d(${offsetPx}px, 0, 0)`;
-      }
-      if (tiltAngleLabelRef.current) {
-        tiltAngleLabelRef.current.textContent = `${angle > 0 ? '+' : ''}${Math.round(angle)}°`;
-      }
-      animId = requestAnimationFrame(updateVisual);
-    };
-
-    animId = requestAnimationFrame(updateVisual);
-    return () => {
-      cancelAnimationFrame(animId);
-    };
-  }, [touchSteeringScheme]);
+  }, [touchSteeringScheme, touchHaptics]);
 
   const handleCalibrateCenter = useCallback(() => {
     calibrateTiltCenter();
@@ -147,30 +130,6 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
     setCalibratedToast(true);
     setTimeout(() => setCalibratedToast(false), 1200);
   }, [touchHaptics]);
-
-  const handleRequestIosPermission = useCallback(async () => {
-    const res = await requestTiltPermission();
-    if (res === 'granted') {
-      setPermissionGranted(true);
-      setIosPermissionNeeded(false);
-      if (touchHaptics) triggerHapticFeedback(20);
-    }
-  }, [touchHaptics]);
-
-  const handleTiltOverrideDown = useCallback((e: React.PointerEvent) => {
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {}
-    setTiltTouchOverride(true);
-  }, []);
-
-  const handleTiltOverrideUp = useCallback((e: React.PointerEvent) => {
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {}
-    setTiltTouchOverride(false);
-    setTouchInput({ steering: 0 });
-  }, []);
 
   // Listen to input type switches across window
   useEffect(() => {
@@ -695,116 +654,42 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
           </button>
         </div>
       ) : (
-        /* Tilt Motion Steering Zone with Visual Horizon Meter & Safety Touch Area */
+        /* Motion Sensor (Tilt) Mode - Left Thumb Placement for Handbrake Drift */
         <div
-          data-testid="touch-tilt-zone"
-          onPointerDown={handleTiltOverrideDown}
-          onPointerUp={handleTiltOverrideUp}
-          onPointerCancel={handleTiltOverrideUp}
           style={{
             position: 'absolute',
             left: 'calc(24px + var(--sal, 0px))',
             bottom: 'calc(24px + var(--sab, 0px))',
-            width: `${Math.round(180 * sizeMultiplier)}px`,
-            height: `${Math.round(84 * sizeMultiplier)}px`,
+            zIndex: 10,
             pointerEvents: 'auto',
-            touchAction: 'none',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(15, 23, 42, 0.75)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            borderRadius: '16px',
-            border: '1px solid rgba(0, 212, 255, 0.4)',
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
-            padding: '8px 12px',
-            gap: '6px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-            <span style={{ fontSize: '10px', fontWeight: 800, color: '#67e8f9', letterSpacing: '0.5px' }}>
-              TILT STEER
-            </span>
-            <span
-              ref={tiltAngleLabelRef}
-              style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', fontVariantNumeric: 'tabular-nums' }}
-            >
-              0°
-            </span>
-          </div>
-
-          {/* Horizon Spirit Level Bar */}
-          <div
+          <button
+            type="button"
+            data-testid="touch-btn-handbrake"
+            aria-label="Handbrake Drift"
+            onPointerDown={handleHandbrakeDown}
+            onPointerUp={handleHandbrakeUp}
+            onPointerCancel={handleHandbrakeUp}
+            onPointerLeave={handleHandbrakeUp}
             style={{
-              position: 'relative',
-              width: '100%',
-              height: '14px',
-              borderRadius: '7px',
-              background: 'rgba(30, 41, 59, 0.9)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              overflow: 'hidden',
+              ...pedalBaseStyle,
+              width: `${Math.round(92 * sizeMultiplier)}px`,
+              height: `${Math.round(76 * sizeMultiplier)}px`,
+              borderRadius: '20px',
+              background: handbrakePressed
+                ? 'linear-gradient(180deg, rgba(245, 158, 11, 0.6) 0%, rgba(217, 119, 6, 0.8) 100%)'
+                : 'linear-gradient(180deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.85) 100%)',
+              borderColor: handbrakePressed ? '#f59e0b' : 'rgba(245, 158, 11, 0.4)',
+              boxShadow: handbrakePressed ? '0 0 14px rgba(245, 158, 11, 0.5)' : 'none',
             }}
           >
-            {/* Center zero line */}
-            <div
-              style={{
-                position: 'absolute',
-                width: '2px',
-                height: '100%',
-                background: 'rgba(255, 255, 255, 0.4)',
-              }}
-            />
-            {/* Deadzone region marker */}
-            <div
-              style={{
-                position: 'absolute',
-                width: '12px',
-                height: '100%',
-                background: 'rgba(16, 185, 129, 0.15)',
-                borderLeft: '1px solid rgba(16, 185, 129, 0.3)',
-                borderRight: '1px solid rgba(16, 185, 129, 0.3)',
-              }}
-            />
-            {/* Dynamic Tilt Indicator Pip */}
-            <div
-              ref={tiltIndicatorRef}
-              data-testid="touch-tilt-indicator"
-              style={{
-                width: '12px',
-                height: '12px',
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #00d4ff 0%, #0070d1 100%)',
-                boxShadow: '0 0 8px rgba(0, 212, 255, 0.9)',
-                willChange: 'transform',
-              }}
-            />
-          </div>
-
-          {/* iOS Permission Trigger Banner if required */}
-          {iosPermissionNeeded && !permissionGranted && (
-            <button
-              type="button"
-              onClick={handleRequestIosPermission}
-              style={{
-                width: '100%',
-                padding: '4px 6px',
-                background: '#0284c7',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '10px',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              Tap to Enable Sensors
-            </button>
-          )}
+            <span style={{ fontSize: '18px' }}>⚡</span>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: '#fde68a', letterSpacing: '0.5px' }}>
+              DRIFT
+            </span>
+            <span style={{ fontSize: '8px', opacity: 0.7 }}>HANDBRAKE</span>
+          </button>
         </div>
       )}
 
@@ -873,42 +758,44 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
         </button>
       </div>
 
-      {/* Handbrake Button (Drift) - Right Thumb Placement */}
-      <div
-        style={{
-          position: 'absolute',
-          right: 'calc(24px + var(--sar, 0px))',
-          bottom: `calc(${Math.round(150 * sizeMultiplier)}px + var(--sab, 0px))`,
-          zIndex: 10,
-          pointerEvents: 'auto',
-        }}
-      >
-        <button
-          type="button"
-          data-testid="touch-btn-handbrake"
-          aria-label="Handbrake Drift"
-          onPointerDown={handleHandbrakeDown}
-          onPointerUp={handleHandbrakeUp}
-          onPointerCancel={handleHandbrakeUp}
-          onPointerLeave={handleHandbrakeUp}
+      {/* Handbrake Button (Drift) - Right Thumb Placement (when not in tilt mode) */}
+      {touchSteeringScheme !== 'tilt' && (
+        <div
           style={{
-            ...pedalBaseStyle,
-            width: `${Math.round(84 * sizeMultiplier)}px`,
-            height: `${Math.max(44, Math.round(48 * sizeMultiplier))}px`,
-            borderRadius: '24px',
-            background: handbrakePressed
-              ? 'linear-gradient(180deg, rgba(245, 158, 11, 0.6) 0%, rgba(217, 119, 6, 0.8) 100%)'
-              : 'linear-gradient(180deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.85) 100%)',
-            borderColor: handbrakePressed ? '#f59e0b' : 'rgba(245, 158, 11, 0.4)',
-            boxShadow: handbrakePressed ? '0 0 14px rgba(245, 158, 11, 0.5)' : 'none',
+            position: 'absolute',
+            right: 'calc(24px + var(--sar, 0px))',
+            bottom: `calc(${Math.round(150 * sizeMultiplier)}px + var(--sab, 0px))`,
+            zIndex: 10,
+            pointerEvents: 'auto',
           }}
         >
-          <span style={{ fontSize: '11px', fontWeight: 800, color: '#fde68a', letterSpacing: '0.5px' }}>
-            DRIFT
-          </span>
-          <span style={{ fontSize: '8px', opacity: 0.7 }}>HANDBRAKE</span>
-        </button>
-      </div>
+          <button
+            type="button"
+            data-testid="touch-btn-handbrake"
+            aria-label="Handbrake Drift"
+            onPointerDown={handleHandbrakeDown}
+            onPointerUp={handleHandbrakeUp}
+            onPointerCancel={handleHandbrakeUp}
+            onPointerLeave={handleHandbrakeUp}
+            style={{
+              ...pedalBaseStyle,
+              width: `${Math.round(84 * sizeMultiplier)}px`,
+              height: `${Math.max(44, Math.round(48 * sizeMultiplier))}px`,
+              borderRadius: '24px',
+              background: handbrakePressed
+                ? 'linear-gradient(180deg, rgba(245, 158, 11, 0.6) 0%, rgba(217, 119, 6, 0.8) 100%)'
+                : 'linear-gradient(180deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.85) 100%)',
+              borderColor: handbrakePressed ? '#f59e0b' : 'rgba(245, 158, 11, 0.4)',
+              boxShadow: handbrakePressed ? '0 0 14px rgba(245, 158, 11, 0.5)' : 'none',
+            }}
+          >
+            <span style={{ fontSize: '11px', fontWeight: 800, color: '#fde68a', letterSpacing: '0.5px' }}>
+              DRIFT
+            </span>
+            <span style={{ fontSize: '8px', opacity: 0.7 }}>HANDBRAKE</span>
+          </button>
+        </div>
+      )}
 
       {/* Manual Transmission Shift Buttons (Shift UP / DOWN) */}
       {transmissionMode === 'manual' && (
@@ -916,7 +803,10 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
           data-testid="touch-manual-shifter"
           style={{
             position: 'absolute',
-            right: `calc(${Math.round(120 * sizeMultiplier)}px + var(--sar, 0px))`,
+            right:
+              touchSteeringScheme === 'tilt'
+                ? 'calc(24px + var(--sar, 0px))'
+                : `calc(${Math.round(120 * sizeMultiplier)}px + var(--sar, 0px))`,
             bottom: `calc(${Math.round(150 * sizeMultiplier)}px + var(--sab, 0px))`,
             display: 'flex',
             gap: '8px',

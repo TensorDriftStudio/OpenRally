@@ -171,14 +171,15 @@ describe('Mobile Motion Sensor (Tilt) Steering Subsystem', () => {
   // 2. Coordinate Extraction & Screen Orientation Compensation
   // --------------------------------------------------------------------------
   describe('extractRawTiltAngle', () => {
-    it('maps beta directly in landscape-primary (90 deg CCW)', () => {
-      expect(extractRawTiltAngle(15.0, -40.0, 90)).toBe(15.0);
-      expect(extractRawTiltAngle(-12.5, -40.0, 90)).toBe(-12.5);
+    it('inverts beta in landscape-primary (90 deg CCW) so tilting left produces positive steering', () => {
+      // In landscape-primary, tilting left raises raw beta towards negative, so -beta is positive (+Left)
+      expect(extractRawTiltAngle(-15.0, -40.0, 90)).toBe(15.0);
+      expect(extractRawTiltAngle(12.5, -40.0, 90)).toBe(-12.5);
     });
 
-    it('inverts beta in landscape-secondary (270 deg CW)', () => {
-      expect(extractRawTiltAngle(15.0, -40.0, 270)).toBe(-15.0);
-      expect(extractRawTiltAngle(-12.5, -40.0, 270)).toBe(12.5);
+    it('returns raw beta in landscape-secondary (270 deg CW) to preserve positive left steer', () => {
+      expect(extractRawTiltAngle(15.0, -40.0, 270)).toBe(15.0);
+      expect(extractRawTiltAngle(-12.5, -40.0, 270)).toBe(-12.5);
     });
 
     it('handles portrait fallback orientations (0 deg and 180 deg)', () => {
@@ -189,8 +190,8 @@ describe('Mobile Motion Sensor (Tilt) Steering Subsystem', () => {
     });
 
     it('normalizes wrapped rotation angles (e.g. 450 deg = 90 deg)', () => {
-      expect(extractRawTiltAngle(20.0, 0, 450)).toBe(20.0);
-      expect(extractRawTiltAngle(20.0, 0, -90)).toBe(-20.0); // -90 deg = 270 deg
+      expect(extractRawTiltAngle(-20.0, 0, 450)).toBe(20.0);
+      expect(extractRawTiltAngle(20.0, 0, -90)).toBe(20.0); // -90 deg = 270 deg
     });
   });
 
@@ -229,12 +230,12 @@ describe('Mobile Motion Sensor (Tilt) Steering Subsystem', () => {
       expect(getTiltCenterOffset()).toBe(0);
       expect(getLiveTiltAngle()).toBe(0);
 
-      // Simulate a sensor event updating internal raw angle
+      // Simulate a sensor event updating internal raw angle (beta = -8.5 in landscape yields +8.5 deg tilt)
       const cleanup = startTiltSensorListener();
       window.dispatchEvent(
         new (window.DeviceOrientationEvent as unknown as new (type: string, init: unknown) => Event)(
           'deviceorientation',
-          { beta: 8.5, gamma: 0 }
+          { beta: -8.5, gamma: 0 }
         )
       );
 

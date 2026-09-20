@@ -80,8 +80,8 @@ describe('TouchControlsOverlay Component', () => {
       const htmlTilt = renderToString(
         <TouchControlsOverlay touchControlMode="always" touchSteeringScheme="tilt" />
       );
-      expect(htmlTilt).toContain('data-testid="touch-tilt-zone"');
-      expect(htmlTilt).toContain('data-testid="touch-tilt-indicator"');
+      expect(htmlTilt).not.toContain('data-testid="touch-tilt-zone"');
+      expect(htmlTilt).not.toContain('data-testid="touch-tilt-indicator"');
       expect(htmlTilt).toContain('data-testid="touch-btn-tilt-calibrate"');
       expect(htmlTilt).not.toContain('data-testid="touch-joystick-zone"');
       expect(htmlTilt).not.toContain('data-testid="touch-btn-steer-left"');
@@ -118,13 +118,21 @@ describe('TouchControlsOverlay Component', () => {
       expect(htmlLarge).toContain('129px');
     });
 
-    it('positions DRIFT button on the right side above pedals cluster', () => {
+    it('positions DRIFT button on the right side above pedals cluster by default', () => {
       const html = renderToString(
         <TouchControlsOverlay touchControlMode="always" />
       );
       // Handbrake container has right: calc(24px + var(--sar, 0px)) and 150px bottom offset above pedals
       expect(html).toContain('right:calc(24px + var(--sar, 0px))');
       expect(html).toContain('150px');
+      expect(html).toContain('data-testid="touch-btn-handbrake"');
+    });
+
+    it('positions DRIFT button on the left side for optimal two-thumb ergonomics when in tilt mode', () => {
+      const html = renderToString(
+        <TouchControlsOverlay touchControlMode="always" touchSteeringScheme="tilt" />
+      );
+      expect(html).toContain('left:calc(24px + var(--sal, 0px))');
       expect(html).toContain('data-testid="touch-btn-handbrake"');
     });
   });
