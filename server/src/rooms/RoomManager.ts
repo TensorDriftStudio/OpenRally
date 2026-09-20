@@ -7,11 +7,15 @@ import type {
   VehicleTelemetryPayload,
 } from '../types.js';
 
+export const MAX_CUSTOM_ROOMS = 50;
+export const MIN_ROOM_CREATION_INTERVAL_MS = 10000; // 10 seconds between room creations per socket
+
 export class RoomManager {
   private readonly rooms: Map<string, GameRoom> = new Map();
   private readonly playerToRoom: Map<string, string> = new Map();
   private readonly wsToPlayer: Map<WebSocket, string> = new Map();
   private readonly lobbySubscribers: Set<WebSocket> = new Set();
+  private readonly wsLastRoomCreationTime: Map<WebSocket, number> = new Map();
 
   constructor() {
     this.createDefaultRoom();
@@ -79,6 +83,31 @@ export class RoomManager {
     levelId: string = 'level1_island',
     gameMode: GameMode = 'freeroam'
   ): GameRoom | null {
+    // 1. Check global room limit
+    if (this.rooms.size >= MAX_CUSTOM_ROOMS) {
+      console.warn(`[RoomManager] Room creation rejected: maximum room capacity (${MAX_CUSTOM_ROOMS}) reached.`);
+      this.sendToWs(ws, {
+        type: 'error',
+        code: 'ROOM_CAPACITY_REACHED',
+        message: 'Server room capacity reached. Please join an existing room.',
+      });
+      return null;
+    }
+
+    // 2. Check per-client rate limit
+    const lastCreation = this.wsLastRoomCreationTime.get(ws) || 0;
+    const now = Date.now();
+    if (now - lastCreation < MIN_ROOM_CREATION_INTERVAL_MS) {
+      console.warn(`[RoomManager] Room creation rate limit exceeded for client.`);
+      this.sendToWs(ws, {
+        type: 'error',
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: 'Please wait a few seconds before creating another room.',
+      });
+      return null;
+    }
+    this.wsLastRoomCreationTime.set(ws, now);
+
     // Check if player is already in a room and leave it
     const existingPlayerId = this.wsToPlayer.get(ws);
     if (existingPlayerId) {
@@ -295,6 +324,7 @@ export class RoomManager {
 
   public handleDisconnect(ws: WebSocket, reason: string = 'disconnect'): void {
     this.unsubscribeLobby(ws);
+    this.wsLastRoomCreationTime.delete(ws);
 
     const playerId = this.wsToPlayer.get(ws);
     if (playerId) {
@@ -319,6 +349,7 @@ export class RoomManager {
     this.playerToRoom.clear();
     this.wsToPlayer.clear();
     this.lobbySubscribers.clear();
+    this.wsLastRoomCreationTime.clear();
   }
 
   private sendToWs(ws: WebSocket, msg: ServerMessage): void {

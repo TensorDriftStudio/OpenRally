@@ -13,7 +13,7 @@ describe('NetworkClient', () => {
 
   it('resolves default ws endpoint as remote server URL by default', () => {
     const endpoint = getWebSocketEndpoint();
-    expect(endpoint).toBe('wss://openrally.tensordrift.eu/ws');
+    expect(endpoint).toBe('wss://ws.openrally.tensordrift.eu/ws');
   });
 
   function mockLocation(loc: Partial<Location>): () => void {
@@ -42,7 +42,7 @@ describe('NetworkClient', () => {
       host: 'localhost:5173',
       protocol: 'http:',
     });
-    expect(getWebSocketEndpoint()).toBe('wss://openrally.tensordrift.eu/ws');
+    expect(getWebSocketEndpoint()).toBe('wss://ws.openrally.tensordrift.eu/ws');
     restore();
   });
 
@@ -57,7 +57,18 @@ describe('NetworkClient', () => {
     restore();
   });
 
-  it('routes to wss://${host}/ws when deployed behind HTTPS on a remote domain', () => {
+  it('routes to direct ws.openrally.tensordrift.eu when deployed on openrally.tensordrift.eu', () => {
+    const restore = mockLocation({
+      search: '',
+      hostname: 'openrally.tensordrift.eu',
+      host: 'openrally.tensordrift.eu',
+      protocol: 'https:',
+    });
+    expect(getWebSocketEndpoint()).toBe('wss://ws.openrally.tensordrift.eu/ws');
+    restore();
+  });
+
+  it('routes to wss://${host}/ws when deployed behind HTTPS on generic remote domain', () => {
     const restore = mockLocation({
       search: '',
       hostname: 'play.openrally.com',
@@ -75,7 +86,7 @@ describe('NetworkClient', () => {
       host: 'localhost',
       protocol: 'https:',
     });
-    expect(getWebSocketEndpoint()).toBe('wss://openrally.tensordrift.eu/ws');
+    expect(getWebSocketEndpoint()).toBe('wss://ws.openrally.tensordrift.eu/ws');
     restore();
   });
 

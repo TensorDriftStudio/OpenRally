@@ -16,7 +16,7 @@ export const TELEMETRY_SEND_INTERVAL_MS = 33; // ~30Hz
 const PING_INTERVAL_MS = 2000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
-export const DEFAULT_REMOTE_WS_URL = 'wss://openrally.tensordrift.eu/ws';
+export const DEFAULT_REMOTE_WS_URL = 'wss://ws.openrally.tensordrift.eu/ws';
 
 /**
  * Resolves the WebSocket URL depending on deployment environment, mobile platform, and query parameters.
@@ -54,6 +54,9 @@ export function getWebSocketEndpoint(): string {
     window.location.hostname === '::1';
 
   if (window.location.protocol === 'https:' && !isLocalHost) {
+    if (window.location.hostname === 'openrally.tensordrift.eu') {
+      return 'wss://ws.openrally.tensordrift.eu/ws';
+    }
     return `wss://${window.location.host}/ws`;
   }
 

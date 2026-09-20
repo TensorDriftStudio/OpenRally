@@ -34,12 +34,82 @@ const httpServer = createServer((req, res) => {
   res.end(`OpenRally Multiplayer Dedicated Game Server v${SERVER_VERSION}\n`);
 });
 
+const MAX_PAYLOAD_BYTES = 64 * 1024; // 64 KB limit to prevent JSON-parse / event-loop DoS
+const MAX_SOCKETS_PER_IP = 10;
+const MAX_HANDSHAKES_PER_MINUTE_PER_IP = 30;
+
+const ipConnectionCount = new Map<string, number>();
+const ipHandshakeHistory = new Map<string, number[]>();
+
+function resolveClientIp(req: import('http').IncomingMessage): string {
+  const remoteAddr = req.socket.remoteAddress || '127.0.0.1';
+  const isLocalProxy =
+    remoteAddr === '127.0.0.1' ||
+    remoteAddr === '::1' ||
+    remoteAddr === '::ffff:127.0.0.1';
+
+  if (isLocalProxy) {
+    const xRealIp = req.headers['x-real-ip'];
+    if (typeof xRealIp === 'string' && xRealIp.trim().length > 0) {
+      return xRealIp.trim();
+    }
+    const cfConnectingIp = req.headers['cf-connecting-ip'];
+    if (typeof cfConnectingIp === 'string' && cfConnectingIp.trim().length > 0) {
+      return cfConnectingIp.trim();
+    }
+    const forwardedFor = req.headers['x-forwarded-for'];
+    if (typeof forwardedFor === 'string' && forwardedFor.trim().length > 0) {
+      return forwardedFor.split(',')[0].trim();
+    }
+  }
+
+  return remoteAddr;
+}
+
+function checkIpRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const history = ipHandshakeHistory.get(ip) || [];
+  const recent = history.filter((t) => now - t < 60000);
+  if (recent.length >= MAX_HANDSHAKES_PER_MINUTE_PER_IP) {
+    ipHandshakeHistory.set(ip, recent);
+    return false;
+  }
+  recent.push(now);
+  ipHandshakeHistory.set(ip, recent);
+  return true;
+}
+
 const wss = new WebSocketServer({
   server: httpServer,
+  maxPayload: MAX_PAYLOAD_BYTES,
 });
 
 wss.on('connection', (ws: WebSocket, req) => {
-  const ip = req.socket.remoteAddress || 'unknown';
+  const ip = resolveClientIp(req);
+  const currentSockets = ipConnectionCount.get(ip) || 0;
+
+  if (currentSockets >= MAX_SOCKETS_PER_IP || !checkIpRateLimit(ip)) {
+    console.warn(
+      `[Server] Rejected connection from ${ip}: rate limit or socket ceiling exceeded (active sockets: ${currentSockets})`
+    );
+    ws.close(1008, 'RATE_LIMIT_EXCEEDED');
+    return;
+  }
+
+  ipConnectionCount.set(ip, currentSockets + 1);
+
+  let isClosed = false;
+  const releaseSocket = () => {
+    if (isClosed) return;
+    isClosed = true;
+    const count = ipConnectionCount.get(ip) || 1;
+    if (count <= 1) {
+      ipConnectionCount.delete(ip);
+    } else {
+      ipConnectionCount.set(ip, count - 1);
+    }
+  };
+
   const reqUrl = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
   const clientVersion = reqUrl.searchParams.get('v');
 
@@ -60,6 +130,7 @@ wss.on('connection', (ws: WebSocket, req) => {
     } catch {
       // Suppress send error on early socket closure
     }
+    releaseSocket();
     ws.close(4003, 'VERSION_MISMATCH');
     return;
   }
@@ -146,10 +217,12 @@ wss.on('connection', (ws: WebSocket, req) => {
   });
 
   ws.on('close', (code) => {
+    releaseSocket();
     roomManager.handleDisconnect(ws, `code_${code}`);
   });
 
   ws.on('error', (err) => {
+    releaseSocket();
     console.warn(`[Server] Client error from ${ip}:`, err);
     roomManager.handleDisconnect(ws, 'error');
   });
@@ -161,13 +234,13 @@ httpServer.listen(PORT, HOST, () => {
 });
 
 function handleShutdown(): void {
-  console.log('[OpenRally] Shutting down server...');
+  console.log('[OpenRally] Shutting down server gracefully...');
   roomManager.destroy();
 
-  // Terminate any remaining client sockets immediately
+  // Notify all connected clients of server restart with standard code 1001
   for (const client of wss.clients) {
     try {
-      client.terminate();
+      client.close(1001, 'SERVER_RESTART');
     } catch {
       // Suppress
     }
@@ -179,10 +252,17 @@ function handleShutdown(): void {
     process.exit(0);
   });
 
-  // Force exit after 1.5s if keep-alive sockets linger
+  // Force exit after 1.0s if keep-alive sockets linger
   setTimeout(() => {
+    for (const client of wss.clients) {
+      try {
+        client.terminate();
+      } catch {
+        // Suppress
+      }
+    }
     process.exit(0);
-  }, 1500).unref();
+  }, 1000).unref();
 }
 
 process.on('SIGINT', handleShutdown);
