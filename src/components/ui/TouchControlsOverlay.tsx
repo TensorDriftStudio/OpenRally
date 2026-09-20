@@ -15,7 +15,6 @@ import {
 } from '@/utils/input/touch';
 import {
   startTiltSensorListener,
-  calibrateTiltCenter,
   isIosMotionPermissionRequired,
   getTiltPermissionState,
   requestTiltPermission,
@@ -92,9 +91,6 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
   const [brakePressed, setBrakePressed] = useState(false);
   const [handbrakePressed, setHandbrakePressed] = useState(false);
 
-  // Tilt state
-  const [calibratedToast, setCalibratedToast] = useState(false);
-
   // Start tilt listener when tilt steering is selected and auto-request iOS permission on first gesture
   useEffect(() => {
     if (touchSteeringScheme !== 'tilt') return;
@@ -123,13 +119,6 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
       setTiltTouchOverride(false);
     };
   }, [touchSteeringScheme, touchHaptics]);
-
-  const handleCalibrateCenter = useCallback(() => {
-    calibrateTiltCenter();
-    if (touchHaptics) triggerHapticFeedback(15);
-    setCalibratedToast(true);
-    setTimeout(() => setCalibratedToast(false), 1200);
-  }, [touchHaptics]);
 
   // Listen to input type switches across window
   useEffect(() => {
@@ -493,27 +482,6 @@ export const TouchControlsOverlay: React.FC<TouchControlsOverlayProps> = memo(fu
         >
           <span style={{ fontSize: '16px' }}>📷</span>
         </button>
-
-        {/* Calibrate Neutral Tilt Button */}
-        {touchSteeringScheme === 'tilt' && (
-          <button
-            type="button"
-            data-testid="touch-btn-tilt-calibrate"
-            aria-label="Calibrate Neutral Tilt"
-            onClick={handleCalibrateCenter}
-            style={{
-              ...utilityBtnStyle,
-              width: `${Math.max(44, Math.round(44 * sizeMultiplier))}px`,
-              height: `${Math.max(44, Math.round(44 * sizeMultiplier))}px`,
-              background: calibratedToast ? 'rgba(16, 185, 129, 0.65)' : 'rgba(15, 23, 42, 0.75)',
-              borderColor: calibratedToast ? '#10b981' : 'rgba(0, 212, 255, 0.5)',
-              color: calibratedToast ? '#ffffff' : '#67e8f9',
-            }}
-            title="Calibrate Neutral Steering"
-          >
-            <span style={{ fontSize: '15px' }}>⌖</span>
-          </button>
-        )}
       </div>
 
       {/* -------------------------------------------------------------------- */}

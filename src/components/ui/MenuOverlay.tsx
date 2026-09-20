@@ -13,6 +13,7 @@ import { useGameEventListener } from '@/utils/events';
 import { unlockSharedAudioContext } from '@/utils/audio/audioContext';
 import { returnToMainMenu } from '@/utils/navigation';
 import { getGameModeDefinition } from '@/config/gameModeRegistry';
+import { GAME_VERSION } from '@/config/version';
 import type { GameMode } from '@/types';
 import {
   menuStyles,
@@ -58,6 +59,7 @@ export function MenuOverlay() {
   const getBestLapForLevel = useRacingStore((s) => s.getBestLapForLevel);
   const syncBestLapForLevel = useRacingStore((s) => s.syncBestLapForLevel);
   const resetAllTrackRecords = useRacingStore((s) => s.resetAllTrackRecords);
+  const isMultiplayer = Boolean(useMultiplayerStore((s) => s.currentRoom));
 
   const [view, setViewInternal] = useState<MenuView>('main');
   const [previewVehicleId, setPreviewVehicleIdInternal] = useState(selectedVehicleId);
@@ -224,6 +226,15 @@ export function MenuOverlay() {
 
   const handleReset = useCallback(() => {
     resetGamepadEdgeState();
+    const isMp = Boolean(useMultiplayerStore.getState().currentRoom);
+    if (isMp) {
+      useGameStore.getState().triggerReset(true);
+      setView('main');
+      unlockSharedAudioContext().catch(() => {});
+      setGameState('playing');
+      return;
+    }
+
     useGameStore.getState().triggerReset(true);
     useRacingStore.getState().resetRace();
     syncBestLapForLevel(selectedLevelId);
@@ -366,7 +377,7 @@ export function MenuOverlay() {
                   letterSpacing: '1.5px',
                   textTransform: 'uppercase',
                 }}>
-                  v1.0.0
+                  v{GAME_VERSION}
                 </span>
               </div>
             </div>
@@ -507,6 +518,7 @@ export function MenuOverlay() {
               {/* Action Buttons */}
               <MainView
                 isPause={true}
+                isMultiplayer={isMultiplayer}
                 focusedIndex={focusedIndex}
                 textColor={textColor}
                 onPointerMoveItem={handlePointerMoveItem}
@@ -732,7 +744,7 @@ export function MenuOverlay() {
             }}>
               <span>Game by <strong style={{ color: '#FFFFFF' }}>TensorDrift Studio</strong></span>
               <span>•</span>
-              <span style={{ color: '#E31837', fontWeight: 700 }}>OpenRally v1.0.0</span>
+              <span style={{ color: '#E31837', fontWeight: 700 }}>OpenRally v{GAME_VERSION}</span>
             </span>
           </div>
         )}

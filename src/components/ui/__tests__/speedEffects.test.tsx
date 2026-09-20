@@ -29,8 +29,9 @@ describe('SpeedEffects & Fullscreen Peripheral Vignette Coverage', () => {
     // Does NOT contain the buggy un-scoped canvas descendant match
     expect(css).not.toContain('#hud > div:has(canvas:not(#game-canvas))');
 
-    // Scopes minimap scale specifically to .minimap-container
+    // Scopes minimap scale specifically to .minimap-container with compact mobile scaling
     expect(css).toContain('#hud .minimap-container');
+    expect(css).toContain('scale(0.72)');
 
     // Enforces fixed full-screen coverage with transform: none
     expect(css).toContain('.speed-effects-overlay');

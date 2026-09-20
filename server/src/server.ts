@@ -2,6 +2,7 @@ import { createServer } from 'http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager } from './rooms/RoomManager.js';
 import { parseClientMessage } from './packetValidator.js';
+import { SERVER_VERSION, PROTOCOL_VERSION } from './version.js';
 import type { ClientMessage } from './types.js';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -19,6 +20,8 @@ const httpServer = createServer((req, res) => {
     res.end(
       JSON.stringify({
         status: 'ok',
+        version: SERVER_VERSION,
+        protocol: PROTOCOL_VERSION,
         uptime: process.uptime(),
         roomsCount: rooms.length,
         players: totalPlayers,
@@ -28,7 +31,7 @@ const httpServer = createServer((req, res) => {
   }
 
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('OpenRally Multiplayer Dedicated Game Server\n');
+  res.end(`OpenRally Multiplayer Dedicated Game Server v${SERVER_VERSION}\n`);
 });
 
 const wss = new WebSocketServer({
@@ -37,7 +40,29 @@ const wss = new WebSocketServer({
 
 wss.on('connection', (ws: WebSocket, req) => {
   const ip = req.socket.remoteAddress || 'unknown';
-  console.log(`[Server] New WebSocket connection established from ${ip}`);
+  const reqUrl = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
+  const clientVersion = reqUrl.searchParams.get('v');
+
+  console.log(`[Server] New WebSocket connection from ${ip} (clientVersion: ${clientVersion || 'none'})`);
+
+  if (!clientVersion || clientVersion !== SERVER_VERSION) {
+    console.warn(
+      `[Server] Rejected connection from ${ip}: version mismatch (server: ${SERVER_VERSION}, client: ${clientVersion || 'none'})`
+    );
+    const mismatchMsg = JSON.stringify({
+      type: 'version_mismatch',
+      serverVersion: SERVER_VERSION,
+      clientVersion: clientVersion || 'unknown',
+      message: `Client version (${clientVersion || 'legacy'}) is incompatible with server version (${SERVER_VERSION}). Please update your game.`,
+    });
+    try {
+      ws.send(mismatchMsg);
+    } catch {
+      // Suppress send error on early socket closure
+    }
+    ws.close(4003, 'VERSION_MISMATCH');
+    return;
+  }
 
   // Automatically subscribe newly connected clients to lobby updates
   roomManager.subscribeLobby(ws);

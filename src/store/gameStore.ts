@@ -54,6 +54,8 @@ interface GameStore {
   loadingTarget: 'menu' | 'gameplay';
   /** Whether 3D assets, physics, shaders, and terrain are fully ready and settled */
   isSceneReady: boolean;
+  /** Whether 3D visual vehicle model is currently fully loaded and mounted in the scene */
+  isVehicleVisualReady: boolean;
   /** Whether 3D Garage view modal is currently open */
   isGarageOpen: boolean;
   /** Whether the vehicle is airborne (all wheels off ground) */
@@ -75,6 +77,7 @@ interface GameStore {
   setSelectedTireType: (tireType: TireType) => void;
   setSelectedLevelId: (id: string) => void;
   setSceneReady: (ready: boolean) => void;
+  setIsVehicleVisualReady: (ready: boolean) => void;
   setGarageOpen: (open: boolean) => void;
   setIsAirborne: (isAirborne: boolean) => void;
   setIsRolledOver: (isRolledOver: boolean) => void;
@@ -120,6 +123,7 @@ export const useGameStore = create<GameStore>((set) => ({
   gamepadType: null,
   loadingTarget: 'menu',
   isSceneReady: false,
+  isVehicleVisualReady: false,
   isGarageOpen: false,
   isAirborne: false,
   isRolledOver: false,
@@ -143,6 +147,10 @@ export const useGameStore = create<GameStore>((set) => ({
           gameState === 'title' || gameState === 'menu'
             ? false
             : state.isSceneReady,
+        isVehicleVisualReady:
+          gameState === 'title'
+            ? false
+            : state.isVehicleVisualReady,
         loadingTarget:
           gameState === 'menu' || gameState === 'title' ? 'menu' : state.loadingTarget,
         pendingReset: isEnteringMenu ? true : state.pendingReset,
@@ -159,7 +167,7 @@ export const useGameStore = create<GameStore>((set) => ({
   },
   setLoadingTarget: (loadingTarget) => set({ loadingTarget }),
   setGameMode: (gameMode) => set({ gameMode }),
-  setSelectedVehicleId: (selectedVehicleId) => set({ selectedVehicleId, isSceneReady: false }),
+  setSelectedVehicleId: (selectedVehicleId) => set({ selectedVehicleId, isSceneReady: false, isVehicleVisualReady: false }),
   setSelectedTireType: (selectedTireType) => set({ selectedTireType }),
   setSelectedLevelId: (selectedLevelId) => {
     const levelPreset = getLevelPreset(selectedLevelId);
@@ -168,6 +176,7 @@ export const useGameStore = create<GameStore>((set) => ({
       selectedLevelId,
       selectedTireType: getRecommendedTireForLevel(levelPreset),
       isSceneReady: false,
+      isVehicleVisualReady: false,
       speed: 0,
       lateralSpeed: 0,
       slipAngle: 0,
@@ -180,6 +189,7 @@ export const useGameStore = create<GameStore>((set) => ({
     });
   },
   setSceneReady: (isSceneReady) => set({ isSceneReady }),
+  setIsVehicleVisualReady: (isVehicleVisualReady) => set({ isVehicleVisualReady }),
   setGarageOpen: (isGarageOpen) => set({ isGarageOpen }),
   setIsAirborne: (isAirborne) => set({ isAirborne }),
   setIsRolledOver: (isRolledOver) => set({ isRolledOver }),

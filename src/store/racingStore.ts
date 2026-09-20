@@ -54,6 +54,9 @@ export const useRacingStore = create<RacingStore>((set, get) => ({
   showStageComplete: false,
   countdown: null,
   countdownTimer: 0,
+  isLapInvalidated: false,
+
+  invalidateCurrentLap: () => set({ isLapInvalidated: true }),
 
   getBestLapForLevel: (levelId: string) => {
     return get().bestLapTimes[levelId] ?? null;
@@ -74,6 +77,7 @@ export const useRacingStore = create<RacingStore>((set, get) => ({
       currentLapTime: 0,
       splitDelta: null,
       showStageComplete: false,
+      isLapInvalidated: false,
     });
   },
 
@@ -147,7 +151,7 @@ export const useRacingStore = create<RacingStore>((set, get) => ({
   },
 
   passCheckpoint: (index: number) => {
-    const { raceStatus, currentCheckpoint, totalCheckpoints, currentLapTime, bestLapTimes, lapCount } = get();
+    const { raceStatus, currentCheckpoint, totalCheckpoints, currentLapTime, bestLapTimes, lapCount, isLapInvalidated } = get();
 
     // Crossing start line from idle starts the race countdown
     if (index === 0 && raceStatus === 'idle') {
@@ -166,7 +170,7 @@ export const useRacingStore = create<RacingStore>((set, get) => ({
         const finalTime = currentLapTime;
         const currentLevelId = useGameStore.getState().selectedLevelId;
         const previousBest = bestLapTimes[currentLevelId] ?? null;
-        const isBest = !previousBest || finalTime < previousBest;
+        const isBest = (!previousBest || finalTime < previousBest) && !isLapInvalidated;
 
         let newRecords = bestLapTimes;
         let newBest = previousBest;
@@ -186,6 +190,7 @@ export const useRacingStore = create<RacingStore>((set, get) => ({
           bestLapTimes: newRecords,
           lapCount: lapCount + 1,
           showStageComplete: false,
+          isLapInvalidated: false,
         });
 
         emitGameEvent('lap_completed', {
@@ -210,6 +215,7 @@ export const useRacingStore = create<RacingStore>((set, get) => ({
       showStageComplete: false,
       countdown: null,
       countdownTimer: 0,
+      isLapInvalidated: false,
     });
   },
 

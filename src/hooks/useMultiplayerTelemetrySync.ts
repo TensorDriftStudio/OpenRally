@@ -79,28 +79,28 @@ export function useMultiplayerTelemetrySync(
     const linvel = body.linvel();
     const angvel = body.angvel();
 
-    _posTuple[0] = Number.isFinite(pos.x) ? pos.x : 0;
-    _posTuple[1] = Number.isFinite(pos.y) ? pos.y : 0;
-    _posTuple[2] = Number.isFinite(pos.z) ? pos.z : 0;
+    _posTuple[0] = Number.isFinite(pos.x) ? Math.round(pos.x * 100) / 100 : 0;
+    _posTuple[1] = Number.isFinite(pos.y) ? Math.round(pos.y * 100) / 100 : 0;
+    _posTuple[2] = Number.isFinite(pos.z) ? Math.round(pos.z * 100) / 100 : 0;
 
-    _rotTuple[0] = Number.isFinite(rot.x) ? rot.x : 0;
-    _rotTuple[1] = Number.isFinite(rot.y) ? rot.y : 0;
-    _rotTuple[2] = Number.isFinite(rot.z) ? rot.z : 0;
-    _rotTuple[3] = Number.isFinite(rot.w) ? rot.w : 1;
+    _rotTuple[0] = Number.isFinite(rot.x) ? Math.round(rot.x * 1000) / 1000 : 0;
+    _rotTuple[1] = Number.isFinite(rot.y) ? Math.round(rot.y * 1000) / 1000 : 0;
+    _rotTuple[2] = Number.isFinite(rot.z) ? Math.round(rot.z * 1000) / 1000 : 0;
+    _rotTuple[3] = Number.isFinite(rot.w) ? Math.round(rot.w * 1000) / 1000 : 1;
 
-    _linVelTuple[0] = Number.isFinite(linvel.x) ? linvel.x : 0;
-    _linVelTuple[1] = Number.isFinite(linvel.y) ? linvel.y : 0;
-    _linVelTuple[2] = Number.isFinite(linvel.z) ? linvel.z : 0;
+    _linVelTuple[0] = Number.isFinite(linvel.x) ? Math.round(linvel.x * 10) / 10 : 0;
+    _linVelTuple[1] = Number.isFinite(linvel.y) ? Math.round(linvel.y * 10) / 10 : 0;
+    _linVelTuple[2] = Number.isFinite(linvel.z) ? Math.round(linvel.z * 10) / 10 : 0;
 
-    _angVelTuple[0] = Number.isFinite(angvel.x) ? angvel.x : 0;
-    _angVelTuple[1] = Number.isFinite(angvel.y) ? angvel.y : 0;
-    _angVelTuple[2] = Number.isFinite(angvel.z) ? angvel.z : 0;
+    _angVelTuple[0] = Number.isFinite(angvel.x) ? Math.round(angvel.x * 10) / 10 : 0;
+    _angVelTuple[1] = Number.isFinite(angvel.y) ? Math.round(angvel.y * 10) / 10 : 0;
+    _angVelTuple[2] = Number.isFinite(angvel.z) ? Math.round(angvel.z * 10) / 10 : 0;
 
     const wheels = wheelRefs.current;
-    _wheelRotsTuple[0] = wheels?.[0]?.children[0]?.rotation.x ?? 0;
-    _wheelRotsTuple[1] = wheels?.[1]?.children[0]?.rotation.x ?? 0;
-    _wheelRotsTuple[2] = wheels?.[2]?.children[0]?.rotation.x ?? 0;
-    _wheelRotsTuple[3] = wheels?.[3]?.children[0]?.rotation.x ?? 0;
+    _wheelRotsTuple[0] = Math.round((wheels?.[0]?.children[0]?.rotation.x ?? 0) * 100) / 100;
+    _wheelRotsTuple[1] = Math.round((wheels?.[1]?.children[0]?.rotation.x ?? 0) * 100) / 100;
+    _wheelRotsTuple[2] = Math.round((wheels?.[2]?.children[0]?.rotation.x ?? 0) * 100) / 100;
+    _wheelRotsTuple[3] = Math.round((wheels?.[3]?.children[0]?.rotation.x ?? 0) * 100) / 100;
 
     const gameStoreState = useGameStore.getState();
     const liveGymkhanaScore =
@@ -108,7 +108,7 @@ export function useMultiplayerTelemetrySync(
         ? useGymkhanaStore.getState().totalScore + useGymkhanaStore.getState().currentDriftScore
         : undefined;
 
-    _reusableTelemetryPayload.steer = wheels?.[0]?.rotation.y ?? 0;
+    _reusableTelemetryPayload.steer = Math.round((wheels?.[0]?.rotation.y ?? 0) * 100) / 100;
     _reusableTelemetryPayload.rpm = gameStoreState.rpm;
     _reusableTelemetryPayload.gear = gameStoreState.gear;
     _reusableTelemetryPayload.isDrifting = Math.abs(gameStoreState.slipAngle) > 0.35 && gameStoreState.speed > 15;

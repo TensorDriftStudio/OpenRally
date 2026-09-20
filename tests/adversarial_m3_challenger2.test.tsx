@@ -257,7 +257,7 @@ describe('Adversarial Challenge M3 (Challenger 2): Touch Overlay, Persistence & 
       setLastInputType('touch');
       const htmlTouch = renderToString(<AnalogGauges />);
       expect(htmlTouch).toContain('left:calc(16px + var(--sal, 0px))');
-      expect(htmlTouch).toContain('scale(0.44)');
+      expect(htmlTouch).toContain('scale(0.60)');
       expect(htmlTouch).toContain('top:calc(68px + var(--sat, 0px))');
       expect(htmlTouch).not.toContain('right:calc(20px + var(--sar))');
 
@@ -266,7 +266,7 @@ describe('Adversarial Challenge M3 (Challenger 2): Touch Overlay, Persistence & 
       const htmlKeyboard = renderToString(<AnalogGauges />);
       expect(htmlKeyboard).toContain('right:calc(20px + var(--sar))');
       expect(htmlKeyboard).toContain('bottom:calc(20px + var(--sab))');
-      expect(htmlKeyboard).not.toContain('scale(0.44)');
+      expect(htmlKeyboard).not.toContain('scale(0.60)');
     });
 
     it('pedal multi-touch independence: simultaneous throttle and brake are preserved without cancelation', () => {

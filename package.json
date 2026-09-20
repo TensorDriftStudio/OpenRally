@@ -1,7 +1,7 @@
 {
   "name": "open-rally",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,7 +17,11 @@
     "build:apk": "./build-apk.sh",
     "build:bundle": "./build-bundle.sh",
     "build:release": "./build-bundle.sh",
-    "generate:key": "./generate-release-key.sh"
+    "generate:key": "./generate-release-key.sh",
+    "version:patch": "node scripts/bumpVersion.mjs patch",
+    "version:minor": "node scripts/bumpVersion.mjs minor",
+    "version:major": "node scripts/bumpVersion.mjs major",
+    "version:set": "node scripts/bumpVersion.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.1",

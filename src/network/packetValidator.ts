@@ -614,6 +614,15 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
     };
   }
 
+  if (type === 'version_mismatch') {
+    return {
+      type: 'version_mismatch',
+      serverVersion: typeof msg.serverVersion === 'string' ? msg.serverVersion : 'unknown',
+      clientVersion: typeof msg.clientVersion === 'string' ? msg.clientVersion : 'unknown',
+      message: typeof msg.message === 'string' ? msg.message : 'Version mismatch detected. Please update your game.',
+    };
+  }
+
   if (type === 'error') {
     return {
       type: 'error',

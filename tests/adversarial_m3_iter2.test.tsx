@@ -169,17 +169,17 @@ describe('Adversarial Stress Test Suite: Milestone 3 Iteration 2 Challenger 1', 
     });
 
     it('T1-3: AnalogGauges HUD layout dynamically alternates between touch top-left and desktop bottom-right without delay', () => {
-      // Step 1: In touch mode, AnalogGauges shifts to top-left (left: calc(16px + var(--sal, 0px)), transform: scale(0.44))
+      // Step 1: In touch mode, AnalogGauges shifts to top-left (left: calc(16px + var(--sal, 0px)), transform: scale(0.60))
       setLastInputType('touch');
       const htmlTouch = renderToString(<AnalogGauges />);
       expect(htmlTouch).toContain('left:calc(16px + var(--sal, 0px))');
-      expect(htmlTouch).toContain('scale(0.44)');
+      expect(htmlTouch).toContain('scale(0.60)');
 
       // Step 2: In gamepad mode, AnalogGauges shifts to bottom-right (right: calc(20px + var(--sar)))
       setLastInputType('gamepad');
       const htmlGamepad = renderToString(<AnalogGauges />);
       expect(htmlGamepad).toContain('right:calc(20px + var(--sar');
-      expect(htmlGamepad).not.toContain('scale(0.44)');
+      expect(htmlGamepad).not.toContain('scale(0.60)');
 
       // Step 3: In keyboard mode, AnalogGauges remains in bottom-right
       setLastInputType('keyboard');
@@ -192,7 +192,7 @@ describe('Adversarial Stress Test Suite: Milestone 3 Iteration 2 Challenger 1', 
         setLastInputType(mod);
         const html = renderToString(<AnalogGauges />);
         if (mod === 'touch') {
-          expect(html).toContain('scale(0.44)');
+          expect(html).toContain('scale(0.60)');
         } else {
           expect(html).toContain('right:calc(20px + var(--sar');
         }

@@ -487,7 +487,7 @@ export function SettingsView({
                 <span>Steering Scheme</span>
                 {touchSteeringScheme === 'tilt' && (
                   <span style={{ fontSize: '11px', color: '#00d4ff', fontWeight: 600 }}>
-                    Tilt phone sideways to steer. Calibration &amp; touch override enabled.
+                    Tilt phone sideways to steer. Touch override enabled.
                   </span>
                 )}
               </div>

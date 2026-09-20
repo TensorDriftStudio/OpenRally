@@ -3,16 +3,41 @@ import type { ConnectionStatus, RemotePlayerSummary, RoomSummary } from '@/types
 
 const NICKNAME_STORAGE_KEY = 'openrally_mp_nickname';
 
+export const CURATED_RACER_ADJECTIVES = [
+  'Apex', 'Swift', 'Turbo', 'Alpine', 'Desert',
+  'Neon', 'Phantom', 'Wild', 'Blaze', 'Storm',
+  'Rapid', 'Vortex', 'Shadow', 'Cobalt', 'Hyper',
+] as const;
+
+export const CURATED_RACER_MASCOTS = [
+  'Fox', 'Falcon', 'Lynx', 'Badger', 'Wolf',
+  'Raptor', 'Viper', 'Bear', 'Comet', 'Arrow',
+  'Hawk', 'Cobra', 'Titan', 'Ghost', 'Stag',
+] as const;
+
+export function generateCuratedNickname(): string {
+  const adj = CURATED_RACER_ADJECTIVES[Math.floor(Math.random() * CURATED_RACER_ADJECTIVES.length)];
+  const masc = CURATED_RACER_MASCOTS[Math.floor(Math.random() * CURATED_RACER_MASCOTS.length)];
+  const num = String(Math.floor(1 + Math.random() * 99)).padStart(2, '0');
+  return `${adj}_${masc}_${num}`;
+}
+
 function loadSavedNickname(): string {
   try {
     const saved = localStorage.getItem(NICKNAME_STORAGE_KEY);
-    if (saved && saved.trim().length >= 2) {
+    if (saved && saved.trim().length >= 3 && /^[A-Za-z0-9_]{3,16}$/.test(saved.trim())) {
       return saved.trim().slice(0, 16);
     }
   } catch {
     // Suppress storage error (private browsing / security sandbox)
   }
-  return `Apex_${Math.floor(100 + Math.random() * 900)}`;
+  const generated = generateCuratedNickname();
+  try {
+    localStorage.setItem(NICKNAME_STORAGE_KEY, generated);
+  } catch {
+    // Suppress
+  }
+  return generated;
 }
 
 export interface GymkhanaLeaderboardEntry {
@@ -33,7 +58,9 @@ export interface MultiplayerState {
   isHost: boolean;
   remotePlayers: Record<string, RemotePlayerSummary>;
   ping: number;
+  serverClockOffset: number;
   error: string | null;
+  versionMismatch: { serverVersion: string; clientVersion: string } | null;
 
   // Gymkhana Blitz Matchmaking & Spectator State
   isSpectating: boolean;
@@ -53,7 +80,9 @@ export interface MultiplayerState {
   addPlayer: (player: RemotePlayerSummary) => void;
   removePlayer: (playerId: string) => void;
   updatePing: (ping: number) => void;
+  updateServerClockOffset: (offset: number) => void;
   setError: (error: string | null) => void;
+  setVersionMismatch: (mismatch: { serverVersion: string; clientVersion: string } | null) => void;
   setSpectating: (
     isSpectating: boolean,
     targetId?: string | null,
@@ -77,7 +106,9 @@ export const useMultiplayerStore = create<MultiplayerState>((set) => ({
   isHost: false,
   remotePlayers: {},
   ping: 0,
+  serverClockOffset: 0,
   error: null,
+  versionMismatch: null,
 
   isSpectating: false,
   spectateTargetId: null,
@@ -97,6 +128,8 @@ export const useMultiplayerStore = create<MultiplayerState>((set) => ({
   },
 
   setStatus: (status: ConnectionStatus) => set({ status }),
+  setVersionMismatch: (versionMismatch: { serverVersion: string; clientVersion: string } | null) =>
+    set({ versionMismatch }),
 
   setSelfId: (selfId: string, roomName: string, slotIndex: number = 0, roomSummary?: RoomSummary) =>
     set((state) => {
@@ -144,6 +177,8 @@ export const useMultiplayerStore = create<MultiplayerState>((set) => ({
     }),
 
   updatePing: (ping: number) => set({ ping }),
+
+  updateServerClockOffset: (serverClockOffset: number) => set({ serverClockOffset }),
 
   setError: (error: string | null) => set({ error }),
 
@@ -197,7 +232,9 @@ export const useMultiplayerStore = create<MultiplayerState>((set) => ({
       isHost: false,
       remotePlayers: {},
       ping: 0,
+      serverClockOffset: 0,
       error: null,
+      versionMismatch: null,
       isSpectating: false,
       spectateTargetId: null,
       spectateTargetNickname: null,

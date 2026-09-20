@@ -253,7 +253,7 @@ describe('Adversarial Challenge M3 Iteration 2 (Challenger 2): Desktop Initial M
 
         const html = renderToString(React.createElement(gaugesModule.AnalogGauges));
         expect(html).toContain('left:calc(16px + var(--sal, 0px))');
-        expect(html).toContain('transform:scale(0.44)');
+        expect(html).toContain('transform:scale(0.60)');
         expect(html).toContain('top:calc(68px + var(--sat, 0px))');
         expect(html).toContain('right:auto');
       });
@@ -350,7 +350,7 @@ describe('Adversarial Challenge M3 Iteration 2 (Challenger 2): Desktop Initial M
       const htmlDesktop = renderToString(<AnalogGauges />);
       expect(htmlDesktop).toContain('right:calc(20px + var(--sar))');
       expect(htmlDesktop).toContain('left:auto');
-      expect(htmlDesktop).not.toContain('scale(0.44)');
+      expect(htmlDesktop).not.toContain('scale(0.60)');
 
       // Touch input arrives
       setTouchInput({ throttle: 1.0 });
@@ -358,7 +358,7 @@ describe('Adversarial Challenge M3 Iteration 2 (Challenger 2): Desktop Initial M
 
       const htmlTouch = renderToString(<AnalogGauges />);
       expect(htmlTouch).toContain('left:calc(16px + var(--sal, 0px))');
-      expect(htmlTouch).toContain('transform:scale(0.44)');
+      expect(htmlTouch).toContain('transform:scale(0.60)');
       expect(htmlTouch).toContain('top:calc(68px + var(--sat, 0px))');
       expect(htmlTouch).toContain('right:auto');
     });
@@ -377,7 +377,7 @@ describe('Adversarial Challenge M3 Iteration 2 (Challenger 2): Desktop Initial M
       const htmlGamepad = renderToString(<AnalogGauges />);
       expect(htmlGamepad).toContain('right:calc(20px + var(--sar))');
       expect(htmlGamepad).toContain('left:auto');
-      expect(htmlGamepad).not.toContain('scale(0.44)');
+      expect(htmlGamepad).not.toContain('scale(0.60)');
     });
 
     it('shifts AnalogGauges from top-left back to bottom-right when keyboard key is pressed', () => {
@@ -391,7 +391,7 @@ describe('Adversarial Challenge M3 Iteration 2 (Challenger 2): Desktop Initial M
 
       const htmlKeyboard = renderToString(<AnalogGauges />);
       expect(htmlKeyboard).toContain('right:calc(20px + var(--sar))');
-      expect(htmlKeyboard).not.toContain('scale(0.44)');
+      expect(htmlKeyboard).not.toContain('scale(0.60)');
     });
 
     it('respects touchControlMode: "always" override regardless of gamepad or keyboard modality', () => {
@@ -400,12 +400,12 @@ describe('Adversarial Challenge M3 Iteration 2 (Challenger 2): Desktop Initial M
       setLastInputType('keyboard');
       let html = renderToString(<AnalogGauges />);
       expect(html).toContain('left:calc(16px + var(--sal, 0px))');
-      expect(html).toContain('transform:scale(0.44)');
+      expect(html).toContain('transform:scale(0.60)');
 
       setLastInputType('gamepad');
       html = renderToString(<AnalogGauges />);
       expect(html).toContain('left:calc(16px + var(--sal, 0px))');
-      expect(html).toContain('transform:scale(0.44)');
+      expect(html).toContain('transform:scale(0.60)');
 
       // TouchControlsOverlay is also always visible
       expect(renderToString(<TouchControlsOverlay />)).toContain('data-testid="touch-controls-overlay"');

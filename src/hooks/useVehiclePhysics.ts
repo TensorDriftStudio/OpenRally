@@ -38,6 +38,7 @@ import {
   type ChassisDynamicsState,
 } from '@/utils/physics/chassisDynamics';
 import { calculateGroundedVehicleTransform } from '@/utils/physics/groundSettler';
+import { getInterpolatedHeight } from '@/utils/terrainCompiler';
 import { emitGameEvent } from '@/utils/events';
 import { getSurfaceDefinition } from '@/config/surfaceRegistry';
 import { useTerrainData } from '@/components/terrain/TerrainContext';
@@ -57,6 +58,13 @@ const _settledPos = { x: 0, y: 0, z: 0 };
 const _settledRot = { x: 0, y: 0, z: 0, w: 1 };
 const _settledSuspensions: number[] = [0, 0, 0, 0];
 const _zeroVel = { x: 0, y: 0, z: 0 };
+
+// Zero-GC rolling keyframe buffer for safe track recovery in multiplayer/non-circuit modes
+const BREADCRUMB_CAPACITY = 8;
+const _breadcrumbBuffer = new Float32Array(BREADCRUMB_CAPACITY * 7);
+let _breadcrumbHead = 0;
+let _breadcrumbCount = 0;
+let _lastBreadcrumbTime = 0;
 const _frozenInput: InputState = {
   steering: 0,
   throttle: 0,
@@ -619,6 +627,78 @@ export function useVehiclePhysics(
       currentBodyPos.y < fallResetY ||
       resetState.pendingReset
     ) {
+      const isMultiplayer = Boolean(useMultiplayerStore.getState().currentRoom);
+      if (isMultiplayer && currentBodyPos.y < fallResetY && !isCorrupted && !isEnteringMenu && !resetState.pendingReset) {
+        let targetX = spawnPos[0];
+        let targetY = spawnPos[1];
+        let targetZ = spawnPos[2];
+        let targetRotY = spawnRotY;
+
+        const currentMode = useGameStore.getState().gameMode;
+        const trackPoints = levelData?.track?.points;
+        if (currentMode === 'timeattack' && trackPoints && trackPoints.length > 0) {
+          const racingState = useRacingStore.getState();
+          const targetCpIdx = Math.max(0, Math.min(trackPoints.length - 1, racingState.currentCheckpoint - 1));
+          const p = trackPoints[targetCpIdx] ?? trackPoints[0];
+          const nextP = trackPoints[(targetCpIdx + 1) % trackPoints.length];
+          if (p) {
+            targetX = p.x;
+            const groundY = getInterpolatedHeight(
+              p.x,
+              p.z,
+              heightmapData.heights,
+              heightmapData.rows,
+              heightmapData.cols,
+              levelData.terrainBase.width,
+              levelData.terrainBase.depth,
+            );
+            targetY = groundY + 0.65;
+            targetZ = p.z;
+            if (nextP) {
+              targetRotY = Math.atan2(nextP.x - p.x, nextP.z - p.z);
+            }
+          }
+          racingState.invalidateCurrentLap();
+        } else if (_breadcrumbCount > 0) {
+          const safeIdx = (_breadcrumbHead - 1 + BREADCRUMB_CAPACITY) % BREADCRUMB_CAPACITY;
+          const bOffset = safeIdx * 7;
+          targetX = _breadcrumbBuffer[bOffset];
+          targetY = _breadcrumbBuffer[bOffset + 1];
+          targetZ = _breadcrumbBuffer[bOffset + 2];
+        }
+
+        body.setTranslation({ x: targetX, y: targetY, z: targetZ }, true);
+        _spawnEuler.set(0, targetRotY, 0);
+        _spawnQuat.setFromEuler(_spawnEuler);
+        body.setRotation({ x: _spawnQuat.x, y: _spawnQuat.y, z: _spawnQuat.z, w: _spawnQuat.w }, true);
+        isSettledRef.current = false;
+        body.setGravityScale(1, true);
+        body.setLinvel(_zeroVel, true);
+        body.setAngvel(_zeroVel, true);
+
+        prevSpeedKmhRef.current = 0;
+        prevGearRef.current = 1;
+        prevEmittedGearRef.current = 1;
+        latestForwardSpeedRef.current = 0;
+        latestLateralSpeedRef.current = 0;
+        latestSpeedKmhRef.current = 0;
+        currentRpmRef.current = 1000;
+        isAirborneRef.current = false;
+        settleFramesRef.current = 0;
+        pausedStateRef.current = null;
+        isPausedRef.current = false;
+        resetChassisDynamics(visualRef?.current ?? null, chassisDynamicsStateRef.current);
+        resetSuspensionBumpStops();
+        if (typeof body.setAngularDamping === 'function') {
+          body.setAngularDamping(0.6);
+        }
+
+        emitGameEvent('vehicle_reset', {
+          reason: 'track_recovery',
+        });
+        return;
+      }
+
       if (isMenuOrTitle || isEnteringMenu) {
         const grounded = calculateGroundedVehicleTransform(
           spawnPos,
@@ -688,6 +768,15 @@ export function useVehiclePhysics(
 
     // ─── 0. PAUSE STATE HANDLING (FREEZE & RESTORE IDENTICAL PRE-PAUSE MOMENTUM) ───
     if (gameState === 'paused') {
+      const isMultiplayer = Boolean(useMultiplayerStore.getState().currentRoom);
+      if (isMultiplayer) {
+        // In multiplayer, do NOT freeze the vehicle rigidly in mid-air!
+        // Instead, apply neutral progressive braking so opponents can continue driving.
+        body.setLinvel({ x: curLinvel.x * 0.9, y: curLinvel.y, z: curLinvel.z * 0.9 }, true);
+        body.setAngvel({ x: curAngvel.x * 0.9, y: curAngvel.y, z: curAngvel.z * 0.9 }, true);
+        return;
+      }
+
       if (!isPausedRef.current) {
         // First frame entering pause: capture the exact simulation state
         const curLinvel = body.linvel();
@@ -925,9 +1014,26 @@ export function useVehiclePhysics(
 
     useGameStore.setState(_telemetryState);
 
+    // Track safe grounded breadcrumbs every 500ms (zero-GC) for multiplayer recovery
+    const nowTime = performance.now();
+    if (nowTime - _lastBreadcrumbTime > 500 && !isAirborne && !isRolledOverRef.current && Number.isFinite(pos.x)) {
+      _lastBreadcrumbTime = nowTime;
+      const bOffset = _breadcrumbHead * 7;
+      _breadcrumbBuffer[bOffset] = pos.x;
+      _breadcrumbBuffer[bOffset + 1] = pos.y + 0.35;
+      _breadcrumbBuffer[bOffset + 2] = pos.z;
+      _breadcrumbBuffer[bOffset + 3] = _quat.x;
+      _breadcrumbBuffer[bOffset + 4] = _quat.y;
+      _breadcrumbBuffer[bOffset + 5] = _quat.z;
+      _breadcrumbBuffer[bOffset + 6] = _quat.w;
+      _breadcrumbHead = (_breadcrumbHead + 1) % BREADCRUMB_CAPACITY;
+      _breadcrumbCount = Math.min(_breadcrumbCount + 1, BREADCRUMB_CAPACITY);
+    }
+
     // --- CHECK MANUAL RESET (KEYBOARD 'R' OR GAMEPAD BUTTON) ---
     if (input.reset) {
       const isRolledOver = isRolledOverRef.current || useGameStore.getState().isRolledOver;
+      const isMultiplayer = Boolean(useMultiplayerStore.getState().currentRoom);
 
       if (isRolledOver) {
         // In-place recovery: flip upright at current location, elevate above ground, zero velocities
@@ -961,7 +1067,78 @@ export function useVehiclePhysics(
         emitGameEvent('vehicle_reset', {
           reason: 'recovery',
         });
+      } else if (isMultiplayer) {
+        // --- MULTIPLAYER TRACK RECOVERY (NON-DISRUPTIVE) ---
+        let targetX = spawnPos[0];
+        let targetY = spawnPos[1];
+        let targetZ = spawnPos[2];
+        let targetRotY = spawnRotY;
+
+        const currentMode = useGameStore.getState().gameMode;
+        const trackPoints = levelData?.track?.points;
+        if (currentMode === 'timeattack' && trackPoints && trackPoints.length > 0) {
+          const racingState = useRacingStore.getState();
+          const targetCpIdx = Math.max(0, Math.min(trackPoints.length - 1, racingState.currentCheckpoint - 1));
+          const p = trackPoints[targetCpIdx] ?? trackPoints[0];
+          const nextP = trackPoints[(targetCpIdx + 1) % trackPoints.length];
+          if (p) {
+            targetX = p.x;
+            const groundY = getInterpolatedHeight(
+              p.x,
+              p.z,
+              heightmapData.heights,
+              heightmapData.rows,
+              heightmapData.cols,
+              levelData.terrainBase.width,
+              levelData.terrainBase.depth,
+            );
+            targetY = groundY + 0.65;
+            targetZ = p.z;
+            if (nextP) {
+              targetRotY = Math.atan2(nextP.x - p.x, nextP.z - p.z);
+            }
+          }
+          racingState.invalidateCurrentLap();
+        } else if (_breadcrumbCount > 0) {
+          const safeIdx = (_breadcrumbHead - 1 + BREADCRUMB_CAPACITY) % BREADCRUMB_CAPACITY;
+          const bOffset = safeIdx * 7;
+          targetX = _breadcrumbBuffer[bOffset];
+          targetY = _breadcrumbBuffer[bOffset + 1];
+          targetZ = _breadcrumbBuffer[bOffset + 2];
+        }
+
+        _spawnEuler.set(0, targetRotY, 0);
+        _spawnQuat.setFromEuler(_spawnEuler);
+
+        body.setTranslation({ x: targetX, y: targetY, z: targetZ }, true);
+        body.setRotation({ x: _spawnQuat.x, y: _spawnQuat.y, z: _spawnQuat.z, w: _spawnQuat.w }, true);
+        body.setLinvel(_zeroVel, true);
+        body.setAngvel(_zeroVel, true);
+
+        currentRpmRef.current = 1000;
+        isAirborneRef.current = false;
+        settleFramesRef.current = 0;
+        pausedStateRef.current = null;
+        isPausedRef.current = false;
+        isRolledOverRef.current = false;
+        rolloverTimerRef.current = 0;
+        prevEmittedGearRef.current = 1;
+        prevGearRef.current = 1;
+        latestForwardSpeedRef.current = 0;
+        latestLateralSpeedRef.current = 0;
+        latestSpeedKmhRef.current = 0;
+        useGameStore.setState({ isRolledOver: false });
+        resetChassisDynamics(visualRef?.current ?? null, chassisDynamicsStateRef.current);
+        resetSuspensionBumpStops(vehicleControllerRef.current, config);
+        if (typeof body.setAngularDamping === 'function') {
+          body.setAngularDamping(0.6);
+        }
+
+        emitGameEvent('vehicle_reset', {
+          reason: 'track_recovery',
+        });
       } else {
+        // --- SINGLEPLAYER FULL STAGE RESTART ---
         body.setTranslation({ x: spawnPos[0], y: spawnPos[1], z: spawnPos[2] }, true);
 
         _spawnEuler.set(0, spawnRotY, 0);

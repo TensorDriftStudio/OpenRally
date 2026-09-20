@@ -5,6 +5,7 @@ import { useRacingStore } from '@/store/racingStore';
 import { useGymkhanaStore } from '@/store/gymkhanaStore';
 import { getLevelPreset } from '@/config/levelRegistry';
 import { getVehiclePreset } from '@/config/vehicleRegistry';
+import { GAME_VERSION } from '@/config/version';
 
 /**
  * Loading screen overlay — shown while physics/scene initializes when entering gameplay.
@@ -14,12 +15,14 @@ export function LoadingScreen() {
   const { active, progress } = useProgress();
   const storeGameState = useGameStore((s) => s.gameState);
   const storeIsSceneReady = useGameStore((s) => s.isSceneReady);
+  const storeIsVehicleVisualReady = useGameStore((s) => s.isVehicleVisualReady);
   const storeLoadingTarget = useGameStore((s) => s.loadingTarget);
   const storeSelectedLevelId = useGameStore((s) => s.selectedLevelId);
   const storeSelectedVehicleId = useGameStore((s) => s.selectedVehicleId);
 
   const gameState = useGameStore.getState().gameState ?? storeGameState;
   const isSceneReady = useGameStore.getState().isSceneReady ?? storeIsSceneReady;
+  const isVehicleVisualReady = useGameStore.getState().isVehicleVisualReady ?? storeIsVehicleVisualReady;
   const loadingTarget = useGameStore.getState().loadingTarget ?? storeLoadingTarget;
   const selectedLevelId = useGameStore.getState().selectedLevelId ?? storeSelectedLevelId;
   const selectedVehicleId = useGameStore.getState().selectedVehicleId ?? storeSelectedVehicleId;
@@ -38,7 +41,9 @@ export function LoadingScreen() {
       setVisible(true);
       setFadeOut(false);
 
-      const isDone = isSceneReady && (!active || progress >= 100);
+      // Gameplay targets require both physics settling AND vehicle 3D visual readiness
+      const isVisualDone = isMenuLoading ? true : isVehicleVisualReady;
+      const isDone = isSceneReady && isVisualDone && (!active || progress >= 100);
       if (isDone) {
         // When transitioning to menu, guarantee a minimum opaque screen hold (500ms)
         // so that scene reset, vehicle grounding, and camera orbit snapping complete completely invisibly
@@ -66,12 +71,13 @@ export function LoadingScreen() {
         };
       }
 
-      // Safety timeout guard (max 3s)
+      // Safety timeout guard (max 12s for heavy assets over slower connections)
       const safetyTimer = setTimeout(() => {
         setFadeOut(true);
         setTimeout(() => {
           setVisible(false);
           useGameStore.getState().setSceneReady(true);
+          useGameStore.getState().setIsVehicleVisualReady(true);
           const target = useGameStore.getState().loadingTarget;
           useGameStore.getState().setGameState(target === 'gameplay' ? 'playing' : 'menu');
           if (target === 'gameplay') {
@@ -82,24 +88,25 @@ export function LoadingScreen() {
             }
           }
         }, 500);
-      }, 3000);
+      }, 12000);
 
       return () => clearTimeout(safetyTimer);
     }
 
     if (gameState === 'playing') {
-      if (!isSceneReady || active || progress < 100) {
+      if (!isSceneReady || !isVehicleVisualReady || active || progress < 100) {
         setVisible(true);
         setFadeOut(false);
 
-        // Safety timeout guard (max 3s) to prevent hanging on loading screen during gameplay
+        // Safety timeout guard (max 12s) to prevent hanging on loading screen during gameplay
         const safetyTimer = setTimeout(() => {
           useGameStore.getState().setSceneReady(true);
+          useGameStore.getState().setIsVehicleVisualReady(true);
           setFadeOut(true);
           setTimeout(() => {
             setVisible(false);
           }, 600);
-        }, 3000);
+        }, 12000);
 
         return () => clearTimeout(safetyTimer);
       } else {
@@ -113,13 +120,13 @@ export function LoadingScreen() {
 
     setVisible(false);
     setFadeOut(false);
-  }, [gameState, isSceneReady, active, progress]);
+  }, [gameState, loadingTarget, isSceneReady, isVehicleVisualReady, active, progress, isMenuLoading]);
 
   // Never render if not in loading/playing state and not visible
   if (!isRelevantState && !visible) return null;
 
   // Format progress for display
-  const displayProgress = Math.round(progress) || (isSceneReady ? 100 : 0);
+  const displayProgress = Math.round(progress) || (isSceneReady && (isMenuLoading || isVehicleVisualReady) ? 100 : 0);
 
   return (
     <div
@@ -179,7 +186,7 @@ export function LoadingScreen() {
         <div style={styles.authorBadge}>
           <span style={styles.authorLabel}>CREATED BY</span>
           <span style={styles.authorName}>TensorDrift Studio</span>
-          <span style={styles.versionTag}>• v1.0.0</span>
+          <span style={styles.versionTag}>• v{GAME_VERSION}</span>
         </div>
       </div>
     </div>

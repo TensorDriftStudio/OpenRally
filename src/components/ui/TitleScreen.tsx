@@ -3,6 +3,7 @@ import { useGameStore } from '@/store/gameStore';
 import { getActiveGamepad, sampleGamepad } from '@/utils/input/gamepad';
 
 import { unlockSharedAudioContext, getSharedAudioContext } from '@/utils/audio/audioContext';
+import { GAME_VERSION } from '@/config/version';
 
 let _unlockAudioCtx: AudioContext | null = null;
 
@@ -139,7 +140,7 @@ export function TitleScreen() {
         <div style={styles.authorBadge}>
           <span style={styles.authorLabel}>CREATED BY</span>
           <span style={styles.authorName}>TensorDrift Studio</span>
-          <span style={styles.versionTag}>• v1.0.0</span>
+          <span style={styles.versionTag}>• v{GAME_VERSION}</span>
         </div>
       </div>
     </div>

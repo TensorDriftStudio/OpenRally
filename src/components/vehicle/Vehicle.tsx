@@ -1,4 +1,4 @@
-import { useRef, useMemo, Suspense, Component, type ReactNode, type ErrorInfo } from 'react';
+import { useRef, useMemo, useEffect, Suspense, Component, type ReactNode, type ErrorInfo } from 'react';
 import { RigidBody, CuboidCollider, RoundCuboidCollider, CoefficientCombineRule } from '@react-three/rapier';
 import type { RapierRigidBody } from '@react-three/rapier';
 import { Group, Object3D } from 'three';
@@ -37,16 +37,19 @@ interface VehicleVisualModelProps {
 interface VehicleModelErrorBoundaryProps {
   children: ReactNode;
   fallback: ReactNode;
+  resetKey?: string;
 }
 
 interface VehicleModelErrorBoundaryState {
   hasError: boolean;
+  prevResetKey?: string;
 }
 
 /**
  * Robust error boundary isolating 3D GLB vehicle asset loading and shader errors.
  * Ensures that if a vehicle GLB model fails to load (e.g. offline mobile mode, corrupted mesh),
  * it seamlessly degrades to the procedural chassis box proxy instead of crashing the React tree.
+ * Automatically recovers when the resetKey changes (e.g., vehicle change or race restart).
  */
 export class VehicleModelErrorBoundary extends Component<
   VehicleModelErrorBoundaryProps,
@@ -60,12 +63,27 @@ export class VehicleModelErrorBoundary extends Component<
     return { hasError: true };
   }
 
+  public static getDerivedStateFromProps(
+    props: VehicleModelErrorBoundaryProps,
+    state: VehicleModelErrorBoundaryState,
+  ): VehicleModelErrorBoundaryState | null {
+    if (props.resetKey !== undefined && props.resetKey !== state.prevResetKey) {
+      return {
+        hasError: false,
+        prevResetKey: props.resetKey,
+      };
+    }
+    return null;
+  }
+
   public override componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     console.warn(
       '[VehicleModelErrorBoundary] Suppressed vehicle model loading error, rendering fallback proxy:',
       error,
       errorInfo,
     );
+    // Recover gracefully by informing store that visual fallback is ready
+    useGameStore.getState().setIsVehicleVisualReady(true);
   }
 
   public override render(): ReactNode {
@@ -79,6 +97,7 @@ export class VehicleModelErrorBoundary extends Component<
 /**
  * Isolated visual 3D model component wrapped in Suspense so that loading new GLB assets
  * never unmounts or suspends the physics RigidBody.
+ * Signals visual readiness to gameStore when mounted and resolved.
  */
 function VehicleVisualModel({
   modelPath,
@@ -87,6 +106,21 @@ function VehicleVisualModel({
   scale,
 }: VehicleVisualModelProps) {
   const { scene } = useGLTF(modelPath);
+  const isReady = useGameStore((s) => s.isVehicleVisualReady);
+
+  useEffect(() => {
+    useGameStore.getState().setIsVehicleVisualReady(true);
+    return () => {
+      useGameStore.getState().setIsVehicleVisualReady(false);
+    };
+  }, [modelPath]);
+
+  // Synchronize store readiness if store was externally reset while this model remains loaded
+  useEffect(() => {
+    if (!isReady) {
+      useGameStore.getState().setIsVehicleVisualReady(true);
+    }
+  }, [isReady]);
 
   return (
     <Clone 
@@ -120,6 +154,16 @@ export function Vehicle() {
   const chassisRef = useRef<RapierRigidBody>(null);
   const visualRef = useRef<Group>(null);
   const wheelObjectsRef = useRef<(Object3D | null)[]>([null, null, null, null]);
+
+  // Memoized wheel ref setters to prevent React from passing null on intermediate renders
+  const setWheelRef0 = useMemo(() => (el: Object3D | null) => { wheelObjectsRef.current[0] = el; }, []);
+  const setWheelRef1 = useMemo(() => (el: Object3D | null) => { wheelObjectsRef.current[1] = el; }, []);
+  const setWheelRef2 = useMemo(() => (el: Object3D | null) => { wheelObjectsRef.current[2] = el; }, []);
+  const setWheelRef3 = useMemo(() => (el: Object3D | null) => { wheelObjectsRef.current[3] = el; }, []);
+  const wheelRefSetters = useMemo(
+    () => [setWheelRef0, setWheelRef1, setWheelRef2, setWheelRef3],
+    [setWheelRef0, setWheelRef1, setWheelRef2, setWheelRef3],
+  );
 
   const config = vehiclePreset.config;
 
@@ -353,6 +397,7 @@ export function Vehicle() {
         {/* Visual Mesh (Interpolated Position) */}
         <group ref={visualRef}>
           <VehicleModelErrorBoundary
+            resetKey={`${effectiveModelPath}-${gameState}`}
             fallback={
               <mesh position={[0, 0.8, 0]}>
                 <boxGeometry
@@ -442,11 +487,8 @@ export function Vehicle() {
         {config.wheels.map((wheel, index) => (
           <Wheel
             key={`${selectedVehicleId}-${index}`}
-            ref={(el) => {
-              if (wheelObjectsRef.current) {
-                wheelObjectsRef.current[index] = el;
-              }
-            }}
+            ref={wheelRefSetters[index]}
+            lod={false}
             radius={wheel.radius}
             isRightSide={wheel.position[0] > 0}
             position={[

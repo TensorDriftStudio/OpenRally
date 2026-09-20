@@ -8,6 +8,7 @@ import type { CheckpointData } from '@/types/racing';
 import { getInterpolatedHeight } from '@/utils/terrainCompiler';
 import { onGameEvent } from '@/utils/events';
 import { isMobileOrAndroid } from '@/utils/device';
+import { useMultiplayerStore } from '@/store/multiplayerStore';
 import { StartFinishGantry } from './StartFinishGantry';
 import { CheckpointGate } from './CheckpointGate';
 
@@ -114,7 +115,14 @@ export function Checkpoints() {
 
   // Restart countdown upon vehicle reset
   useEffect(() => {
-    const unsub = onGameEvent('vehicle_reset', () => {
+    const unsub = onGameEvent('vehicle_reset', (e) => {
+      const isMultiplayer = Boolean(useMultiplayerStore.getState().currentRoom);
+
+      // In multiplayer or when performing in-place/track recovery, never restart the race countdown!
+      if (isMultiplayer || e.reason === 'recovery' || e.reason === 'track_recovery') {
+        return;
+      }
+
       if (useGameStore.getState().gameMode === 'timeattack' && useGameStore.getState().gameState === 'playing') {
         useRacingStore.getState().startCountdown();
       }

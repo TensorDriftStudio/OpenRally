@@ -186,10 +186,10 @@ canvas {
 }
 
 /* === Responsive Mobile Landscape HUD Adaptations === */
-@media (max-height: 520px) and (orientation: landscape) {
+@media (max-height: 520px) and (orientation: landscape), (max-width: 768px) and (orientation: landscape) {
   /* Scale minimap slightly on compact phone screens so track view remains prominent */
   #hud .minimap-container {
-    transform: scale(0.85);
+    transform: scale(0.72);
     transform-origin: top right;
   }
 }

@@ -3,6 +3,7 @@ import type { MenuView } from './types';
 
 interface MainViewProps {
   isPause: boolean;
+  isMultiplayer?: boolean;
   focusedIndex: number;
   textColor: string;
   onPointerMoveItem: (index: number, e: React.PointerEvent) => void;
@@ -15,6 +16,7 @@ interface MainViewProps {
 
 export function MainView({
   isPause,
+  isMultiplayer,
   focusedIndex,
   textColor,
   onPointerMoveItem,
@@ -62,8 +64,10 @@ export function MainView({
             <div style={styles.buttonContent}>
               <span style={styles.indexTag}>02 //</span>
               <div style={styles.textCol}>
-                <span style={styles.buttonLabel}>RESTART STAGE</span>
-                <span style={styles.buttonSubLabel} className="menu-action-sublabel">Reset car to stage spawn point</span>
+                <span style={styles.buttonLabel}>{isMultiplayer ? 'RECOVER VEHICLE' : 'RESTART STAGE'}</span>
+                <span style={styles.buttonSubLabel} className="menu-action-sublabel">
+                  {isMultiplayer ? 'Reset car to track / checkpoint (lap penalized)' : 'Reset car to stage spawn point'}
+                </span>
               </div>
             </div>
             <span style={{ ...styles.chevron, opacity: focusedIndex === 1 ? 1 : 0.4 }}>►</span>

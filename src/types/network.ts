@@ -10,7 +10,8 @@ export type ConnectionStatus =
   | 'in_lobby'
   | 'in_game'
   | 'reconnecting'
-  | 'error';
+  | 'error'
+  | 'version_mismatch';
 
 /**
  * 3D transform telemetry: position [x, y, z] and quaternion [x, y, z, w].
@@ -301,5 +302,11 @@ export type ServerMessage =
   | {
       type: 'error';
       code: string;
+      message: string;
+    }
+  | {
+      type: 'version_mismatch';
+      serverVersion: string;
+      clientVersion: string;
       message: string;
     };

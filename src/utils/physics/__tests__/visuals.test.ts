@@ -126,4 +126,35 @@ describe('syncWheelVisuals', () => {
     expect(wheels[2].children[0].rotateX).toHaveBeenCalledWith(0);
     expect(wheels[3].children[0].rotateX).toHaveBeenCalledWith(0);
   });
+
+  it('guarantees finite wheel transforms and prevents NaN contamination when physics returns NaN or undefined', () => {
+    const wheels = Array.from({ length: 4 }, () => {
+      const obj = new Object3D();
+      obj.add(new Object3D());
+      return obj;
+    });
+
+    const wheelRefs = { current: wheels };
+    const corruptedController: IRapierVehicleController = {
+      setWheelEngineForce: vi.fn(),
+      setWheelBrake: vi.fn(),
+      setWheelSteering: vi.fn(),
+      setWheelFrictionSlip: vi.fn(),
+      wheelChassisConnectionPointCs: () => ({ x: NaN, y: NaN, z: NaN }),
+      wheelSuspensionLength: () => NaN,
+      wheelSteering: () => NaN,
+      wheelIsInContact: () => false,
+    };
+
+    syncWheelVisuals(corruptedController, wheelRefs, DEFAULT_VEHICLE_CONFIG, NaN, NaN, NaN, 1);
+
+    // Positions must be finite and fall back to vehicleConfig rest positions
+    for (let i = 0; i < 4; i++) {
+      expect(Number.isFinite(wheels[i].position.x)).toBe(true);
+      expect(Number.isFinite(wheels[i].position.y)).toBe(true);
+      expect(Number.isFinite(wheels[i].position.z)).toBe(true);
+      expect(Number.isFinite(wheels[i].rotation.y)).toBe(true);
+      expect(wheels[i].position.x).toBeCloseTo(DEFAULT_VEHICLE_CONFIG.wheels[i].position[0], 2);
+    }
+  });
 });

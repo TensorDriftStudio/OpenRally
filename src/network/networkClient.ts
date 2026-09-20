@@ -10,6 +10,7 @@ import { useMultiplayerStore } from '@/store/multiplayerStore';
 import { useGameStore } from '@/store/gameStore';
 import { useGymkhanaStore } from '@/store/gymkhanaStore';
 import { useTagStore } from '@/store/tagStore';
+import { GAME_VERSION } from '@/config/version';
 
 export const TELEMETRY_SEND_INTERVAL_MS = 33; // ~30Hz
 const PING_INTERVAL_MS = 2000;
@@ -100,7 +101,11 @@ export class NetworkClient {
     }
 
     this.intentionalDisconnect = false;
-    this.endpoint = endpoint || getWebSocketEndpoint();
+    const rawEndpoint = endpoint || getWebSocketEndpoint();
+    const separator = rawEndpoint.includes('?') ? '&' : '?';
+    this.endpoint = rawEndpoint.includes('v=')
+      ? rawEndpoint
+      : `${rawEndpoint}${separator}v=${encodeURIComponent(GAME_VERSION)}`;
 
     const store = useMultiplayerStore.getState();
     store.setStatus('connecting');
@@ -385,6 +390,10 @@ export class NetworkClient {
         case 'pong': {
           const rtt = performance.now() - msg.clientTime;
           store.updatePing(Math.max(1, Math.round(rtt)));
+          // Synchronize clock offset between server epoch time and local Date.now()
+          const estimatedServerEpoch = msg.serverTime + rtt / 2;
+          const clockOffset = Math.round(estimatedServerEpoch - Date.now());
+          store.updateServerClockOffset(clockOffset);
           break;
         }
 
@@ -450,6 +459,28 @@ export class NetworkClient {
           break;
         }
 
+        case 'version_mismatch': {
+          console.warn(
+            `[NetworkClient] Version mismatch detected: server=${msg.serverVersion}, client=${msg.clientVersion}`
+          );
+          store.setStatus('version_mismatch');
+          store.setVersionMismatch({
+            serverVersion: msg.serverVersion,
+            clientVersion: msg.clientVersion,
+          });
+          store.setError(msg.message);
+          this.intentionalDisconnect = true;
+          if (this.ws) {
+            try {
+              this.ws.close(4003, 'VERSION_MISMATCH');
+            } catch {
+              // Suppress
+            }
+            this.ws = null;
+          }
+          break;
+        }
+
         case 'error': {
           store.setError(`${msg.code}: ${msg.message}`);
           break;
@@ -474,12 +505,19 @@ export class NetworkClient {
     }
 
     const store = useMultiplayerStore.getState();
+    if (event.code === 4003 || store.status === 'version_mismatch') {
+      console.warn('[NetworkClient] WebSocket closed with VERSION_MISMATCH (code 4003). Suppressing auto-reconnect.');
+      store.setStatus('version_mismatch');
+      this.intentionalDisconnect = true;
+      return;
+    }
+
     store.setStatus('reconnecting');
     this.scheduleReconnect();
   };
 
   private scheduleReconnect(): void {
-    if (this.intentionalDisconnect) return;
+    if (this.intentionalDisconnect || useMultiplayerStore.getState().status === 'version_mismatch') return;
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       const store = useMultiplayerStore.getState();
       store.setStatus('disconnected');

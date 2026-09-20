@@ -476,13 +476,13 @@ describe('Adversarial Stress Test Suite: Milestone 3 (Touch Controls Overlay & S
       setLastInputType('touch');
       const htmlTouch = renderToString(<AnalogGauges />);
       expect(htmlTouch).toContain('left:calc(16px + var(--sal, 0px))');
-      expect(htmlTouch).toContain('scale(0.44)');
+      expect(htmlTouch).toContain('scale(0.60)');
       expect(htmlTouch).toContain('top:calc(68px + var(--sat, 0px))');
       expect(htmlTouch).toContain('right:auto');
 
       setLastInputType('keyboard');
       const htmlDesktop = renderToString(<AnalogGauges />);
-      expect(htmlDesktop).not.toContain('scale(0.44)');
+      expect(htmlDesktop).not.toContain('scale(0.60)');
       expect(htmlDesktop).toContain('bottom:calc(20px + var(--sab))');
       expect(htmlDesktop).toContain('right:calc(20px + var(--sar))');
     });

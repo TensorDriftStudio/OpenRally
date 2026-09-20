@@ -46,7 +46,7 @@ describe('Mobile HUD & Optimization Suite', () => {
       // Top-left positioning & scale (under utility buttons)
       expect(html).toContain('top:calc(68px + var(--sat, 0px))');
       expect(html).toContain('left:calc(16px + var(--sal, 0px))');
-      expect(html).toContain('transform:scale(0.44)');
+      expect(html).toContain('transform:scale(0.60)');
       expect(html).toContain('transform-origin:top left');
       expect(html).toContain('bottom:auto');
       expect(html).toContain('right:auto');

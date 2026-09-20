@@ -82,7 +82,7 @@ describe('TouchControlsOverlay Component', () => {
       );
       expect(htmlTilt).not.toContain('data-testid="touch-tilt-zone"');
       expect(htmlTilt).not.toContain('data-testid="touch-tilt-indicator"');
-      expect(htmlTilt).toContain('data-testid="touch-btn-tilt-calibrate"');
+      expect(htmlTilt).not.toContain('data-testid="touch-btn-tilt-calibrate"');
       expect(htmlTilt).not.toContain('data-testid="touch-joystick-zone"');
       expect(htmlTilt).not.toContain('data-testid="touch-btn-steer-left"');
       expect(htmlTilt).not.toContain('data-testid="touch-btn-steer-right"');

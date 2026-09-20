@@ -63,6 +63,18 @@ export const AnalogGauges = memo(function AnalogGauges() {
   const storeTouchControlMode = useSettingsStore((s) => s.touchControlMode);
   const touchControlMode = useSettingsStore.getState().touchControlMode ?? storeTouchControlMode;
   const [activeInputType, setActiveInputType] = useState<InputType>(() => getLastInputType());
+  const [isMobileScreen, setIsMobileScreen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 768 || window.innerHeight < 520;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobileScreen(window.innerWidth < 768 || window.innerHeight < 520);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     const handleInputSwitch = (e?: Event) => {
@@ -91,6 +103,8 @@ export const AnalogGauges = memo(function AnalogGauges() {
       (effectiveInputType === 'touch' || isTouchDevice()) &&
       effectiveInputType !== 'keyboard' &&
       effectiveInputType !== 'gamepad');
+
+  const isMobile = isTouchActive || isMobileScreen;
 
   const speedTextRef = useRef<HTMLSpanElement>(null);
   const gearTextRef = useRef<HTMLSpanElement>(null);
@@ -239,13 +253,13 @@ export const AnalogGauges = memo(function AnalogGauges() {
 
   const clusterStyle: React.CSSProperties = {
     ...styles.rallyCluster,
-    ...(isTouchActive
+    ...(isMobile
       ? {
           left: 'calc(16px + var(--sal, 0px))',
           top: 'calc(68px + var(--sat, 0px))',
           bottom: 'auto',
           right: 'auto',
-          transform: 'scale(0.44)',
+          transform: 'scale(0.60)',
           transformOrigin: 'top left',
         }
       : {

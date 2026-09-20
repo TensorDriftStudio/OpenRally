@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '@/store/gameStore';
 import { useGymkhanaStore } from '@/store/gymkhanaStore';
+import { useMultiplayerStore } from '@/store/multiplayerStore';
 import { onGameEvent } from '@/utils/events';
 
 /**
@@ -38,7 +39,12 @@ export function useGymkhanaLogic(): void {
 
   // Reset blitz and restart countdown upon vehicle reset
   useEffect(() => {
-    const unsub = onGameEvent('vehicle_reset', () => {
+    const unsub = onGameEvent('vehicle_reset', (e) => {
+      const isMultiplayer = Boolean(useMultiplayerStore.getState().currentRoom);
+      if (isMultiplayer || e.reason === 'recovery' || e.reason === 'track_recovery') {
+        return;
+      }
+
       if (useGameStore.getState().gameMode === 'gymkhana_blitz' && useGameStore.getState().gameState === 'playing') {
         useGymkhanaStore.getState().resetBlitz();
         useGymkhanaStore.getState().startCountdown();

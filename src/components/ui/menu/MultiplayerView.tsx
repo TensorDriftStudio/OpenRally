@@ -1,7 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { menuStyles, getFocusStyle } from './menuStyles';
 import type { MenuView } from './types';
-import { useMultiplayerStore } from '@/store/multiplayerStore';
+import {
+  useMultiplayerStore,
+  CURATED_RACER_ADJECTIVES,
+  CURATED_RACER_MASCOTS,
+  generateCuratedNickname,
+} from '@/store/multiplayerStore';
 import { useGameStore } from '@/store/gameStore';
 import { useRacingStore } from '@/store/racingStore';
 import { useGymkhanaStore } from '@/store/gymkhanaStore';
@@ -12,14 +17,24 @@ import { getAvailableLevels, getLevelPreset } from '@/config/levelRegistry';
 import { AVAILABLE_TIRE_TYPES, getTireDefinition } from '@/config/tireRegistry';
 import { unlockSharedAudioContext } from '@/utils/audio/audioContext';
 import { registerMenuGamepadDelegate } from './menuGamepadRegistry';
+import { GAME_VERSION } from '@/config/version';
 import type { RoomSummary } from '@/types/network';
 import type { GameMode } from '@/types/game';
+
+function generateCuratedRoomTitle(): string {
+  const adj = CURATED_RACER_ADJECTIVES[Math.floor(Math.random() * CURATED_RACER_ADJECTIVES.length)];
+  const masc = CURATED_RACER_MASCOTS[Math.floor(Math.random() * CURATED_RACER_MASCOTS.length)];
+  const num = Math.floor(10 + Math.random() * 89);
+  return `${adj} ${masc} ${num}`;
+}
 
 export type MultiplayerFocusTarget =
   | { area: 'vehicles'; index: number }
   | { area: 'tires'; index: number }
+  | { area: 'reroll_identity' }
   | { area: 'refresh' }
   | { area: 'create_toggle' }
+  | { area: 'modal_reroll_room' }
   | { area: 'modal_track'; index: number }
   | { area: 'modal_mode'; index: number }
   | { area: 'modal_launch' }
@@ -58,6 +73,8 @@ export function MultiplayerView({
   const rooms = useMultiplayerStore((s) => s.rooms);
   const selfId = useMultiplayerStore((s) => s.selfId);
   const error = useMultiplayerStore((s) => s.error);
+  const versionMismatch = useMultiplayerStore((s) => s.versionMismatch);
+  const isVersionMismatch = status === 'version_mismatch' || versionMismatch !== null;
 
   const selectedVehicleId = useGameStore((s) => s.selectedVehicleId);
   const setSelectedVehicleId = useGameStore((s) => s.setSelectedVehicleId);
@@ -67,9 +84,8 @@ export function MultiplayerView({
   const setGameMode = useGameStore((s) => s.setGameMode);
   const setGameState = useGameStore((s) => s.setGameState);
 
-  const [inputNick, setInputNick] = useState(nickname);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newRoomName, setNewRoomName] = useState(() => `${nickname || 'Apex_Driver'} Rally`);
+  const [curatedRoomTitle, setCuratedRoomTitle] = useState(() => generateCuratedRoomTitle());
   const [createLevelId, setCreateLevelId] = useState('level1_island');
   const [createGameMode, setCreateGameMode] = useState<GameMode>('timeattack');
   const [createError, setCreateError] = useState<string | null>(null);
@@ -91,6 +107,8 @@ export function MultiplayerView({
   showCreateModalRef.current = showCreateModal;
   const roomsRef = useRef(rooms);
   roomsRef.current = rooms;
+  const isVersionMismatchRef = useRef(isVersionMismatch);
+  isVersionMismatchRef.current = isVersionMismatch;
   const vehiclesRef = useRef(vehicles);
   vehiclesRef.current = vehicles;
   const levelsRef = useRef(levels);
@@ -102,14 +120,27 @@ export function MultiplayerView({
   const selfIdRef = useRef(selfId);
   selfIdRef.current = selfId;
 
-  const newRoomNameRef = useRef(newRoomName);
-  newRoomNameRef.current = newRoomName;
+  const curatedRoomTitleRef = useRef(curatedRoomTitle);
+  curatedRoomTitleRef.current = curatedRoomTitle;
   const createLevelIdRef = useRef(createLevelId);
   createLevelIdRef.current = createLevelId;
   const createGameModeRef = useRef(createGameMode);
   createGameModeRef.current = createGameMode;
-  const inputNickRef = useRef(inputNick);
-  inputNickRef.current = inputNick;
+
+  const handleRerollNickname = useCallback(() => {
+    const fresh = generateCuratedNickname();
+    setNickname(fresh);
+  }, [setNickname]);
+
+  const handleRerollRoomTitle = useCallback(() => {
+    const fresh = generateCuratedRoomTitle();
+    setCuratedRoomTitle(fresh);
+  }, []);
+
+  const handleRerollNicknameRef = useRef(handleRerollNickname);
+  handleRerollNicknameRef.current = handleRerollNickname;
+  const handleRerollRoomTitleRef = useRef(handleRerollRoomTitle);
+  handleRerollRoomTitleRef.current = handleRerollRoomTitle;
 
   const createPreset = getLevelPreset(createLevelId);
   const currentSupportedModes = createPreset.supportedModes ?? ['freeroam', 'timeattack'];
@@ -156,14 +187,8 @@ export function MultiplayerView({
     onSelectView('main');
   };
 
-  const handleNickChange = (val: string) => {
-    const clean = val.slice(0, 16);
-    setInputNick(clean);
-    setNickname(clean);
-  };
-
   const getEffectiveNickname = () => {
-    return inputNickRef.current.trim() || useMultiplayerStore.getState().nickname || 'Apex_Driver';
+    return useMultiplayerStore.getState().nickname || 'Apex_Driver';
   };
 
   const handleSelectCreateTrack = (lvlId: string) => {
@@ -176,6 +201,7 @@ export function MultiplayerView({
   };
 
   const handleJoinRoom = (roomId: string, levelId: string, roomGameMode: GameMode) => {
+    if (isVersionMismatch) return;
     isLaunchingRef.current = true;
     const finalNick = getEffectiveNickname();
     setNickname(finalNick);
@@ -204,12 +230,8 @@ export function MultiplayerView({
   };
 
   const executeCreateRoom = () => {
-    const rawName = newRoomNameRef.current.trim() || `${getEffectiveNickname()} Rally`;
-    const trimmed = rawName.slice(0, 24);
-    if (trimmed.length < 2 || trimmed.length > 24) {
-      setCreateError('Room name must be between 2 and 24 characters.');
-      return;
-    }
+    if (isVersionMismatch) return;
+    const trimmed = (curatedRoomTitleRef.current.trim() || 'Swift Fox 42').slice(0, 24);
 
     isLaunchingRef.current = true;
     const finalNick = getEffectiveNickname();
@@ -305,6 +327,10 @@ export function MultiplayerView({
         const cur = focusTargetRef.current;
         const vList = vehiclesRef.current;
         if (cur.area === 'refresh' || cur.area === 'create_toggle') {
+          setFocusTarget({ area: 'reroll_identity' });
+        } else if (cur.area === 'reroll_identity') {
+          setFocusTarget({ area: 'vehicles', index: 0 });
+        } else if (cur.area === 'modal_reroll_room') {
           setFocusTarget({ area: 'vehicles', index: 0 });
         } else if (cur.area === 'modal_track') {
           if (cur.index > 0) setFocusTarget({ area: 'modal_track', index: cur.index - 1 });
@@ -331,7 +357,7 @@ export function MultiplayerView({
         const curUserId = selfIdRef.current;
         if (cur.area === 'vehicles') {
           if (showCreateModalRef.current) {
-            setFocusTarget({ area: 'modal_track', index: 0 });
+            setFocusTarget({ area: 'modal_reroll_room' });
           } else if (rList.length > 0) {
             setFocusTarget({ area: 'room_join', index: Math.min(rList.length - 1, cur.index) });
           } else {
@@ -340,10 +366,14 @@ export function MultiplayerView({
         } else if (cur.area === 'tires') {
           if (cur.index < AVAILABLE_TIRE_TYPES.length - 1) {
             setFocusTarget({ area: 'tires', index: cur.index + 1 });
-          } else if (showCreateModalRef.current) {
-            setFocusTarget({ area: 'modal_track', index: 0 });
+          } else {
+            setFocusTarget({ area: 'reroll_identity' });
+          }
+        } else if (cur.area === 'reroll_identity') {
+          if (showCreateModalRef.current) {
+            setFocusTarget({ area: 'modal_reroll_room' });
           } else if (rList.length > 0) {
-            setFocusTarget({ area: 'room_join', index: Math.min(rList.length - 1, 0) });
+            setFocusTarget({ area: 'room_join', index: 0 });
           } else {
             setFocusTarget({ area: 'create_toggle' });
           }
@@ -369,14 +399,19 @@ export function MultiplayerView({
         const rList = roomsRef.current;
         if (cur.area === 'vehicles') {
           if (cur.index > 0) setFocusTarget({ area: 'vehicles', index: cur.index - 1 });
+          else setFocusTarget({ area: 'reroll_identity' });
         } else if (cur.area === 'tires') {
           setFocusTarget({ area: 'vehicles', index: vehiclesRef.current.length - 1 });
+        } else if (cur.area === 'reroll_identity') {
+          setFocusTarget({ area: 'refresh' });
         } else if (cur.area === 'refresh') {
-          setFocusTarget({ area: 'vehicles', index: 0 });
+          setFocusTarget({ area: 'reroll_identity' });
         } else if (cur.area === 'create_toggle') {
           setFocusTarget({ area: 'refresh' });
-        } else if (cur.area === 'modal_track') {
+        } else if (cur.area === 'modal_reroll_room') {
           setFocusTarget({ area: 'create_toggle' });
+        } else if (cur.area === 'modal_track') {
+          setFocusTarget({ area: 'modal_reroll_room' });
         } else if (cur.area === 'modal_mode') {
           setFocusTarget({ area: 'modal_track', index: Math.min(levelsRef.current.length - 1, cur.index) });
         } else if (cur.area === 'modal_launch') {
@@ -411,16 +446,20 @@ export function MultiplayerView({
           }
         } else if (cur.area === 'tires') {
           setFocusTarget({ area: 'quick_play' });
+        } else if (cur.area === 'reroll_identity') {
+          setFocusTarget({ area: 'vehicles', index: 0 });
         } else if (cur.area === 'refresh') {
           setFocusTarget({ area: 'create_toggle' });
         } else if (cur.area === 'create_toggle') {
           if (showCreateModalRef.current) {
-            setFocusTarget({ area: 'modal_track', index: 0 });
+            setFocusTarget({ area: 'modal_reroll_room' });
           } else if (rList.length > 0) {
             setFocusTarget({ area: 'room_join', index: 0 });
           } else {
             setFocusTarget({ area: 'quick_play' });
           }
+        } else if (cur.area === 'modal_reroll_room') {
+          setFocusTarget({ area: 'modal_track', index: 0 });
         } else if (cur.area === 'modal_track') {
           setFocusTarget({ area: 'modal_mode', index: 0 });
         } else if (cur.area === 'modal_mode') {
@@ -445,31 +484,39 @@ export function MultiplayerView({
           setSelectedVehicleId(vList[cur.index].id);
         } else if (cur.area === 'tires') {
           setSelectedTireType(AVAILABLE_TIRE_TYPES[cur.index]);
+        } else if (cur.area === 'reroll_identity') {
+          handleRerollNicknameRef.current();
         } else if (cur.area === 'refresh') {
           networkClient.requestRooms();
         } else if (cur.area === 'create_toggle') {
+          if (isVersionMismatchRef.current) return;
           const next = !showCreateModalRef.current;
           setShowCreateModal(next);
-          setNewRoomName(`${getEffectiveNickname()} Rally`);
+          setCuratedRoomTitle(generateCuratedRoomTitle());
           setCreateError(null);
           if (next) {
-            setFocusTarget({ area: 'modal_track', index: 0 });
+            setFocusTarget({ area: 'modal_reroll_room' });
           } else {
             setFocusTarget({ area: 'create_toggle' });
           }
+        } else if (cur.area === 'modal_reroll_room') {
+          handleRerollRoomTitleRef.current();
         } else if (cur.area === 'modal_track') {
           handleSelectCreateTrack(levelsRef.current[cur.index].id);
         } else if (cur.area === 'modal_mode') {
           setCreateGameMode(currentSupportedModesRef.current[cur.index]);
         } else if (cur.area === 'modal_launch') {
+          if (isVersionMismatchRef.current) return;
           executeCreateRoomRef.current();
         } else if (cur.area === 'room_join') {
+          if (isVersionMismatchRef.current) return;
           const room = rList[cur.index];
           if (room) handleJoinRoomRef.current(room.id, room.levelId, room.gameMode);
         } else if (cur.area === 'room_delete') {
           const room = rList[cur.index];
           if (room) handleDeleteRoomRef.current(room);
         } else if (cur.area === 'quick_play') {
+          if (isVersionMismatchRef.current) return;
           handleJoinRoomRef.current('gymkhana_freeroam', 'level5_gymkhana', 'freeroam');
         } else if (cur.area === 'back') {
           handleBackToMainRef.current();
@@ -525,9 +572,19 @@ export function MultiplayerView({
             style={{
               padding: '4px 10px',
               borderRadius: '6px',
-              background: status === 'disconnected' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(56, 189, 248, 0.15)',
-              border: `1px solid ${status === 'disconnected' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(56, 189, 248, 0.4)'}`,
-              color: status === 'disconnected' ? '#F87171' : '#38BDF8',
+              background: isVersionMismatch
+                ? 'rgba(239, 68, 68, 0.25)'
+                : status === 'disconnected'
+                ? 'rgba(239, 68, 68, 0.15)'
+                : 'rgba(56, 189, 248, 0.15)',
+              border: `1px solid ${
+                isVersionMismatch
+                  ? 'rgba(239, 68, 68, 0.6)'
+                  : status === 'disconnected'
+                  ? 'rgba(239, 68, 68, 0.4)'
+                  : 'rgba(56, 189, 248, 0.4)'
+              }`,
+              color: isVersionMismatch || status === 'disconnected' ? '#F87171' : '#38BDF8',
               fontSize: '11px',
               fontWeight: 800,
               letterSpacing: '1px',
@@ -541,10 +598,14 @@ export function MultiplayerView({
                 width: '6px',
                 height: '6px',
                 borderRadius: '50%',
-                background: status === 'disconnected' ? '#F87171' : '#34D399',
+                background: isVersionMismatch || status === 'disconnected' ? '#F87171' : '#34D399',
               }}
             />
-            {status === 'disconnected' ? 'OFFLINE' : `ONLINE (${ping} MS)`}
+            {isVersionMismatch
+              ? 'UPDATE REQUIRED'
+              : status === 'disconnected'
+              ? 'OFFLINE'
+              : `ONLINE (${ping} MS)`}
           </span>
           <button
             type="button"
@@ -593,29 +654,63 @@ export function MultiplayerView({
         <div style={{ flex: '0 0 auto', fontSize: '11px', fontWeight: 800, color: '#38BDF8', letterSpacing: '1px' }}>
           DRIVER CALLSIGN:
         </div>
-        <div style={{ flex: 1, maxWidth: '280px' }}>
-          <input
-            type="text"
-            maxLength={16}
-            value={inputNick}
-            onChange={(e) => handleNickChange(e.target.value)}
-            onKeyDown={(e) => e.stopPropagation()}
-            placeholder="Enter callsign..."
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 0 auto' }}>
+          <span
             style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              background: 'rgba(0, 0, 0, 0.4)',
-              border: '1px solid rgba(56, 189, 248, 0.35)',
+              padding: '6px 12px',
+              background: 'rgba(56, 189, 248, 0.15)',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
               borderRadius: '6px',
-              padding: '8px 12px',
-              color: '#F8FAFC',
+              color: '#38BDF8',
+              fontWeight: 800,
               fontSize: '13px',
-              fontWeight: 600,
-              outline: 'none',
+              letterSpacing: '0.5px',
             }}
-          />
+          >
+            🏷️ {nickname || 'Apex_Fox_42'}
+          </span>
+          <button
+            type="button"
+            data-gamepad-focused={focusTarget.area === 'reroll_identity' ? 'true' : undefined}
+            onClick={() => {
+              setFocusTarget({ area: 'reroll_identity' });
+              handleRerollNickname();
+            }}
+            onPointerMove={() => setFocusTarget({ area: 'reroll_identity' })}
+            style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: '6px',
+              color: '#E2E8F0',
+              padding: '6px 12px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              ...getGamepadFocusStyle(focusTarget.area === 'reroll_identity'),
+            }}
+            title="Generate a safe curated racing callsign (Gamepad: Select/Confirm)"
+          >
+            🎲 REROLL TAG
+          </button>
+          <span
+            style={{
+              fontSize: '9px',
+              color: '#34D399',
+              fontWeight: 700,
+              background: 'rgba(16, 185, 129, 0.15)',
+              padding: '3px 8px',
+              borderRadius: '4px',
+              border: '1px solid rgba(52, 211, 153, 0.3)',
+            }}
+          >
+            ✓ SAFE IDENTIFIER
+          </span>
         </div>
-        <div style={{ flex: 1, fontSize: '11px', color: '#94A3B8' }}>
+        <div style={{ flex: 1, fontSize: '11px', color: '#94A3B8', textAlign: 'right' }}>
           Selected: <strong style={{ color: '#38BDF8' }}>{currentPreset.name}</strong> ({currentPreset.stats.driveType}, {currentPreset.config.engine.maxSpeed} km/h) • Tire: <strong style={{ color: activeTireDef.color }}>{activeTireDef.label}</strong>
         </div>
       </div>
@@ -809,29 +904,42 @@ export function MultiplayerView({
             </span>
             <button
               type="button"
+              disabled={isVersionMismatch}
               data-gamepad-focused={focusTarget.area === 'create_toggle' ? 'true' : undefined}
               onClick={() => {
+                if (isVersionMismatch) return;
                 const next = !showCreateModal;
                 setShowCreateModal(next);
-                setNewRoomName(`${getEffectiveNickname()} Rally`);
+                setCuratedRoomTitle(generateCuratedRoomTitle());
                 setCreateError(null);
-                setFocusTarget(next ? { area: 'modal_track', index: 0 } : { area: 'create_toggle' });
+                setFocusTarget(next ? { area: 'modal_reroll_room' } : { area: 'create_toggle' });
               }}
               onPointerMove={() => setFocusTarget({ area: 'create_toggle' })}
               style={{
-                background: showCreateModal ? 'rgba(239, 68, 68, 0.2)' : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                border: `1px solid ${showCreateModal ? '#F87171' : '#38BDF8'}`,
+                background: isVersionMismatch
+                  ? 'rgba(75, 85, 99, 0.3)'
+                  : showCreateModal
+                  ? 'rgba(239, 68, 68, 0.2)'
+                  : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                border: `1px solid ${
+                  isVersionMismatch ? '#4B5563' : showCreateModal ? '#F87171' : '#38BDF8'
+                }`,
                 borderRadius: '6px',
-                color: '#FFFFFF',
+                color: isVersionMismatch ? '#9CA3AF' : '#FFFFFF',
                 padding: '4px 10px',
                 fontSize: '11px',
                 fontWeight: 800,
-                cursor: 'pointer',
+                cursor: isVersionMismatch ? 'not-allowed' : 'pointer',
+                opacity: isVersionMismatch ? 0.6 : 1,
                 transition: 'all 0.15s ease',
                 ...getGamepadFocusStyle(focusTarget.area === 'create_toggle'),
               }}
             >
-              {showCreateModal ? '✖ Cancel (B)' : '➕ Create Room'}
+              {isVersionMismatch
+                ? '➕ Create (Locked)'
+                : showCreateModal
+                ? '✖ Cancel (B)'
+                : '➕ Create Room'}
             </button>
           </div>
 
@@ -854,26 +962,62 @@ export function MultiplayerView({
               </div>
 
               {/* Room Name */}
-              <input
-                type="text"
-                maxLength={24}
-                value={newRoomName}
-                onChange={(e) => setNewRoomName(e.target.value)}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Room Name (e.g. Canyon Showdown)..."
-                autoFocus
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  background: 'rgba(15, 23, 42, 0.9)',
-                  border: '1px solid rgba(56, 189, 248, 0.35)',
-                  borderRadius: '6px',
-                  padding: '7px 10px',
-                  color: '#F8FAFC',
-                  fontSize: '12px',
-                  outline: 'none',
-                }}
-              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div
+                  style={{
+                    flex: 1,
+                    background: 'rgba(15, 23, 42, 0.9)',
+                    border: '1px solid rgba(56, 189, 248, 0.35)',
+                    borderRadius: '6px',
+                    padding: '7px 10px',
+                    color: '#F8FAFC',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <span>🏷️ {curatedRoomTitle}</span>
+                  <span
+                    style={{
+                      fontSize: '9px',
+                      color: '#34D399',
+                      fontWeight: 700,
+                      background: 'rgba(16, 185, 129, 0.15)',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    CURATED TITLE
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  data-gamepad-focused={focusTarget.area === 'modal_reroll_room' ? 'true' : undefined}
+                  onClick={() => {
+                    setFocusTarget({ area: 'modal_reroll_room' });
+                    handleRerollRoomTitle();
+                  }}
+                  onPointerMove={() => setFocusTarget({ area: 'modal_reroll_room' })}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(56, 189, 248, 0.4)',
+                    borderRadius: '6px',
+                    color: '#E2E8F0',
+                    padding: '7px 12px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    whiteSpace: 'nowrap',
+                    ...getGamepadFocusStyle(focusTarget.area === 'modal_reroll_room'),
+                  }}
+                  title="Reroll safe curated room title"
+                >
+                  🎲 REROLL
+                </button>
+              </div>
 
               {/* Track Selection */}
               <div>
@@ -1186,27 +1330,32 @@ export function MultiplayerView({
 
                       <button
                         type="button"
+                        disabled={isVersionMismatch}
                         data-gamepad-focused={isJoinFocused ? 'true' : undefined}
                         onClick={() => {
+                          if (isVersionMismatch) return;
                           setFocusTarget({ area: 'room_join', index: rIdx });
                           handleJoinRoom(r.id, r.levelId, r.gameMode);
                         }}
                         onPointerMove={() => setFocusTarget({ area: 'room_join', index: rIdx })}
                         style={{
-                          background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                          border: '1px solid #38BDF8',
+                          background: isVersionMismatch
+                            ? 'rgba(75, 85, 99, 0.4)'
+                            : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                          border: `1px solid ${isVersionMismatch ? '#4B5563' : '#38BDF8'}`,
                           borderRadius: '6px',
-                          color: '#FFFFFF',
+                          color: isVersionMismatch ? '#9CA3AF' : '#FFFFFF',
                           padding: '6px 14px',
                           fontSize: '11px',
                           fontWeight: 800,
-                          cursor: 'pointer',
+                          cursor: isVersionMismatch ? 'not-allowed' : 'pointer',
+                          opacity: isVersionMismatch ? 0.6 : 1,
                           letterSpacing: '0.5px',
                           transition: 'all 0.15s ease',
                           ...getGamepadFocusStyle(isJoinFocused),
                         }}
                       >
-                        JOIN
+                        {isVersionMismatch ? 'LOCKED' : 'JOIN'}
                       </button>
                     </div>
                   </div>
@@ -1217,7 +1366,59 @@ export function MultiplayerView({
         </div>
       </div>
 
-      {error && (
+      {isVersionMismatch && (
+        <div
+          style={{
+            marginBottom: '14px',
+            padding: '14px 16px',
+            borderRadius: '8px',
+            background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(185, 28, 28, 0.3) 100%)',
+            border: '1px solid rgba(239, 68, 68, 0.6)',
+            boxShadow: '0 0 20px rgba(239, 68, 68, 0.25)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ color: '#FCA5A5', fontWeight: 800, fontSize: '12px', letterSpacing: '1px' }}>
+              ⚠️ GAME UPDATE REQUIRED
+            </span>
+            <span style={{ color: '#F87171', fontSize: '11px', fontWeight: 600 }}>
+              Client: v{versionMismatch?.clientVersion || GAME_VERSION} • Server: v{versionMismatch?.serverVersion || 'Latest'}
+            </span>
+          </div>
+          <div style={{ color: '#FEE2E2', fontSize: '12px', lineHeight: 1.4 }}>
+            Your game client is out of date and incompatible with the multiplayer server. Online matchmaking is disabled until the game is updated.
+          </div>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.location.reload();
+                }
+              }}
+              style={{
+                background: 'linear-gradient(135deg, #EF4444 0%, #B91C1C 100%)',
+                color: '#FFFFFF',
+                border: '1px solid #F87171',
+                borderRadius: '6px',
+                padding: '8px 16px',
+                fontSize: '12px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                letterSpacing: '0.5px',
+                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
+              }}
+            >
+              🔄 RELOAD & UPDATE GAME NOW
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && !isVersionMismatch && (
         <div
           style={{
             marginBottom: '12px',
@@ -1236,13 +1437,18 @@ export function MultiplayerView({
       {/* Quick Play Action: Join Official Free Roam */}
       <button
         type="button"
+        disabled={isVersionMismatch}
         data-gamepad-focused={focusTarget.area === 'quick_play' ? 'true' : undefined}
         style={{
           ...menuStyles.button,
-          background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-          color: '#FFFFFF',
-          borderColor: '#38BDF8',
-          boxShadow: '0 0 16px rgba(56, 189, 248, 0.35)',
+          background: isVersionMismatch
+            ? 'rgba(75, 85, 99, 0.4)'
+            : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+          color: isVersionMismatch ? '#9CA3AF' : '#FFFFFF',
+          borderColor: isVersionMismatch ? '#4B5563' : '#38BDF8',
+          boxShadow: isVersionMismatch ? 'none' : '0 0 16px rgba(56, 189, 248, 0.35)',
+          cursor: isVersionMismatch ? 'not-allowed' : 'pointer',
+          opacity: isVersionMismatch ? 0.6 : 1,
           width: '100%',
           minHeight: '44px',
           justifyContent: 'center',
@@ -1256,9 +1462,14 @@ export function MultiplayerView({
           onPointerMoveItem(0, e);
           setFocusTarget({ area: 'quick_play' });
         }}
-        onClick={() => handleJoinRoom('gymkhana_freeroam', 'level5_gymkhana', 'freeroam')}
+        onClick={() => {
+          if (isVersionMismatch) return;
+          handleJoinRoom('gymkhana_freeroam', 'level5_gymkhana', 'freeroam');
+        }}
       >
-        🏎️ QUICK PLAY: ENTER APEX ARENA (OFFICIAL)
+        {isVersionMismatch
+          ? '⚠️ QUICK PLAY DISABLED (GAME UPDATE REQUIRED)'
+          : '🏎️ QUICK PLAY: ENTER APEX ARENA (OFFICIAL)'}
       </button>
 
       {/* Back to Main Menu Button */}

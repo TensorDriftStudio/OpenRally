@@ -7,7 +7,7 @@ import type {
 } from '../types.js';
 
 export const MAX_PLAYERS = 12;
-export const BROADCAST_INTERVAL_MS = 40; // 25Hz broadcast rate
+export const BROADCAST_INTERVAL_MS = 33; // 30Hz broadcast rate (aligned with client telemetry rate)
 export const HEARTBEAT_TIMEOUT_MS = 6000;
 
 export interface PlayerSession {

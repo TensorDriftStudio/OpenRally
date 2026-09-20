@@ -55,4 +55,10 @@ describe('Modern Forza / The Crew Instrument Cluster (AnalogGauges)', () => {
     const html = renderToString(<AnalogGauges />);
     expect(html).toContain('>MANUAL<');
   });
+
+  it('applies comfortable scale(0.60) on mobile devices for clear readability', () => {
+    useSettingsStore.setState({ touchControlMode: 'always' });
+    const html = renderToString(<AnalogGauges />);
+    expect(html).toContain('scale(0.60)');
+  });
 });

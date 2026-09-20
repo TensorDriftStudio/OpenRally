@@ -8,6 +8,7 @@ import { Wheel } from '@/components/vehicle/Wheel';
 import { VehicleModelErrorBoundary } from '@/components/vehicle/Vehicle';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTagStore } from '@/store/tagStore';
+import { useMultiplayerStore } from '@/store/multiplayerStore';
 import { isMobileDevice } from '@/utils/device';
 import {
   registerRemoteVehicleMesh,
@@ -19,8 +20,6 @@ import type { RemotePlayerSummary } from '@/types/network';
 interface RemoteVehicleProps {
   player: RemotePlayerSummary;
 }
-
-const INTERPOLATION_DELAY_MS = 60; // 60ms jitter buffer
 
 // Module-level scratch instances for zero-allocation useFrame updates
 const scratchTargetPos = new THREE.Vector3();
@@ -208,7 +207,11 @@ export function RemoteVehicle({ player }: RemoteVehicleProps) {
       registerRemoteVehicleMesh(player.id, groupRef.current);
     }
 
-    const renderTime = Date.now() - INTERPOLATION_DELAY_MS;
+    const serverClockOffset = useMultiplayerStore.getState().serverClockOffset;
+    const ping = useMultiplayerStore.getState().ping;
+    // Dynamic adaptive jitter delay clamped between 40ms and 70ms based on RTT
+    const dynamicDelay = Math.max(40, Math.min(70, ping * 0.75 + 20));
+    const renderTime = (Date.now() + serverClockOffset) - dynamicDelay;
     const sample = buffer.sample(renderTime, scratchTargetPos, scratchTargetRot);
 
     if (sample) {
@@ -264,6 +267,7 @@ export function RemoteVehicle({ player }: RemoteVehicleProps) {
 
       {/* Visual Chassis Model */}
       <VehicleModelErrorBoundary
+        resetKey={effectiveModelPath}
         fallback={
           <mesh position={[0, 0.8, 0]}>
             <boxGeometry args={chassisSize} />
@@ -289,13 +293,14 @@ export function RemoteVehicle({ player }: RemoteVehicleProps) {
         </Suspense>
       </VehicleModelErrorBoundary>
 
-      {/* Wheels with realistic suspension rest offset */}
+      {/* Wheels with realistic suspension rest offset (remote vehicles use LOD at distance) */}
       {wheels.map((w, index) => (
         <Wheel
           key={index}
           ref={wheelRefs[index]}
           radius={w.radius}
           isRightSide={index % 2 === 1}
+          lod={true}
           position={[
             w.position[0],
             w.position[1] - w.suspensionRestLength * 0.5,
@@ -307,12 +312,29 @@ export function RemoteVehicle({ player }: RemoteVehicleProps) {
   );
 }
 
-// Preload all vehicle models so remote peers display instantaneously with zero fallback delay
-for (const preset of Object.values(VEHICLE_REGISTRY)) {
-  if (preset.modelPath) {
-    useGLTF.preload(preset.modelPath);
-  }
-  if (preset.optimizedModelPath) {
-    useGLTF.preload(preset.optimizedModelPath);
+/**
+ * Deferred preloader for vehicle models used by remote peers.
+ * Defers preloading until browser is idle or after initial page hydration
+ * to prevent saturating HTTP sockets during local car and track loading.
+ */
+function scheduleDeferredVehiclePreload(): void {
+  if (typeof window === 'undefined') return;
+
+  const preloadAll = () => {
+    for (const preset of Object.values(VEHICLE_REGISTRY)) {
+      if (preset.optimizedModelPath) {
+        useGLTF.preload(preset.optimizedModelPath);
+      } else if (preset.modelPath) {
+        useGLTF.preload(preset.modelPath);
+      }
+    }
+  };
+
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(() => preloadAll(), { timeout: 5000 });
+  } else {
+    setTimeout(preloadAll, 3000);
   }
 }
+
+scheduleDeferredVehiclePreload();

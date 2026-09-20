@@ -19,7 +19,7 @@ export interface GameEventMap {
     to: SurfaceType;
   };
   vehicle_reset: {
-    reason: 'manual' | 'out_of_bounds' | 'stability_guard' | 'recovery';
+    reason: 'manual' | 'out_of_bounds' | 'stability_guard' | 'recovery' | 'track_recovery';
   };
   gear_shifted: {
     fromGear: number;

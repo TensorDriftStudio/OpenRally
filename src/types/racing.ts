@@ -27,6 +27,8 @@ export interface RacingStore {
   countdown: number | null;
   /** Elapsed time of the countdown sequence */
   countdownTimer: number;
+  /** Whether the current lap was penalized or invalidated due to track recovery/shortcut */
+  isLapInvalidated: boolean;
 
   // Actions
   startCountdown: () => void;
@@ -35,6 +37,7 @@ export interface RacingStore {
   updateTimer: (dt: number) => void;
   passCheckpoint: (index: number) => void;
   resetRace: () => void;
+  invalidateCurrentLap: () => void;
   getBestLapForLevel: (levelId: string) => number | null;
   syncBestLapForLevel: (levelId: string) => void;
   resetAllTrackRecords: () => void;

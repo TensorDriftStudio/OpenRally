@@ -213,4 +213,10 @@ export type ServerMessage =
       type: 'error';
       code: string;
       message: string;
+    }
+  | {
+      type: 'version_mismatch';
+      serverVersion: string;
+      clientVersion: string;
+      message: string;
     };
