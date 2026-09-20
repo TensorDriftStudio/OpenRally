@@ -26,11 +26,14 @@ export function syncWheelVisuals(
     const wheelConfig = config.wheels[i];
 
     // Defensive NaN and null guards: fall back to configured rest geometry if physics returns invalid numbers
-    const safeConnX = Number.isFinite(connection?.x) ? connection.x : wheelConfig.position[0];
-    const safeConnY = Number.isFinite(connection?.y) ? connection.y : wheelConfig.position[1];
-    const safeConnZ = Number.isFinite(connection?.z) ? connection.z : wheelConfig.position[2];
+    const connX = connection?.x;
+    const connY = connection?.y;
+    const connZ = connection?.z;
+    const safeConnX = typeof connX === 'number' && Number.isFinite(connX) ? connX : wheelConfig.position[0];
+    const safeConnY = typeof connY === 'number' && Number.isFinite(connY) ? connY : wheelConfig.position[1];
+    const safeConnZ = typeof connZ === 'number' && Number.isFinite(connZ) ? connZ : wheelConfig.position[2];
 
-    const rawSusp = Number.isFinite(suspension) ? suspension : wheelConfig.suspensionRestLength;
+    const rawSusp = typeof suspension === 'number' && Number.isFinite(suspension) ? suspension : wheelConfig.suspensionRestLength;
 
     // Hard mechanical bump stop clearance guard:
     // Even under extreme jump landings or physics solver compressions, prevent wheel from traveling
@@ -48,7 +51,7 @@ export function syncWheelVisuals(
     );
 
     // Steering rotation (Y axis) strictly guarded against NaN
-    if (Number.isFinite(steer)) {
+    if (typeof steer === 'number' && Number.isFinite(steer)) {
       wheelObj.rotation.y = steer;
     }
 
