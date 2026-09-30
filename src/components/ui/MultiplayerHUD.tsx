@@ -86,18 +86,20 @@ export function MultiplayerHUD() {
   const currentRoom = useMultiplayerStore.getState().currentRoom ?? storeCurrentRoom;
   const isHost = useMultiplayerStore.getState().isHost ?? storeIsHost;
 
-  // Toggle expanded roster with Tab key on desktop
+  // Toggle expanded roster with Tab key on desktop, close with Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isTextEditingActive(e)) return;
       if (e.code === 'Tab') {
         e.preventDefault();
         setExpanded((prev) => !prev);
+      } else if (e.code === 'Escape' && expanded) {
+        setExpanded(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [expanded]);
 
   if (status === 'disconnected' || gameState !== 'playing' || !currentRoom) {
     return null;
@@ -127,70 +129,42 @@ export function MultiplayerHUD() {
   const modeBadgeText = modeDef.badgeLabel;
   const modeBadgeColor = modeDef.badgeColor;
 
-  // Desktop: Top-right corner above minimap
-  // Mobile: Bottom horizontal center, subtle low-profile pill between touch pedals and steering
+  // Always positioned at the bottom horizontal center across all viewports and modalities
   const containerStyle: React.CSSProperties = {
     position: 'absolute',
-    pointerEvents: 'auto',
-    ...(isMobile
-      ? {
-          bottom: 'calc(6px + var(--sab, 0px))',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          alignItems: 'center',
-          flexDirection: 'column-reverse',
-        }
-      : {
-          top: 'calc(10px + var(--sat, 0px))',
-          right: 'calc(16px + var(--sar, 0px))',
-          alignItems: 'flex-end',
-          flexDirection: 'column',
-        }),
+    bottom: 'calc(10px + var(--sab, 0px))',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    alignItems: 'center',
+    flexDirection: 'column-reverse',
     zIndex: 90,
     display: 'flex',
-    gap: isMobile ? '4px' : '6px',
+    gap: '6px',
     fontFamily: 'Inter, system-ui, sans-serif',
     userSelect: 'none',
+    pointerEvents: 'auto',
   };
 
-  // Mobile: ultra-compact, discreet translucent glass pill that does not obscure gameplay
-  const barStyle: React.CSSProperties = isMobile
-    ? {
-        background: 'rgba(15, 23, 42, 0.45)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '20px',
-        padding: '2px 8px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '5px',
-        color: 'rgba(226, 232, 240, 0.75)',
-        fontSize: '8px',
-        fontWeight: 600,
-        cursor: 'pointer',
-        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.25)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
-        maxWidth: '85vw',
-        pointerEvents: 'auto',
-        transition: 'all 0.2s ease',
-      }
-    : {
-        background: 'rgba(15, 23, 42, 0.88)',
-        border: '1px solid rgba(56, 189, 248, 0.35)',
-        borderRadius: '6px',
-        padding: '4px 9px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '7px',
-        color: '#F8FAFC',
-        fontSize: '11px',
-        fontWeight: 700,
-        cursor: 'pointer',
-        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        pointerEvents: 'auto',
-      };
+  // High-performance, crisp glassmorphism status pill anchored at the bottom
+  const barStyle: React.CSSProperties = {
+    background: 'rgba(15, 23, 42, 0.88)',
+    border: '1px solid rgba(56, 189, 248, 0.35)',
+    borderRadius: '20px',
+    padding: isMobile ? '3px 10px' : '4px 12px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: isMobile ? '6px' : '8px',
+    color: '#F8FAFC',
+    fontSize: isMobile ? '10px' : '11px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 4px 18px rgba(0, 0, 0, 0.45)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    pointerEvents: 'auto',
+    maxWidth: '92vw',
+    transition: 'background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease',
+  };
 
   return (
     <div style={containerStyle}>
@@ -203,73 +177,60 @@ export function MultiplayerHUD() {
         {/* Connection status indicator dot */}
         <span
           style={{
-            width: isMobile ? '4px' : '6px',
-            height: isMobile ? '4px' : '6px',
+            width: '6px',
+            height: '6px',
             borderRadius: '50%',
             background: status === 'in_game' || status === 'in_lobby' ? '#34D399' : '#F59E0B',
-            boxShadow: `0 0 ${isMobile ? '3px' : '6px'} ${status === 'in_game' || status === 'in_lobby' ? '#34D399' : '#F59E0B'}`,
+            boxShadow: `0 0 6px ${status === 'in_game' || status === 'in_lobby' ? '#34D399' : '#F59E0B'}`,
             flexShrink: 0,
           }}
         />
 
         {/* Room / Mode Identifier */}
         <span
-          style={
-            isMobile
-              ? {
-                  maxWidth: '75px',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  fontWeight: 700,
-                  color: 'rgba(248, 250, 252, 0.85)',
-                  fontSize: '8px',
-                  letterSpacing: '0.2px',
-                }
-              : undefined
-          }
+          style={{
+            maxWidth: isMobile ? '110px' : '200px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontWeight: 800,
+            color: '#F8FAFC',
+            letterSpacing: '0.3px',
+          }}
         >
           {roomDisplayName}
         </span>
 
-        {!isMobile && (
-          <span
-            style={{
-              padding: '1px 4px',
-              borderRadius: '3px',
-              background: 'rgba(255, 255, 255, 0.08)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              color: '#CBD5E1',
-              fontSize: '8.5px',
-              fontWeight: 800,
-            }}
-          >
-            {levelPreset.name.toUpperCase()}
-          </span>
-        )}
+        {/* Track / Level Preset Badge */}
+        <span
+          style={{
+            padding: '1px 5px',
+            borderRadius: '3px',
+            background: 'rgba(255, 255, 255, 0.08)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            color: '#CBD5E1',
+            fontSize: isMobile ? '8.5px' : '9.5px',
+            fontWeight: 800,
+            letterSpacing: '0.3px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {levelPreset.name.toUpperCase()}
+        </span>
 
         {/* Game Mode Badge */}
         <span
-          style={
-            isMobile
-              ? {
-                  color: modeBadgeColor,
-                  fontSize: '7.5px',
-                  fontWeight: 700,
-                  opacity: 0.9,
-                  whiteSpace: 'nowrap',
-                }
-              : {
-                  padding: '1px 4px',
-                  borderRadius: '3px',
-                  background: 'rgba(0, 0, 0, 0.4)',
-                  border: `1px solid ${modeBadgeColor}`,
-                  color: modeBadgeColor,
-                  fontSize: '8.5px',
-                  fontWeight: 800,
-                  whiteSpace: 'nowrap',
-                }
-          }
+          style={{
+            padding: '1px 5px',
+            borderRadius: '3px',
+            background: 'rgba(0, 0, 0, 0.4)',
+            border: `1px solid ${modeBadgeColor}`,
+            color: modeBadgeColor,
+            fontSize: isMobile ? '8.5px' : '9.5px',
+            fontWeight: 800,
+            whiteSpace: 'nowrap',
+            letterSpacing: '0.3px',
+          }}
         >
           {modeBadgeText}
         </span>
@@ -277,29 +238,16 @@ export function MultiplayerHUD() {
         {/* Host Tag */}
         {isHost && (
           <span
-            style={
-              isMobile
-                ? {
-                    padding: '0 3px',
-                    borderRadius: '2px',
-                    background: 'rgba(245, 158, 11, 0.25)',
-                    border: '1px solid rgba(245, 158, 11, 0.4)',
-                    color: '#FBBF24',
-                    fontSize: '7px',
-                    fontWeight: 800,
-                    whiteSpace: 'nowrap',
-                  }
-                : {
-                    padding: '1px 4px',
-                    borderRadius: '3px',
-                    background: '#F59E0B',
-                    color: '#000',
-                    fontSize: '8.5px',
-                    fontWeight: 900,
-                    letterSpacing: '0.5px',
-                    whiteSpace: 'nowrap',
-                  }
-            }
+            style={{
+              padding: '1px 4px',
+              borderRadius: '3px',
+              background: '#F59E0B',
+              color: '#000',
+              fontSize: isMobile ? '8px' : '8.5px',
+              fontWeight: 900,
+              letterSpacing: '0.5px',
+              whiteSpace: 'nowrap',
+            }}
           >
             HOST
           </span>
@@ -308,33 +256,29 @@ export function MultiplayerHUD() {
         {/* Connected Drivers Count */}
         <span
           style={{
-            color: isMobile ? 'rgba(148, 163, 184, 0.8)' : '#94A3B8',
-            fontSize: isMobile ? '8px' : '10px',
+            color: '#94A3B8',
+            fontSize: isMobile ? '9px' : '10px',
+            fontWeight: 600,
             whiteSpace: 'nowrap',
           }}
         >
-          {isMobile ? `👥 ${totalCount}` : `${totalCount} ${totalCount === 1 ? 'driver' : 'drivers'}`}
+          👥 {totalCount} {totalCount === 1 ? 'driver' : 'drivers'}
         </span>
 
         {/* Ping Latency */}
         <span
-          style={
-            isMobile
-              ? {
-                  fontSize: '8px',
-                  color: getPingColor(ping),
-                  opacity: 0.9,
-                  whiteSpace: 'nowrap',
-                }
-              : {
-                  fontSize: '10px',
-                  color: getPingColor(ping),
-                  padding: '1px 4px',
-                  borderRadius: '3px',
-                  background: 'rgba(0,0,0,0.3)',
-                  whiteSpace: 'nowrap',
-                }
-          }
+          style={{
+            fontSize: isMobile ? '9px' : '10px',
+            fontWeight: 700,
+            color: getPingColor(ping),
+            padding: '1px 5px',
+            borderRadius: '3px',
+            background: 'rgba(0, 0, 0, 0.35)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            minWidth: '38px',
+            textAlign: 'center',
+            whiteSpace: 'nowrap',
+          }}
         >
           {ping}ms
         </span>
@@ -342,12 +286,14 @@ export function MultiplayerHUD() {
         {/* Expand / Collapse Indicator */}
         <span
           style={{
-            fontSize: isMobile ? '7px' : '9px',
-            color: isMobile ? 'rgba(100, 116, 139, 0.8)' : '#64748B',
+            fontSize: isMobile ? '8px' : '9px',
+            color: '#64748B',
+            fontWeight: 700,
+            whiteSpace: 'nowrap',
             marginLeft: '1px',
           }}
         >
-          {isMobile ? (expanded ? '▼' : '▲') : (expanded ? '▲' : '▼ (TAB)')}
+          {isMobile ? (expanded ? '▼' : '▲') : (expanded ? '▼' : '▲ (TAB)')}
         </span>
       </div>
 
@@ -388,27 +334,28 @@ export function MultiplayerHUD() {
             <span>{levelPreset.name.toUpperCase()} • {modeBadgeText}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span>{totalCount}/12</span>
-              {isMobile && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpanded(false);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#94A3B8',
-                    cursor: 'pointer',
-                    fontSize: '11px',
-                    padding: '0 2px',
-                    lineHeight: 1,
-                  }}
-                  title="Close roster"
-                >
-                  ✕
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpanded(false);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#94A3B8',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  padding: '0 2px',
+                  lineHeight: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                title="Close roster"
+              >
+                ✕
+              </button>
             </div>
           </div>
 

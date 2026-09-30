@@ -84,25 +84,30 @@ describe('MultiplayerHUD - Mobile Ergonomics & Responsive Positioning', () => {
     useSettingsStore.setState({ touchControlMode: 'always' });
 
     const html = renderToString(<MultiplayerHUD />);
-    // Positioned at bottom center
-    expect(html).toContain('bottom:calc(6px + var(--sab, 0px))');
+    // Always positioned at bottom center
+    expect(html).toContain('bottom:calc(10px + var(--sab, 0px))');
     expect(html).toContain('left:50%');
     expect(html).toContain('transform:translateX(-50%)');
-    // Discreet styling: 45% opacity translucent background, 20px pill border-radius, 8px font
-    expect(html).toContain('rgba(15, 23, 42, 0.45)');
+    expect(html).toContain('align-items:center');
+    expect(html).toContain('flex-direction:column-reverse');
+    // Dark slate glassmorphism styling
+    expect(html).toContain('rgba(15, 23, 42, 0.88)');
     expect(html).toContain('border-radius:20px');
-    expect(html).toContain('font-size:8px');
   });
 
-  it('renders at top-right on desktop when touchControlMode is off', () => {
+  it('renders at bottom center on desktop when touchControlMode is off', () => {
     useGameStore.setState({ gameState: 'playing' });
     useMultiplayerStore.setState({ status: 'in_game' });
     useSettingsStore.setState({ touchControlMode: 'off' });
 
     const html = renderToString(<MultiplayerHUD />);
-    // Desktop: positioned top-right above minimap
-    expect(html).toContain('top:calc(10px + var(--sat, 0px))');
-    expect(html).toContain('right:calc(16px + var(--sar, 0px))');
-    expect(html).toContain('align-items:flex-end');
+    // Desktop: always positioned at bottom center with safe area insets
+    expect(html).toContain('bottom:calc(10px + var(--sab, 0px))');
+    expect(html).toContain('left:50%');
+    expect(html).toContain('transform:translateX(-50%)');
+    expect(html).toContain('align-items:center');
+    expect(html).toContain('flex-direction:column-reverse');
+    expect(html).toContain('rgba(15, 23, 42, 0.88)');
+    expect(html).toContain('border-radius:20px');
   });
 });
