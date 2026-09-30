@@ -38,7 +38,10 @@ import {
   type ChassisDynamicsState,
 } from '@/utils/physics/chassisDynamics';
 import { calculateGroundedVehicleTransform } from '@/utils/physics/groundSettler';
-import { getInterpolatedHeight } from '@/utils/terrainCompiler';
+import {
+  resolveSafeRespawnTransform,
+  isLocationClearOfProps,
+} from '@/utils/physics/safeRespawn';
 import { emitGameEvent } from '@/utils/events';
 import { getSurfaceDefinition } from '@/config/surfaceRegistry';
 import { useTerrainData } from '@/components/terrain/TerrainContext';
@@ -60,7 +63,7 @@ const _settledSuspensions: number[] = [0, 0, 0, 0];
 const _zeroVel = { x: 0, y: 0, z: 0 };
 
 // Zero-GC rolling keyframe buffer for safe track recovery in multiplayer/non-circuit modes
-const BREADCRUMB_CAPACITY = 8;
+const BREADCRUMB_CAPACITY = 24;
 const _breadcrumbBuffer = new Float32Array(BREADCRUMB_CAPACITY * 7);
 let _breadcrumbHead = 0;
 let _breadcrumbCount = 0;
@@ -222,6 +225,9 @@ export function useVehiclePhysics(
     rolloverTimerRef.current = 0;
     pausedStateRef.current = null;
     isPausedRef.current = false;
+    _breadcrumbHead = 0;
+    _breadcrumbCount = 0;
+    _lastBreadcrumbTime = 0;
     balanceRef.current = resolveVehicleBalance(config);
 
     latestForwardSpeedRef.current = 0;
@@ -629,48 +635,39 @@ export function useVehiclePhysics(
     ) {
       const isMultiplayer = Boolean(useMultiplayerStore.getState().currentRoom);
       if (isMultiplayer && currentBodyPos.y < fallResetY && !isCorrupted && !isEnteringMenu && !resetState.pendingReset) {
-        let targetX = spawnPos[0];
-        let targetY = spawnPos[1];
-        let targetZ = spawnPos[2];
-        let targetRotY = spawnRotY;
+        const safeRespawn = resolveSafeRespawnTransform({
+          currentPos: currentBodyPos,
+          currentQuat: body.rotation(),
+          levelData,
+          levelPreset,
+          heightmapData,
+          vehicleConfig: config,
+          gameMode: useGameStore.getState().gameMode,
+          isRolledOver: false,
+          isMultiplayer: true,
+          currentCheckpoint: useRacingStore.getState().currentCheckpoint,
+          breadcrumbs: _breadcrumbBuffer,
+          breadcrumbHead: _breadcrumbHead,
+          breadcrumbCount: _breadcrumbCount,
+          nowTime: performance.now(),
+          tagSpawnIndex: tagStoreState.assignedSpawnIndex,
+        });
 
-        const currentMode = useGameStore.getState().gameMode;
-        const trackPoints = levelData?.track?.points;
-        if (currentMode === 'timeattack' && trackPoints && trackPoints.length > 0) {
-          const racingState = useRacingStore.getState();
-          const targetCpIdx = Math.max(0, Math.min(trackPoints.length - 1, racingState.currentCheckpoint - 1));
-          const p = trackPoints[targetCpIdx] ?? trackPoints[0];
-          const nextP = trackPoints[(targetCpIdx + 1) % trackPoints.length];
-          if (p) {
-            targetX = p.x;
-            const groundY = getInterpolatedHeight(
-              p.x,
-              p.z,
-              heightmapData.heights,
-              heightmapData.rows,
-              heightmapData.cols,
-              levelData.terrainBase.width,
-              levelData.terrainBase.depth,
-            );
-            targetY = groundY + 0.65;
-            targetZ = p.z;
-            if (nextP) {
-              targetRotY = Math.atan2(nextP.x - p.x, nextP.z - p.z);
-            }
-          }
-          racingState.invalidateCurrentLap();
-        } else if (_breadcrumbCount > 0) {
-          const safeIdx = (_breadcrumbHead - 1 + BREADCRUMB_CAPACITY) % BREADCRUMB_CAPACITY;
-          const bOffset = safeIdx * 7;
-          targetX = _breadcrumbBuffer[bOffset];
-          targetY = _breadcrumbBuffer[bOffset + 1];
-          targetZ = _breadcrumbBuffer[bOffset + 2];
+        if (useGameStore.getState().gameMode === 'timeattack') {
+          useRacingStore.getState().invalidateCurrentLap();
         }
 
-        body.setTranslation({ x: targetX, y: targetY, z: targetZ }, true);
-        _spawnEuler.set(0, targetRotY, 0);
-        _spawnQuat.setFromEuler(_spawnEuler);
-        body.setRotation({ x: _spawnQuat.x, y: _spawnQuat.y, z: _spawnQuat.z, w: _spawnQuat.w }, true);
+        body.setTranslation({
+          x: safeRespawn.position[0],
+          y: safeRespawn.position[1] + 0.15,
+          z: safeRespawn.position[2],
+        }, true);
+        body.setRotation({
+          x: safeRespawn.rotation[0],
+          y: safeRespawn.rotation[1],
+          z: safeRespawn.rotation[2],
+          w: safeRespawn.rotation[3],
+        }, true);
         isSettledRef.current = false;
         body.setGravityScale(1, true);
         body.setLinvel(_zeroVel, true);
@@ -688,7 +685,7 @@ export function useVehiclePhysics(
         pausedStateRef.current = null;
         isPausedRef.current = false;
         resetChassisDynamics(visualRef?.current ?? null, chassisDynamicsStateRef.current);
-        resetSuspensionBumpStops();
+        resetSuspensionBumpStops(vehicleControllerRef.current, config);
         if (typeof body.setAngularDamping === 'function') {
           body.setAngularDamping(0.6);
         }
@@ -763,6 +760,9 @@ export function useVehiclePhysics(
       if (resetState.pendingReset) {
         resetState.triggerReset(false);
       }
+      _breadcrumbHead = 0;
+      _breadcrumbCount = 0;
+      _lastBreadcrumbTime = 0;
       return;
     }
 
@@ -1014,18 +1014,18 @@ export function useVehiclePhysics(
 
     useGameStore.setState(_telemetryState);
 
-    // Track safe grounded breadcrumbs every 500ms (zero-GC) for multiplayer recovery
+    // Track safe grounded breadcrumbs every 350ms (zero-GC) for recovery
     const nowTime = performance.now();
-    if (nowTime - _lastBreadcrumbTime > 500 && !isAirborne && !isRolledOverRef.current && Number.isFinite(pos.x)) {
+    if (nowTime - _lastBreadcrumbTime > 350 && !isAirborne && !isRolledOverRef.current && Number.isFinite(pos.x)) {
       _lastBreadcrumbTime = nowTime;
       const bOffset = _breadcrumbHead * 7;
       _breadcrumbBuffer[bOffset] = pos.x;
       _breadcrumbBuffer[bOffset + 1] = pos.y + 0.35;
       _breadcrumbBuffer[bOffset + 2] = pos.z;
-      _breadcrumbBuffer[bOffset + 3] = _quat.x;
-      _breadcrumbBuffer[bOffset + 4] = _quat.y;
-      _breadcrumbBuffer[bOffset + 5] = _quat.z;
-      _breadcrumbBuffer[bOffset + 6] = _quat.w;
+      _breadcrumbBuffer[bOffset + 3] = _euler.y;
+      _breadcrumbBuffer[bOffset + 4] = nowTime;
+      _breadcrumbBuffer[bOffset + 5] = isLocationClearOfProps(pos.x, pos.z, levelData.props, 1.0) ? 1 : 0;
+      _breadcrumbBuffer[bOffset + 6] = 0;
       _breadcrumbHead = (_breadcrumbHead + 1) % BREADCRUMB_CAPACITY;
       _breadcrumbCount = Math.min(_breadcrumbCount + 1, BREADCRUMB_CAPACITY);
     }
@@ -1036,13 +1036,40 @@ export function useVehiclePhysics(
       const isMultiplayer = Boolean(useMultiplayerStore.getState().currentRoom);
 
       if (isRolledOver) {
-        // In-place recovery: flip upright at current location, elevate above ground, zero velocities
-        _euler.setFromQuaternion(_quat, 'YXZ');
-        _spawnEuler.set(0, _euler.y, 0);
-        _spawnQuat.setFromEuler(_spawnEuler);
+        const safeRespawn = resolveSafeRespawnTransform({
+          currentPos: pos,
+          currentQuat: _quat,
+          currentRotY: _euler.y,
+          levelData,
+          levelPreset,
+          heightmapData,
+          vehicleConfig: config,
+          gameMode: useGameStore.getState().gameMode,
+          isRolledOver: true,
+          isMultiplayer,
+          currentCheckpoint: useRacingStore.getState().currentCheckpoint,
+          breadcrumbs: _breadcrumbBuffer,
+          breadcrumbHead: _breadcrumbHead,
+          breadcrumbCount: _breadcrumbCount,
+          nowTime,
+          tagSpawnIndex: tagStoreState.assignedSpawnIndex,
+        });
 
-        body.setTranslation({ x: pos.x, y: pos.y + 0.85, z: pos.z }, true);
-        body.setRotation({ x: _spawnQuat.x, y: _spawnQuat.y, z: _spawnQuat.z, w: _spawnQuat.w }, true);
+        if (useGameStore.getState().gameMode === 'timeattack') {
+          useRacingStore.getState().invalidateCurrentLap();
+        }
+
+        body.setTranslation({
+          x: safeRespawn.position[0],
+          y: safeRespawn.position[1] + 0.15,
+          z: safeRespawn.position[2],
+        }, true);
+        body.setRotation({
+          x: safeRespawn.rotation[0],
+          y: safeRespawn.rotation[1],
+          z: safeRespawn.rotation[2],
+          w: safeRespawn.rotation[3],
+        }, true);
 
         body.setLinvel(_zeroVel, true);
         body.setAngvel(_zeroVel, true);
@@ -1065,53 +1092,44 @@ export function useVehiclePhysics(
         }
 
         emitGameEvent('vehicle_reset', {
-          reason: 'recovery',
+          reason: isMultiplayer ? 'track_recovery' : 'recovery',
         });
       } else if (isMultiplayer) {
         // --- MULTIPLAYER TRACK RECOVERY (NON-DISRUPTIVE) ---
-        let targetX = spawnPos[0];
-        let targetY = spawnPos[1];
-        let targetZ = spawnPos[2];
-        let targetRotY = spawnRotY;
+        const safeRespawn = resolveSafeRespawnTransform({
+          currentPos: pos,
+          currentQuat: _quat,
+          currentRotY: _euler.y,
+          levelData,
+          levelPreset,
+          heightmapData,
+          vehicleConfig: config,
+          gameMode: useGameStore.getState().gameMode,
+          isRolledOver: false,
+          isMultiplayer: true,
+          currentCheckpoint: useRacingStore.getState().currentCheckpoint,
+          breadcrumbs: _breadcrumbBuffer,
+          breadcrumbHead: _breadcrumbHead,
+          breadcrumbCount: _breadcrumbCount,
+          nowTime,
+          tagSpawnIndex: tagStoreState.assignedSpawnIndex,
+        });
 
-        const currentMode = useGameStore.getState().gameMode;
-        const trackPoints = levelData?.track?.points;
-        if (currentMode === 'timeattack' && trackPoints && trackPoints.length > 0) {
-          const racingState = useRacingStore.getState();
-          const targetCpIdx = Math.max(0, Math.min(trackPoints.length - 1, racingState.currentCheckpoint - 1));
-          const p = trackPoints[targetCpIdx] ?? trackPoints[0];
-          const nextP = trackPoints[(targetCpIdx + 1) % trackPoints.length];
-          if (p) {
-            targetX = p.x;
-            const groundY = getInterpolatedHeight(
-              p.x,
-              p.z,
-              heightmapData.heights,
-              heightmapData.rows,
-              heightmapData.cols,
-              levelData.terrainBase.width,
-              levelData.terrainBase.depth,
-            );
-            targetY = groundY + 0.65;
-            targetZ = p.z;
-            if (nextP) {
-              targetRotY = Math.atan2(nextP.x - p.x, nextP.z - p.z);
-            }
-          }
-          racingState.invalidateCurrentLap();
-        } else if (_breadcrumbCount > 0) {
-          const safeIdx = (_breadcrumbHead - 1 + BREADCRUMB_CAPACITY) % BREADCRUMB_CAPACITY;
-          const bOffset = safeIdx * 7;
-          targetX = _breadcrumbBuffer[bOffset];
-          targetY = _breadcrumbBuffer[bOffset + 1];
-          targetZ = _breadcrumbBuffer[bOffset + 2];
+        if (useGameStore.getState().gameMode === 'timeattack') {
+          useRacingStore.getState().invalidateCurrentLap();
         }
 
-        _spawnEuler.set(0, targetRotY, 0);
-        _spawnQuat.setFromEuler(_spawnEuler);
-
-        body.setTranslation({ x: targetX, y: targetY, z: targetZ }, true);
-        body.setRotation({ x: _spawnQuat.x, y: _spawnQuat.y, z: _spawnQuat.z, w: _spawnQuat.w }, true);
+        body.setTranslation({
+          x: safeRespawn.position[0],
+          y: safeRespawn.position[1] + 0.15,
+          z: safeRespawn.position[2],
+        }, true);
+        body.setRotation({
+          x: safeRespawn.rotation[0],
+          y: safeRespawn.rotation[1],
+          z: safeRespawn.rotation[2],
+          w: safeRespawn.rotation[3],
+        }, true);
         body.setLinvel(_zeroVel, true);
         body.setAngvel(_zeroVel, true);
 
@@ -1139,6 +1157,10 @@ export function useVehiclePhysics(
         });
       } else {
         // --- SINGLEPLAYER FULL STAGE RESTART ---
+        _breadcrumbHead = 0;
+        _breadcrumbCount = 0;
+        _lastBreadcrumbTime = 0;
+
         body.setTranslation({ x: spawnPos[0], y: spawnPos[1], z: spawnPos[2] }, true);
 
         _spawnEuler.set(0, spawnRotY, 0);
